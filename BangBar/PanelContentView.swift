@@ -8,6 +8,7 @@ final class PanelState: ObservableObject {
 
 struct PanelContentView: View {
     @ObservedObject var state: PanelState
+    @StateObject private var nowPlaying = NowPlayingService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -22,13 +23,7 @@ struct PanelContentView: View {
                     .background(Color.white.opacity(0.2))
                     .frame(height: 70)
 
-                CalendarWidget(date: currentTime)
-
-                Divider()
-                    .background(Color.white.opacity(0.2))
-                    .frame(height: 70)
-
-                SystemWidget()
+                NowPlayingWidget(service: nowPlaying, date: currentTime)
             }
             .padding(.horizontal, 64)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -57,12 +52,6 @@ struct ClockWidget: View {
         return f.string(from: date)
     }
 
-    var secondsString: String {
-        let f = DateFormatter()
-        f.dateFormat = "ss"
-        return f.string(from: date)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Время")
@@ -70,16 +59,11 @@ struct ClockWidget: View {
                 .foregroundColor(.white.opacity(0.5))
                 .textCase(.uppercase)
 
-            HStack(alignment: .lastTextBaseline, spacing: 3) {
-                Text(timeString)
-                    .font(.system(size: 40, weight: .thin, design: .monospaced))
-                    .foregroundColor(.white)
-                Text(secondsString)
-                    .font(.system(size: 20, weight: .thin, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.5))
-            }
+            Text(timeString)
+                .font(.system(size: 32, weight: .thin, design: .monospaced))
+                .foregroundColor(.white)
         }
-        .frame(minWidth: 130, alignment: .leading)
+        .frame(minWidth: 100, alignment: .leading)
     }
 }
 
@@ -129,6 +113,62 @@ struct CalendarWidget: View {
             }
         }
         .frame(minWidth: 140, alignment: .leading)
+    }
+}
+
+struct NowPlayingWidget: View {
+    @ObservedObject var service: NowPlayingService
+    let date: Date
+
+    var body: some View {
+        if service.isAvailable {
+            HStack(spacing: 12) {
+                Group {
+                    if let artwork = service.info.artwork {
+                        Image(nsImage: artwork)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        Color.white.opacity(0.08)
+                            .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.3)))
+                    }
+                }
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(service.info.title)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(service.info.artist)
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
+
+                    HStack(spacing: 24) {
+                        Button(action: { service.previousTrack() }) {
+                            Image(systemName: "backward.fill")
+                        }
+                        Button(action: { service.togglePlayPause() }) {
+                            Image(systemName: service.info.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 18))
+                        }
+                        Button(action: { service.nextTrack() }) {
+                            Image(systemName: "forward.fill")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.white)
+                    .font(.system(size: 15))
+                }
+            }
+            .frame(minWidth: 200, alignment: .leading)
+        } else {
+            CalendarWidget(date: date)
+        }
     }
 }
 
