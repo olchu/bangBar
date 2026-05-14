@@ -152,6 +152,12 @@ final class NowPlayingService: ObservableObject {
     func nextTrack()        { sendCommand(activePlayer?.nextScript) }
     func previousTrack()    { sendCommand(activePlayer?.prevScript) }
 
+    func openPlayer() {
+        guard let player = activePlayer,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: player.bundleId) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     private func sendCommand(_ source: String?) {
         guard let source else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in

@@ -17,13 +17,13 @@ struct PanelContentView: View {
             Color.black
 
             HStack(spacing: 20) {
-                ClockWidget(date: currentTime)
+                NowPlayingWidget(service: nowPlaying, date: currentTime)
 
                 Divider()
                     .background(Color.white.opacity(0.2))
                     .frame(height: 70)
 
-                NowPlayingWidget(service: nowPlaying, date: currentTime)
+                ClockWidget(date: currentTime)
             }
             .padding(.horizontal, 64)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -53,17 +53,10 @@ struct ClockWidget: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Время")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
-                .textCase(.uppercase)
-
-            Text(timeString)
-                .font(.system(size: 32, weight: .thin, design: .monospaced))
-                .foregroundColor(.white)
-        }
-        .frame(minWidth: 100, alignment: .leading)
+        Text(timeString)
+            .font(.system(size: 32, weight: .thin, design: .monospaced))
+            .foregroundColor(.white)
+            .frame(minWidth: 100, alignment: .leading)
     }
 }
 
@@ -133,17 +126,18 @@ struct NowPlayingWidget: View {
                             .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.3)))
                     }
                 }
-                .frame(width: 96, height: 96)
+                .frame(width: 110, height: 110)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .onTapGesture { service.openPlayer() }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(service.info.title)
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.white)
                             .lineLimit(1)
                         Text(service.info.artist)
-                            .font(.system(size: 12))
+                            .font(.system(size: 13))
                             .foregroundColor(.white.opacity(0.5))
                             .lineLimit(1)
                     }
