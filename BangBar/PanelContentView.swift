@@ -170,9 +170,9 @@ struct StatRow: View {
 // MARK: - Notch Panel Shape
 
 struct NotchPanelShape: Shape {
-    var topRadius: CGFloat = 42
-    var bottomRadius: CGFloat = 28
-    var topEarInset: CGFloat = 12
+    var topRadius: CGFloat = 22
+    var bottomRadius: CGFloat = 22
+    var topEarInset: CGFloat = 16
 
     func path(in rect: CGRect) -> Path {
         var p = Path()

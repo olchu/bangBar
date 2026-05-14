@@ -19,7 +19,7 @@ class HoverPanel: NSPanel {
     convenience init() {
         let screen = NSScreen.main!
         let initialRect = NSRect(
-            x: (screen.frame.width - 560) / 2,
+            x: screen.frame.midX - 560 / 2,
             y: screen.frame.maxY,
             width: 560,
             height: 150
@@ -52,24 +52,14 @@ class HoverPanel: NSPanel {
 
     func slideIn() {
         isHiding = false
+
         guard let screen = NSScreen.main else { return }
 
-        // Panel sits flush at the top of the screen, covering the menu bar area
-        let targetFrame = NSRect(
-            x: (screen.frame.width - panelWidth) / 2,
-            y: screen.frame.maxY - panelHeight,
-            width: panelWidth,
-            height: panelHeight
-        )
+        let visibleFrame = centeredFrame(on: screen, y: screen.frame.maxY - panelHeight)
 
         if !isVisible {
-            let startFrame = NSRect(
-                x: targetFrame.minX,
-                y: screen.frame.maxY,
-                width: panelWidth,
-                height: panelHeight
-            )
-            setFrame(startFrame, display: false)
+            let hiddenFrame = centeredFrame(on: screen, y: screen.frame.maxY)
+            setFrame(hiddenFrame, display: false)
             orderFront(nil)
             alphaValue = 1.0
         }
@@ -77,20 +67,25 @@ class HoverPanel: NSPanel {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.45
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
-            animator().setFrame(targetFrame, display: true)
+            animator().setFrame(visibleFrame, display: true)
         }
+    }
+
+    private func centeredFrame(on screen: NSScreen, y: CGFloat) -> NSRect {
+        NSRect(
+            x: screen.frame.midX - panelWidth / 2,
+            y: y,
+            width: panelWidth,
+            height: panelHeight
+        )
     }
 
     func slideOut() {
         isHiding = true
+
         guard let screen = NSScreen.main else { return }
 
-        let hiddenFrame = NSRect(
-            x: self.frame.minX,
-            y: screen.frame.maxY,
-            width: panelWidth,
-            height: panelHeight
-        )
+        let hiddenFrame = centeredFrame(on: screen, y: screen.frame.maxY)
 
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.3
