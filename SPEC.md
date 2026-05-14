@@ -1,5 +1,85 @@
 # BangBar — Feature Spec
 
+## Panel Behavior
+
+BangBar is a top-pinned notch panel with three visible modes:
+
+- Hidden: the panel is ordered out, unless music is playing.
+- Compact: shown at menu-bar/notch height while music is playing.
+- Expanded: full widget panel opened by hover.
+
+The panel background is pure sRGB black (`0,0,0`) inside the clipped notch shape. The `NSPanel` itself remains transparent so the clipped shape does not render as a rectangle.
+
+### Hidden → Expanded
+
+- Triggered by hovering the stable notch trigger zone.
+- Panel appears pinned to the top edge.
+- The panel must not visually detach from the top edge during frame animation.
+- Expanded content fades in after the frame animation begins.
+
+### Hidden → Compact
+
+- If music starts while the panel is hidden, the compact panel appears instead of staying fully hidden.
+- Initial frame is `concealedCompactFrame`, centered behind the notch with menu-bar height.
+- It expands to `compactFrame` by width while staying pinned to the top.
+- Artwork and the playing indicator are hidden until the compact frame has enough space.
+- Artwork and indicator reveal after a short delay; current delay is ~60 ms.
+- Compact artwork reveals with scale/opacity only for first appearance from hidden/music-start.
+
+### Compact → Expanded
+
+- Triggered by hovering the compact panel, its visible frame plus a 10 px perimeter activation buffer, or the stable notch trigger zone.
+- The transition animates from the current compact frame to the expanded frame.
+- A short grace period prevents immediate re-closing while the mouse is on the boundary.
+- Compact hover hit testing must not depend only on the clipped shape, because artwork and indicator can be visually inside areas that shape hit testing treats as edge cases.
+
+### Expanded → Compact
+
+- If music is playing and the mouse leaves the expanded panel, the panel collapses to compact instead of hiding.
+- The collapse uses the current expanded frame as the animation start.
+- The top edge stays pinned during the whole animation.
+- Compact artwork must be restored without the initial music-start reveal animation.
+
+### Compact → Hidden
+
+- When music stops, compact mode hides by reversing the compact appearance:
+  - artwork and indicator collapse/disappear first;
+  - then the panel width shrinks toward `concealedCompactFrame`;
+  - the window is ordered out only after it reaches the concealed width.
+- The window position must not jump down or right during this hide animation.
+
+### Hover Stability
+
+- Closing logic uses a small buffer around the panel and trigger zone to avoid boundary flicker.
+- `HoverHostingView` forwards `mouseEntered` and `mouseMoved` from inside the panel to the same hover handler used by global tracking. This keeps hover behavior stable over interactive SwiftUI content such as album artwork.
+- `syncCompactVisibility` must not repeatedly call `enterCompactMode()` while the panel is already compact; now-playing updates happen frequently and should not restart compact animations.
+
+## Now Playing Transitions
+
+### Hero Artwork
+
+Album artwork should read visually as one continuous element between compact and expanded modes.
+
+- During `compact → expanded`, a temporary `ArtworkHeroView` is drawn above the normal widgets.
+- Compact artwork and expanded artwork are hidden as needed while the hero layer is active.
+- Hero progress is driven by the AppKit frame animation, not by an independent SwiftUI timer.
+- The hero interpolates:
+  - position;
+  - size;
+  - corner radius.
+- At the end of `compact → expanded`, expanded artwork becomes visible underneath the hero before the hero layer is removed. This overlap prevents a one-frame blink.
+- At `expanded → compact`, the hero animation runs in reverse (`1 → 0`) and compact artwork is restored without the initial reveal scale animation.
+- Any delayed hero cleanup work must be cancelled when a new transition starts.
+
+### Compact Now Playing
+
+- Compact mode shows album artwork on the left and a subtle animated playing indicator on the right.
+- The indicator uses thin low-opacity vertical bars so it does not distract from the menu bar.
+- Compact content uses minimal horizontal padding so artwork and the indicator remain visible at menu-bar height.
+- Artwork size is smaller than the bar height and clipped with a small rounded rectangle.
+- Clicking artwork opens the active player.
+- Compact mode remains available only while music is playing.
+
 ## Current Widgets
 
 ### ClockWidget
@@ -14,6 +94,7 @@
 - Click on artwork opens the player app
 - Title truncates with `…` if too long
 - Progress bar updates every second via local tick timer (no extra AppleScript calls)
+- Expanded artwork participates in the hero artwork transition from compact mode.
 
 ---
 
