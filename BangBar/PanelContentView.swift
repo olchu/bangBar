@@ -215,10 +215,9 @@ struct CompactNowPlayingWidget: View {
     let indicatorRevealAllowed: Bool
 
     @State private var artworkRevealIsReady = false
-    @State private var artworkRevealTask: Task<Void, Never>?
     @State private var indicatorRevealIsReady = false
-    @State private var indicatorRevealTask: Task<Void, Never>?
-    private let revealDelay: Duration = .milliseconds(140)
+    @State private var revealTask: Task<Void, Never>?
+    private let revealDelay: Duration = .milliseconds(60)
 
     var body: some View {
         GeometryReader { geo in
@@ -227,76 +226,60 @@ struct CompactNowPlayingWidget: View {
             let horizontalPadding = min(max(geo.size.height + 12, 42), 52)
             let indicatorWidth: CGFloat = 28
             let minimumArtworkGap: CGFloat = 34
-            let hasEnoughIndicatorSpace = geo.size.width >= horizontalPadding * 2 + indicatorWidth
-            let hasEnoughArtworkSpace = geo.size.width >= horizontalPadding * 2 + artworkSize + indicatorWidth + minimumArtworkGap
-            let shouldShowArtwork = artworkRevealAllowed && hasEnoughArtworkSpace && artworkRevealIsReady
-            let shouldShowIndicator = indicatorRevealAllowed && hasEnoughIndicatorSpace && indicatorRevealIsReady
+            let hasEnoughCompactContentSpace = geo.size.width >= horizontalPadding * 2 + artworkSize + indicatorWidth + minimumArtworkGap
+            let shouldShowArtwork = artworkRevealAllowed && hasEnoughCompactContentSpace && artworkRevealIsReady
+            let shouldShowIndicator = indicatorRevealAllowed && hasEnoughCompactContentSpace && indicatorRevealIsReady
 
-            HStack {
-                artworkView
-                    .frame(
-                        width: shouldShowArtwork ? artworkSize : 0,
-                        height: artworkSize
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: min(7, artworkSize / 4)))
-                    .scaleEffect(shouldShowArtwork ? 1.0 : 0.28)
-                    .opacity(shouldShowArtwork ? 1.0 : 0.0)
-                    .onTapGesture { service.openPlayer() }
-                    .allowsHitTesting(shouldShowArtwork)
-
-                Spacer()
-
-                PlayingIndicator(isPlaying: service.info.isPlaying, maxHeight: indicatorHeight)
-                    .frame(
-                        width: shouldShowIndicator ? indicatorWidth : 0,
-                        height: indicatorHeight
-                    )
-                    .scaleEffect(shouldShowIndicator ? 1.0 : 0.28)
-                    .opacity(shouldShowIndicator ? 1.0 : 0.0)
+            ZStack {
+                HStack {
+                    artworkView
+                        .frame(width: artworkSize, height: artworkSize)
+                        .clipShape(RoundedRectangle(cornerRadius: min(7, artworkSize / 4)))
+                        .scaleEffect(shouldShowArtwork ? 1.0 : 0.28)
+                        .opacity(shouldShowArtwork ? 1.0 : 0.0)
+                        .onTapGesture { service.openPlayer() }
+                        .allowsHitTesting(shouldShowArtwork)
+                    Spacer()
+                }
+                HStack {
+                    Spacer()
+                    PlayingIndicator(isPlaying: service.info.isPlaying, maxHeight: indicatorHeight)
+                        .frame(width: indicatorWidth, height: indicatorHeight)
+                        .scaleEffect(shouldShowIndicator ? 1.0 : 0.28)
+                        .opacity(shouldShowIndicator ? 1.0 : 0.0)
+                }
             }
             .padding(.horizontal, horizontalPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeOut(duration: 0.18), value: shouldShowArtwork)
             .animation(.easeOut(duration: 0.18), value: shouldShowIndicator)
-            .onChange(of: hasEnoughIndicatorSpace) { _, hasEnoughSpace in
-                updateIndicatorReveal(
-                    isAllowed: indicatorRevealAllowed,
-                    hasEnoughSpace: hasEnoughSpace
+            .onChange(of: hasEnoughCompactContentSpace) { _, _ in
+                scheduleReveal(
+                    artworkAllowed: artworkRevealAllowed, artworkHasSpace: hasEnoughCompactContentSpace,
+                    indicatorAllowed: indicatorRevealAllowed, indicatorHasSpace: hasEnoughCompactContentSpace
                 )
             }
-            .onChange(of: hasEnoughArtworkSpace) { _, hasEnoughSpace in
-                updateArtworkReveal(
-                    isAllowed: artworkRevealAllowed,
-                    hasEnoughSpace: hasEnoughSpace
+            .onChange(of: indicatorRevealAllowed) { _, _ in
+                scheduleReveal(
+                    artworkAllowed: artworkRevealAllowed, artworkHasSpace: hasEnoughCompactContentSpace,
+                    indicatorAllowed: indicatorRevealAllowed, indicatorHasSpace: hasEnoughCompactContentSpace
                 )
             }
-            .onChange(of: indicatorRevealAllowed) { _, isAllowed in
-                updateIndicatorReveal(
-                    isAllowed: isAllowed,
-                    hasEnoughSpace: hasEnoughIndicatorSpace
-                )
-            }
-            .onChange(of: artworkRevealAllowed) { _, isAllowed in
-                updateArtworkReveal(
-                    isAllowed: isAllowed,
-                    hasEnoughSpace: hasEnoughArtworkSpace
+            .onChange(of: artworkRevealAllowed) { _, _ in
+                scheduleReveal(
+                    artworkAllowed: artworkRevealAllowed, artworkHasSpace: hasEnoughCompactContentSpace,
+                    indicatorAllowed: indicatorRevealAllowed, indicatorHasSpace: hasEnoughCompactContentSpace
                 )
             }
             .onAppear {
-                updateIndicatorReveal(
-                    isAllowed: indicatorRevealAllowed,
-                    hasEnoughSpace: hasEnoughIndicatorSpace
-                )
-                updateArtworkReveal(
-                    isAllowed: artworkRevealAllowed,
-                    hasEnoughSpace: hasEnoughArtworkSpace
+                scheduleReveal(
+                    artworkAllowed: artworkRevealAllowed, artworkHasSpace: hasEnoughCompactContentSpace,
+                    indicatorAllowed: indicatorRevealAllowed, indicatorHasSpace: hasEnoughCompactContentSpace
                 )
             }
             .onDisappear {
-                artworkRevealTask?.cancel()
-                artworkRevealTask = nil
-                indicatorRevealTask?.cancel()
-                indicatorRevealTask = nil
+                revealTask?.cancel()
+                revealTask = nil
             }
         }
     }
@@ -314,35 +297,28 @@ struct CompactNowPlayingWidget: View {
         }
     }
 
-    private func updateArtworkReveal(isAllowed: Bool, hasEnoughSpace: Bool) {
-        artworkRevealTask?.cancel()
+    private func scheduleReveal(
+        artworkAllowed: Bool, artworkHasSpace: Bool,
+        indicatorAllowed: Bool, indicatorHasSpace: Bool
+    ) {
+        revealTask?.cancel()
 
-        guard isAllowed, hasEnoughSpace else {
-            artworkRevealTask = nil
-            artworkRevealIsReady = false
+        let shouldRevealArtwork = artworkAllowed && artworkHasSpace
+        let shouldRevealIndicator = indicatorAllowed && indicatorHasSpace
+
+        if !shouldRevealArtwork { artworkRevealIsReady = false }
+        if !shouldRevealIndicator { indicatorRevealIsReady = false }
+
+        guard shouldRevealArtwork || shouldRevealIndicator else {
+            revealTask = nil
             return
         }
 
-        artworkRevealTask = Task { @MainActor in
+        revealTask = Task { @MainActor in
             try? await Task.sleep(for: revealDelay)
             guard !Task.isCancelled else { return }
-            artworkRevealIsReady = true
-        }
-    }
-
-    private func updateIndicatorReveal(isAllowed: Bool, hasEnoughSpace: Bool) {
-        indicatorRevealTask?.cancel()
-
-        guard isAllowed, hasEnoughSpace else {
-            indicatorRevealTask = nil
-            indicatorRevealIsReady = false
-            return
-        }
-
-        indicatorRevealTask = Task { @MainActor in
-            try? await Task.sleep(for: revealDelay)
-            guard !Task.isCancelled else { return }
-            indicatorRevealIsReady = true
+            artworkRevealIsReady = shouldRevealArtwork
+            indicatorRevealIsReady = shouldRevealIndicator
         }
     }
 }

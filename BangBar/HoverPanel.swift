@@ -229,23 +229,28 @@ class HoverPanel: NSPanel {
         if !isVisible {
             frameAnimationTimer?.invalidate()
             frameAnimationTimer = nil
+            let startFrame = concealedCompactFrame(on: screen)
             updateStateWithoutAnimation {
                 state.contentVisible = false
                 state.isExpanded = false
-                state.isCompact = false
-                state.compactArtworkRevealAllowed = true
-                state.compactIndicatorRevealAllowed = true
+                state.isCompact = true
+                state.compactArtworkRevealAllowed = false
+                state.compactIndicatorRevealAllowed = false
             }
-            setFrame(targetFrame, display: false)
-            contentView?.frame = NSRect(origin: .zero, size: targetFrame.size)
+            setFrame(startFrame, display: false)
+            contentView?.frame = NSRect(origin: .zero, size: startFrame.size)
             contentView?.layoutSubtreeIfNeeded()
             displayIfNeeded()
             orderFront(nil)
 
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.setFrame(targetFrame, display: false)
-                self.state.isCompact = true
+                self.setFrame(startFrame, display: false)
+                self.animateFrame(to: targetFrame, duration: 0.24) {
+                    guard !self.isHiding else { return }
+                    self.state.compactArtworkRevealAllowed = true
+                    self.state.compactIndicatorRevealAllowed = true
+                }
             }
         } else {
             state.contentVisible = false
