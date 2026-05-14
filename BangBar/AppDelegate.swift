@@ -82,10 +82,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
-        let isHoveringCompactPanel = hoverPanel?.isCompactMode == true
-            && hoverPanel?.frame.contains(mouseLocation) == true
+        let isCompactMode = hoverPanel?.isCompactMode == true
+        let shouldOpenPanel = if isCompactMode {
+            hoverPanel?.containsCompactHoverPoint(mouseLocation) == true
+        } else {
+            triggerZone.contains(mouseLocation)
+        }
 
-        if triggerZone.contains(mouseLocation) || isHoveringCompactPanel {
+        if shouldOpenPanel {
             if let panel = hoverPanel,
                (!panel.isVisible || panel.isHiding || panel.isCompactMode),
                !panel.isAnimatingFrame {

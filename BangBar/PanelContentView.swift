@@ -5,6 +5,8 @@ final class PanelState: ObservableObject {
     @Published var isExpanded = false
     @Published var isCompact = false
     @Published var contentVisible = false
+    @Published var compactArtworkRevealAllowed = true
+    @Published var compactIndicatorRevealAllowed = true
 }
 
 struct PanelContentView: View {
@@ -18,7 +20,11 @@ struct PanelContentView: View {
             Color.black
 
             if state.isCompact {
-                CompactNowPlayingWidget(service: nowPlaying)
+                CompactNowPlayingWidget(
+                    service: nowPlaying,
+                    artworkRevealAllowed: state.compactArtworkRevealAllowed,
+                    indicatorRevealAllowed: state.compactIndicatorRevealAllowed
+                )
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 HStack(spacing: 20) {
@@ -205,26 +211,93 @@ struct NowPlayingWidget: View {
 
 struct CompactNowPlayingWidget: View {
     @ObservedObject var service: NowPlayingService
+    let artworkRevealAllowed: Bool
+    let indicatorRevealAllowed: Bool
+
+    @State private var artworkRevealIsReady = false
+    @State private var artworkRevealTask: Task<Void, Never>?
+    @State private var indicatorRevealIsReady = false
+    @State private var indicatorRevealTask: Task<Void, Never>?
+    private let revealDelay: Duration = .milliseconds(140)
 
     var body: some View {
         GeometryReader { geo in
             let artworkSize = min(max(geo.size.height - 10, 22), 32)
             let indicatorHeight = min(max(geo.size.height - 16, 14), 20)
             let horizontalPadding = min(max(geo.size.height + 12, 42), 52)
+            let indicatorWidth: CGFloat = 28
+            let minimumArtworkGap: CGFloat = 34
+            let hasEnoughIndicatorSpace = geo.size.width >= horizontalPadding * 2 + indicatorWidth
+            let hasEnoughArtworkSpace = geo.size.width >= horizontalPadding * 2 + artworkSize + indicatorWidth + minimumArtworkGap
+            let shouldShowArtwork = artworkRevealAllowed && hasEnoughArtworkSpace && artworkRevealIsReady
+            let shouldShowIndicator = indicatorRevealAllowed && hasEnoughIndicatorSpace && indicatorRevealIsReady
 
             HStack {
                 artworkView
-                    .frame(width: artworkSize, height: artworkSize)
+                    .frame(
+                        width: shouldShowArtwork ? artworkSize : 0,
+                        height: artworkSize
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: min(7, artworkSize / 4)))
+                    .scaleEffect(shouldShowArtwork ? 1.0 : 0.28)
+                    .opacity(shouldShowArtwork ? 1.0 : 0.0)
                     .onTapGesture { service.openPlayer() }
+                    .allowsHitTesting(shouldShowArtwork)
 
                 Spacer()
 
                 PlayingIndicator(isPlaying: service.info.isPlaying, maxHeight: indicatorHeight)
-                    .frame(width: 28, height: indicatorHeight)
+                    .frame(
+                        width: shouldShowIndicator ? indicatorWidth : 0,
+                        height: indicatorHeight
+                    )
+                    .scaleEffect(shouldShowIndicator ? 1.0 : 0.28)
+                    .opacity(shouldShowIndicator ? 1.0 : 0.0)
             }
             .padding(.horizontal, horizontalPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeOut(duration: 0.18), value: shouldShowArtwork)
+            .animation(.easeOut(duration: 0.18), value: shouldShowIndicator)
+            .onChange(of: hasEnoughIndicatorSpace) { _, hasEnoughSpace in
+                updateIndicatorReveal(
+                    isAllowed: indicatorRevealAllowed,
+                    hasEnoughSpace: hasEnoughSpace
+                )
+            }
+            .onChange(of: hasEnoughArtworkSpace) { _, hasEnoughSpace in
+                updateArtworkReveal(
+                    isAllowed: artworkRevealAllowed,
+                    hasEnoughSpace: hasEnoughSpace
+                )
+            }
+            .onChange(of: indicatorRevealAllowed) { _, isAllowed in
+                updateIndicatorReveal(
+                    isAllowed: isAllowed,
+                    hasEnoughSpace: hasEnoughIndicatorSpace
+                )
+            }
+            .onChange(of: artworkRevealAllowed) { _, isAllowed in
+                updateArtworkReveal(
+                    isAllowed: isAllowed,
+                    hasEnoughSpace: hasEnoughArtworkSpace
+                )
+            }
+            .onAppear {
+                updateIndicatorReveal(
+                    isAllowed: indicatorRevealAllowed,
+                    hasEnoughSpace: hasEnoughIndicatorSpace
+                )
+                updateArtworkReveal(
+                    isAllowed: artworkRevealAllowed,
+                    hasEnoughSpace: hasEnoughArtworkSpace
+                )
+            }
+            .onDisappear {
+                artworkRevealTask?.cancel()
+                artworkRevealTask = nil
+                indicatorRevealTask?.cancel()
+                indicatorRevealTask = nil
+            }
         }
     }
 
@@ -238,6 +311,38 @@ struct CompactNowPlayingWidget: View {
                 Color.white.opacity(0.08)
                     .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.45)))
             }
+        }
+    }
+
+    private func updateArtworkReveal(isAllowed: Bool, hasEnoughSpace: Bool) {
+        artworkRevealTask?.cancel()
+
+        guard isAllowed, hasEnoughSpace else {
+            artworkRevealTask = nil
+            artworkRevealIsReady = false
+            return
+        }
+
+        artworkRevealTask = Task { @MainActor in
+            try? await Task.sleep(for: revealDelay)
+            guard !Task.isCancelled else { return }
+            artworkRevealIsReady = true
+        }
+    }
+
+    private func updateIndicatorReveal(isAllowed: Bool, hasEnoughSpace: Bool) {
+        indicatorRevealTask?.cancel()
+
+        guard isAllowed, hasEnoughSpace else {
+            indicatorRevealTask = nil
+            indicatorRevealIsReady = false
+            return
+        }
+
+        indicatorRevealTask = Task { @MainActor in
+            try? await Task.sleep(for: revealDelay)
+            guard !Task.isCancelled else { return }
+            indicatorRevealIsReady = true
         }
     }
 }

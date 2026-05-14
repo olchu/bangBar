@@ -23,6 +23,20 @@ class HoverPanel: NSPanel {
         frameAnimationTimer != nil
     }
 
+    func containsCompactHoverPoint(_ screenPoint: NSPoint) -> Bool {
+        guard state.isCompact else { return false }
+
+        let localPoint = CGPoint(
+            x: screenPoint.x - frame.minX,
+            y: frame.maxY - screenPoint.y
+        )
+        let localBounds = CGRect(origin: .zero, size: frame.size)
+
+        return NotchPanelShape()
+            .path(in: localBounds)
+            .contains(localPoint)
+    }
+
     override init(
         contentRect: NSRect,
         styleMask style: NSWindow.StyleMask,
@@ -81,6 +95,8 @@ class HoverPanel: NSPanel {
         openedAt = Date()
         hideWorkItem?.cancel()
         hideWorkItem = nil
+        state.compactArtworkRevealAllowed = true
+        state.compactIndicatorRevealAllowed = true
 
         guard let screen = NSScreen.main else { return }
         let wasCompact = state.isCompact
@@ -163,6 +179,17 @@ class HoverPanel: NSPanel {
         )
     }
 
+    private func concealedCompactFrame(on screen: NSScreen) -> NSRect {
+        let width = concealedCompactWidth(on: screen)
+        let height = compactHeight(on: screen)
+        return NSRect(
+            x: screen.frame.midX - width / 2,
+            y: screen.frame.maxY - height,
+            width: width,
+            height: height
+        )
+    }
+
     private func compactHeight(on screen: NSScreen) -> CGFloat {
         if let topAreaHeight = screen.auxiliaryTopLeftArea?.height {
             return topAreaHeight
@@ -181,6 +208,16 @@ class HoverPanel: NSPanel {
         return min(max(notchWidth + 160, compactWidth), 390)
     }
 
+    private func concealedCompactWidth(on screen: NSScreen) -> CGFloat {
+        guard let leftArea = screen.auxiliaryTopLeftArea,
+              let rightArea = screen.auxiliaryTopRightArea else {
+            return 1
+        }
+
+        let notchWidth = rightArea.minX - leftArea.maxX
+        return max(notchWidth - 8, 1)
+    }
+
     private func enterCompactMode() {
         hideWorkItem?.cancel()
         hideWorkItem = nil
@@ -190,26 +227,89 @@ class HoverPanel: NSPanel {
         let targetFrame = compactFrame(on: screen)
 
         if !isVisible {
-            setFrame(targetFrame, display: true)
+            frameAnimationTimer?.invalidate()
+            frameAnimationTimer = nil
+            updateStateWithoutAnimation {
+                state.contentVisible = false
+                state.isExpanded = false
+                state.isCompact = false
+                state.compactArtworkRevealAllowed = true
+                state.compactIndicatorRevealAllowed = true
+            }
+            setFrame(targetFrame, display: false)
+            contentView?.frame = NSRect(origin: .zero, size: targetFrame.size)
+            contentView?.layoutSubtreeIfNeeded()
+            displayIfNeeded()
             orderFront(nil)
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.setFrame(targetFrame, display: false)
+                self.state.isCompact = true
+            }
         } else {
+            state.contentVisible = false
+            state.isExpanded = false
+            state.compactArtworkRevealAllowed = true
+            state.compactIndicatorRevealAllowed = true
+            state.isCompact = true
             animateFrame(to: targetFrame, duration: 0.24)
         }
-
-        state.contentVisible = false
-        state.isExpanded = false
-        state.isCompact = true
     }
 
     private func syncCompactVisibility(isMusicPlaying: Bool) {
         if isMusicPlaying {
-            if !isVisible || state.isCompact {
+            if !isVisible || state.isCompact || isHiding {
                 enterCompactMode()
             }
         } else if state.isCompact {
-            state.isCompact = false
-            orderOut(nil)
+            exitCompactMode()
         }
+    }
+
+    private func exitCompactMode() {
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+        isHiding = true
+
+        guard let screen = NSScreen.main else {
+            orderOut(nil)
+            isHiding = false
+            updateStateWithoutAnimation {
+                state.isCompact = false
+                state.compactArtworkRevealAllowed = true
+                state.compactIndicatorRevealAllowed = true
+            }
+            return
+        }
+
+        state.contentVisible = false
+        state.isExpanded = false
+        state.compactArtworkRevealAllowed = false
+        state.compactIndicatorRevealAllowed = false
+        state.isCompact = true
+
+        let compactFrame = compactFrame(on: screen)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            guard self.isHiding, !self.nowPlaying.isCurrentlyPlaying else { return }
+
+            self.animateFrame(to: self.concealedCompactFrame(on: screen), duration: 0.24) { [weak self] in
+                guard let self else { return }
+                if self.isHiding, !self.nowPlaying.isCurrentlyPlaying {
+                    self.orderOut(nil)
+                    self.isHiding = false
+                    self.updateStateWithoutAnimation {
+                        self.state.isCompact = false
+                        self.state.compactArtworkRevealAllowed = true
+                        self.state.compactIndicatorRevealAllowed = true
+                    }
+                    self.setFrame(compactFrame, display: false)
+                }
+            }
+        }
+        hideWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
     }
 
     private func animateFrame(
@@ -258,6 +358,12 @@ class HoverPanel: NSPanel {
 
     private func interpolate(from start: CGFloat, to end: CGFloat, progress: Double) -> CGFloat {
         start + (end - start) * CGFloat(progress)
+    }
+
+    private func updateStateWithoutAnimation(_ updates: () -> Void) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction, updates)
     }
 
     private func setFramePinnedToTop(_ frame: NSRect, topY: CGFloat) {
