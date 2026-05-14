@@ -24,10 +24,10 @@ struct PanelContentView: View {
 
                 SystemWidget()
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 64)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .clipShape(NotchShape(), style: FillStyle(eoFill: true))
+        .clipShape(NotchPanelShape())
         .onReceive(timer) { date in
             currentTime = date
         }
@@ -167,42 +167,43 @@ struct StatRow: View {
     }
 }
 
-// MARK: - Notch Shape
+// MARK: - Notch Panel Shape
 
-struct NotchShape: Shape {
-    var radius: CGFloat = 22
-    var earRadius: CGFloat = 16
+struct NotchPanelShape: Shape {
+    var topRadius: CGFloat = 42
+    var bottomRadius: CGFloat = 28
+    var topEarInset: CGFloat = 12
 
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        let r = radius
-        let er = earRadius
 
-        // Main body: flat top, rounded bottom corners
-        p.move(to: CGPoint(x: 0, y: 0))
-        p.addLine(to: CGPoint(x: rect.width, y: 0))
-        p.addLine(to: CGPoint(x: rect.width, y: rect.height - r))
-        p.addQuadCurve(to: CGPoint(x: rect.width - r, y: rect.height),
-                       control: CGPoint(x: rect.width, y: rect.height))
-        p.addLine(to: CGPoint(x: r, y: rect.height))
-        p.addQuadCurve(to: CGPoint(x: 0, y: rect.height - r),
-                       control: CGPoint(x: 0, y: rect.height))
-        p.closeSubpath()
+        let topRadius = min(topRadius, min(rect.width, rect.height) / 2)
+        let bottomRadius = min(bottomRadius, min(rect.width, rect.height) / 2)
+        let topEarInset = min(topEarInset, rect.width / 4)
+        let minX = rect.minX + topEarInset
+        let maxX = rect.maxX - topEarInset
 
-        // Left ear: quarter-circle punched out at top-left corner via even-odd rule
-        p.move(to: CGPoint(x: 0, y: 0))
-        p.addLine(to: CGPoint(x: er, y: 0))
-        p.addArc(center: .zero, radius: er,
-                 startAngle: .degrees(0), endAngle: .degrees(90),
-                 clockwise: true)
-        p.closeSubpath()
-
-        // Right ear: quarter-circle punched out at top-right corner
-        p.move(to: CGPoint(x: rect.width, y: 0))
-        p.addLine(to: CGPoint(x: rect.width - er, y: 0))
-        p.addArc(center: CGPoint(x: rect.width, y: 0), radius: er,
-                 startAngle: .degrees(180), endAngle: .degrees(90),
-                 clockwise: false)
+        p.move(to: CGPoint(x: minX, y: rect.minY))
+        p.addQuadCurve(
+            to: CGPoint(x: minX + topRadius, y: rect.minY + topRadius),
+            control: CGPoint(x: minX + topRadius, y: rect.minY)
+        )
+        p.addLine(to: CGPoint(x: minX + topRadius, y: rect.maxY - bottomRadius))
+        p.addQuadCurve(
+            to: CGPoint(x: minX + topRadius + bottomRadius, y: rect.maxY),
+            control: CGPoint(x: minX + topRadius, y: rect.maxY)
+        )
+        p.addLine(to: CGPoint(x: maxX - topRadius - bottomRadius, y: rect.maxY))
+        p.addQuadCurve(
+            to: CGPoint(x: maxX - topRadius, y: rect.maxY - bottomRadius),
+            control: CGPoint(x: maxX - topRadius, y: rect.maxY)
+        )
+        p.addLine(to: CGPoint(x: maxX - topRadius, y: rect.minY + topRadius))
+        p.addQuadCurve(
+            to: CGPoint(x: maxX, y: rect.minY),
+            control: CGPoint(x: maxX - topRadius, y: rect.minY)
+        )
+        p.addLine(to: CGPoint(x: minX, y: rect.minY))
         p.closeSubpath()
 
         return p
