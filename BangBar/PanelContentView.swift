@@ -7,6 +7,8 @@ final class PanelState: ObservableObject {
     @Published var contentVisible = false
     @Published var compactArtworkRevealAllowed = true
     @Published var compactIndicatorRevealAllowed = true
+    @Published var compactArtworkRevealAnimated = true
+    @Published var artworkHeroProgress: CGFloat?
 }
 
 struct PanelContentView: View {
@@ -14,32 +16,58 @@ struct PanelContentView: View {
     @ObservedObject var nowPlaying: NowPlayingService
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
 
     var body: some View {
-        ZStack {
-            Color.black
-
-            if state.isCompact {
-                CompactNowPlayingWidget(
-                    service: nowPlaying,
-                    artworkRevealAllowed: state.compactArtworkRevealAllowed,
-                    indicatorRevealAllowed: state.compactIndicatorRevealAllowed
-                )
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        GeometryReader { geo in
+            let hideExpandedArtwork = if let heroProgress = state.artworkHeroProgress {
+                heroProgress < 0.995
             } else {
-                HStack(spacing: 20) {
-                    NowPlayingWidget(service: nowPlaying, date: currentTime)
+                false
+            }
 
-                    Divider()
-                        .background(Color.white.opacity(0.2))
-                        .frame(height: 70)
+            ZStack {
+                panelBlack
+                    .ignoresSafeArea()
 
-                    ClockWidget(date: currentTime)
+                if state.isCompact {
+                    CompactNowPlayingWidget(
+                        service: nowPlaying,
+                        artworkRevealAllowed: state.compactArtworkRevealAllowed,
+                        indicatorRevealAllowed: state.compactIndicatorRevealAllowed,
+                        animateArtworkReveal: state.compactArtworkRevealAnimated,
+                        hideArtwork: state.artworkHeroProgress != nil
+                    )
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                } else {
+                    HStack(spacing: 20) {
+                        NowPlayingWidget(
+                            service: nowPlaying,
+                            date: currentTime,
+                            hideArtwork: hideExpandedArtwork
+                        )
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .frame(height: 70)
+
+                        ClockWidget(date: currentTime)
+                    }
+                    .padding(.horizontal, 50)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .opacity(state.contentVisible ? 1.0 : 0.0)
+                    .animation(.easeOut(duration: 0.18), value: state.contentVisible)
                 }
-                .padding(.horizontal, 50)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .opacity(state.contentVisible ? 1.0 : 0.0)
-                .animation(.easeOut(duration: 0.18), value: state.contentVisible)
+
+                if let progress = state.artworkHeroProgress, nowPlaying.isAvailable {
+                    ArtworkHeroView(
+                        service: nowPlaying,
+                        progress: progress,
+                        panelSize: geo.size
+                    )
+                    .allowsHitTesting(false)
+                    .zIndex(10)
+                }
             }
         }
         .clipShape(NotchPanelShape())
@@ -125,6 +153,7 @@ struct CalendarWidget: View {
 struct NowPlayingWidget: View {
     @ObservedObject var service: NowPlayingService
     let date: Date
+    let hideArtwork: Bool
 
     var body: some View {
         if service.isAvailable {
@@ -141,7 +170,12 @@ struct NowPlayingWidget: View {
                 }
                 .frame(width: 110, height: 110)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .opacity(hideArtwork ? 0.0 : 1.0)
+                .transaction { transaction in
+                    transaction.animation = nil
+                }
                 .onTapGesture { service.openPlayer() }
+                .allowsHitTesting(!hideArtwork)
 
                 VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -213,6 +247,8 @@ struct CompactNowPlayingWidget: View {
     @ObservedObject var service: NowPlayingService
     let artworkRevealAllowed: Bool
     let indicatorRevealAllowed: Bool
+    let animateArtworkReveal: Bool
+    let hideArtwork: Bool
 
     @State private var artworkRevealIsReady = false
     @State private var indicatorRevealIsReady = false
@@ -227,7 +263,7 @@ struct CompactNowPlayingWidget: View {
             let indicatorWidth: CGFloat = 28
             let minimumArtworkGap: CGFloat = 34
             let hasEnoughCompactContentSpace = geo.size.width >= horizontalPadding * 2 + artworkSize + indicatorWidth + minimumArtworkGap
-            let shouldShowArtwork = artworkRevealAllowed && hasEnoughCompactContentSpace && artworkRevealIsReady
+            let shouldShowArtwork = artworkRevealAllowed && hasEnoughCompactContentSpace && artworkRevealIsReady && !hideArtwork
             let shouldShowIndicator = indicatorRevealAllowed && hasEnoughCompactContentSpace && indicatorRevealIsReady
 
             ZStack {
@@ -251,7 +287,7 @@ struct CompactNowPlayingWidget: View {
             }
             .padding(.horizontal, horizontalPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.easeOut(duration: 0.18), value: shouldShowArtwork)
+            .animation(animateArtworkReveal ? .easeOut(duration: 0.18) : nil, value: shouldShowArtwork)
             .animation(.easeOut(duration: 0.18), value: shouldShowIndicator)
             .onChange(of: hasEnoughCompactContentSpace) { _, _ in
                 scheduleReveal(
@@ -309,6 +345,10 @@ struct CompactNowPlayingWidget: View {
         if !shouldRevealArtwork { artworkRevealIsReady = false }
         if !shouldRevealIndicator { indicatorRevealIsReady = false }
 
+        if shouldRevealArtwork && !animateArtworkReveal {
+            artworkRevealIsReady = true
+        }
+
         guard shouldRevealArtwork || shouldRevealIndicator else {
             revealTask = nil
             return
@@ -317,9 +357,73 @@ struct CompactNowPlayingWidget: View {
         revealTask = Task { @MainActor in
             try? await Task.sleep(for: revealDelay)
             guard !Task.isCancelled else { return }
-            artworkRevealIsReady = shouldRevealArtwork
+            if animateArtworkReveal {
+                artworkRevealIsReady = shouldRevealArtwork
+            }
             indicatorRevealIsReady = shouldRevealIndicator
         }
+    }
+}
+
+struct ArtworkHeroView: View {
+    @ObservedObject var service: NowPlayingService
+    let progress: CGFloat
+    let panelSize: CGSize
+
+    var body: some View {
+        let p = min(max(progress, 0), 1)
+        let compactSize = min(max(panelSize.height - 10, 22), 32)
+        let compactPadding = min(max(panelSize.height + 12, 42), 52)
+        let expandedSize: CGFloat = 110
+
+        let startFrame = CGRect(
+            x: compactPadding,
+            y: (panelSize.height - compactSize) / 2,
+            width: compactSize,
+            height: compactSize
+        )
+        let endFrame = CGRect(
+            x: 50,
+            y: (panelSize.height - expandedSize) / 2,
+            width: expandedSize,
+            height: expandedSize
+        )
+        let frame = interpolate(from: startFrame, to: endFrame, progress: p)
+        let cornerRadius = interpolate(from: min(7, compactSize / 4), to: 12, progress: p)
+
+        artworkView
+            .frame(width: frame.width, height: frame.height)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .position(x: frame.midX, y: frame.midY)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+
+    private var artworkView: some View {
+        Group {
+            if let artwork = service.info.artwork {
+                Image(nsImage: artwork)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color.white.opacity(0.08)
+                    .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.45)))
+            }
+        }
+    }
+
+    private func interpolate(from start: CGRect, to end: CGRect, progress: CGFloat) -> CGRect {
+        CGRect(
+            x: interpolate(from: start.minX, to: end.minX, progress: progress),
+            y: interpolate(from: start.minY, to: end.minY, progress: progress),
+            width: interpolate(from: start.width, to: end.width, progress: progress),
+            height: interpolate(from: start.height, to: end.height, progress: progress)
+        )
+    }
+
+    private func interpolate(from start: CGFloat, to end: CGFloat, progress: CGFloat) -> CGFloat {
+        start + (end - start) * progress
     }
 }
 

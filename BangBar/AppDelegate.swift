@@ -41,6 +41,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setupHoverPanel() {
         hoverPanel = HoverPanel()
+        hoverPanel?.onHoverEvent = { [weak self] event in
+            self?.handleMouseMove(event)
+        }
     }
 
     // MARK: - Mouse Tracking
