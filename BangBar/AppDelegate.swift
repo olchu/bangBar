@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var hoverPanel: HoverPanel?
     var mouseMonitor: Any?
+    private var compactExpansionGraceUntil: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -82,9 +83,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
+        let stableTriggerZone = triggerZone.insetBy(dx: -10, dy: -6)
         let isCompactMode = hoverPanel?.isCompactMode == true
+        let compactActivationFrame = hoverPanel?.frame.insetBy(dx: -10, dy: -10) ?? .zero
         let shouldOpenPanel = if isCompactMode {
-            hoverPanel?.containsCompactHoverPoint(mouseLocation) == true
+            compactActivationFrame.contains(mouseLocation)
+                || hoverPanel?.containsCompactHoverPoint(mouseLocation) == true
+                || stableTriggerZone.contains(mouseLocation)
         } else {
             triggerZone.contains(mouseLocation)
         }
@@ -93,12 +98,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let panel = hoverPanel,
                (!panel.isVisible || panel.isHiding || panel.isCompactMode),
                !panel.isAnimatingFrame {
+                if panel.isCompactMode {
+                    compactExpansionGraceUntil = Date().addingTimeInterval(0.85)
+                }
                 panel.slideIn()
             }
         } else {
             if let panel = hoverPanel, panel.isVisible, !panel.isHiding {
+                guard Date() >= compactExpansionGraceUntil else { return }
+
                 let panelFrame = panel.frame
-                if !panel.isCompactMode && !panelFrame.contains(mouseLocation) {
+                let hoverFrame = panelFrame.insetBy(dx: -10, dy: -8)
+
+                if !panel.isCompactMode,
+                   !hoverFrame.contains(mouseLocation),
+                   !stableTriggerZone.contains(mouseLocation) {
                     panel.slideOut()
                 }
             }
