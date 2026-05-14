@@ -1,8 +1,14 @@
 import SwiftUI
 import Combine
 
+final class PanelState: ObservableObject {
+    @Published var isExpanded = false
+}
+
 struct PanelContentView: View {
+    @ObservedObject var state: PanelState
     @State private var currentTime = Date()
+    @State private var contentVisible = false
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -26,8 +32,23 @@ struct PanelContentView: View {
             }
             .padding(.horizontal, 64)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .opacity(contentVisible ? 1.0 : 0.0)
+            .animation(.easeOut(duration: 0.18), value: contentVisible)
         }
         .clipShape(NotchPanelShape())
+        .scaleEffect(state.isExpanded ? 1.0 : 0.22, anchor: .top)
+        .opacity(state.isExpanded ? 1.0 : 0.0)
+        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: state.isExpanded)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: state.isExpanded) { _, expanded in
+            if expanded {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                    contentVisible = true
+                }
+            } else {
+                contentVisible = false
+            }
+        }
         .onReceive(timer) { date in
             currentTime = date
         }
@@ -172,7 +193,7 @@ struct StatRow: View {
 struct NotchPanelShape: Shape {
     var topRadius: CGFloat = 22
     var bottomRadius: CGFloat = 22
-    var topEarInset: CGFloat = 16
+    var topEarInset: CGFloat = 18
 
     func path(in rect: CGRect) -> Path {
         var p = Path()

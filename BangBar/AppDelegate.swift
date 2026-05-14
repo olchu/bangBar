@@ -5,7 +5,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var hoverPanel: HoverPanel?
     var mouseMonitor: Any?
-    var hideTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -70,24 +69,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         if triggerZone.contains(mouseLocation) {
-            hideTimer?.invalidate()
-            hideTimer = nil
             if !(hoverPanel?.isVisible ?? false) || hoverPanel?.isHiding == true {
                 hoverPanel?.slideIn()
             }
         } else {
-            if let panel = hoverPanel, panel.isVisible {
+            if let panel = hoverPanel, panel.isVisible, !panel.isHiding {
                 let panelFrame = panel.frame
                 if !panelFrame.contains(mouseLocation) {
-                    if hideTimer == nil {
-                        hideTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-                            self?.hoverPanel?.slideOut()
-                            self?.hideTimer = nil
-                        }
-                    }
-                } else {
-                    hideTimer?.invalidate()
-                    hideTimer = nil
+                    panel.slideOut()
                 }
             }
         }

@@ -5,6 +5,9 @@ class HoverPanel: NSPanel {
     var isHiding = false
     private var panelHeight: CGFloat = 150
     private var panelWidth: CGFloat = 560
+    private let state = PanelState()
+    private var hideWorkItem: DispatchWorkItem?
+    private let hideDelay: TimeInterval = 0.45
 
     override init(
         contentRect: NSRect,
@@ -20,7 +23,7 @@ class HoverPanel: NSPanel {
         let screen = NSScreen.main!
         let initialRect = NSRect(
             x: screen.frame.midX - 560 / 2,
-            y: screen.frame.maxY,
+            y: screen.frame.maxY - 150,
             width: 560,
             height: 150
         )
@@ -39,11 +42,11 @@ class HoverPanel: NSPanel {
         isMovable = false
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
 
-        let contentView = NSHostingView(rootView: PanelContentView())
+        let contentView = NSHostingView(rootView: PanelContentView(state: state))
         contentView.wantsLayer = true
         self.contentView = contentView
     }
@@ -52,50 +55,43 @@ class HoverPanel: NSPanel {
 
     func slideIn() {
         isHiding = false
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
 
         guard let screen = NSScreen.main else { return }
-
-        let visibleFrame = centeredFrame(on: screen, y: screen.frame.maxY - panelHeight)
+        setFrame(expandedFrame(on: screen), display: true)
 
         if !isVisible {
-            let hiddenFrame = centeredFrame(on: screen, y: screen.frame.maxY)
-            setFrame(hiddenFrame, display: false)
+            state.isExpanded = false
             orderFront(nil)
-            alphaValue = 1.0
         }
 
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.45
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
-            animator().setFrame(visibleFrame, display: true)
+        DispatchQueue.main.async { [weak self] in
+            self?.state.isExpanded = true
         }
-    }
-
-    private func centeredFrame(on screen: NSScreen, y: CGFloat) -> NSRect {
-        NSRect(
-            x: screen.frame.midX - panelWidth / 2,
-            y: y,
-            width: panelWidth,
-            height: panelHeight
-        )
     }
 
     func slideOut() {
         isHiding = true
+        state.isExpanded = false
 
-        guard let screen = NSScreen.main else { return }
-
-        let hiddenFrame = centeredFrame(on: screen, y: screen.frame.maxY)
-
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.3
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            animator().setFrame(hiddenFrame, display: true)
-        }, completionHandler: { [weak self] in
-            if self?.isHiding == true {
-                self?.orderOut(nil)
-                self?.isHiding = false
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            if self.isHiding {
+                self.orderOut(nil)
+                self.isHiding = false
             }
-        })
+        }
+        hideWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + hideDelay, execute: work)
+    }
+
+    private func expandedFrame(on screen: NSScreen) -> NSRect {
+        NSRect(
+            x: screen.frame.midX - panelWidth / 2,
+            y: screen.frame.maxY - panelHeight,
+            width: panelWidth,
+            height: panelHeight
+        )
     }
 }
