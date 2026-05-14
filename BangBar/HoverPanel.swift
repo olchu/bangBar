@@ -3,8 +3,8 @@ import SwiftUI
 
 class HoverPanel: NSPanel {
     var isHiding = false
-    private var panelHeight: CGFloat = 150
-    private var panelWidth: CGFloat = 560
+    private var panelHeight: CGFloat = 155
+    private var panelWidth: CGFloat = 620
     private let state = PanelState()
     private var hideWorkItem: DispatchWorkItem?
     private let hideDelay: TimeInterval = 0.45
@@ -23,10 +23,10 @@ class HoverPanel: NSPanel {
     convenience init() {
         let screen = NSScreen.main!
         let initialRect = NSRect(
-            x: screen.frame.midX - 560 / 2,
-            y: screen.frame.maxY - 150,
-            width: 560,
-            height: 150
+            x: screen.frame.midX - 620 / 2,
+            y: screen.frame.maxY - 155,
+            width: 620,
+            height: 155
         )
         self.init(
             contentRect: initialRect,

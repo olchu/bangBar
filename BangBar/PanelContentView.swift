@@ -25,7 +25,7 @@ struct PanelContentView: View {
 
                 ClockWidget(date: currentTime)
             }
-            .padding(.horizontal, 64)
+            .padding(.horizontal, 50)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .opacity(state.contentVisible ? 1.0 : 0.0)
             .animation(.easeOut(duration: 0.18), value: state.contentVisible)
@@ -115,7 +115,7 @@ struct NowPlayingWidget: View {
 
     var body: some View {
         if service.isAvailable {
-            HStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
                 Group {
                     if let artwork = service.info.artwork {
                         Image(nsImage: artwork)
@@ -130,16 +130,44 @@ struct NowPlayingWidget: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .onTapGesture { service.openPlayer() }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(service.info.title)
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Text(service.info.artist)
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.5))
                             .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    if service.info.duration > 0 {
+                        VStack(spacing: 3) {
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.15))
+                                        .frame(height: 3)
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.8))
+                                        .frame(width: geo.size.width * min(service.info.position / service.info.duration, 1), height: 3)
+                                }
+                            }
+                            .frame(height: 3)
+
+                            HStack {
+                                Text(formatTime(service.info.position))
+                                Spacer()
+                                Text(formatTime(service.info.duration))
+                            }
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
+                        }
                     }
 
                     HStack(spacing: 24) {
@@ -158,12 +186,19 @@ struct NowPlayingWidget: View {
                     .foregroundColor(.white)
                     .font(.system(size: 15))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 14)
             }
-            .frame(minWidth: 200, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110, alignment: .topLeading)
         } else {
             CalendarWidget(date: date)
         }
     }
+}
+
+private func formatTime(_ seconds: Double) -> String {
+    let s = Int(max(seconds, 0))
+    return String(format: "%d:%02d", s / 60, s % 60)
 }
 
 struct SystemWidget: View {
@@ -216,8 +251,8 @@ struct StatRow: View {
 // MARK: - Notch Panel Shape
 
 struct NotchPanelShape: Shape {
-    var topRadius: CGFloat = 22
-    var bottomRadius: CGFloat = 22
+    var topRadius: CGFloat = 20
+    var bottomRadius: CGFloat = 26
     var topEarInset: CGFloat = 18
 
     func path(in rect: CGRect) -> Path {

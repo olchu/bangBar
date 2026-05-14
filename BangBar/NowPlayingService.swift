@@ -6,6 +6,8 @@ struct NowPlayingInfo {
     var artist: String = ""
     var isPlaying: Bool = false
     var artwork: NSImage? = nil
+    var position: Double = 0
+    var duration: Double = 0
 }
 
 private enum Player: String, CaseIterable {
@@ -23,9 +25,7 @@ private enum Player: String, CaseIterable {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleId }
     }
 
-    // Returns: title\nartist\nartworkHint
-    // Spotify: artworkHint = CDN URL
-    // Music:   artworkHint = /tmp/bangbar_artwork.jpg (written by AppleScript)
+    // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration
     var trackInfoScript: String {
         switch self {
         case .spotify:
@@ -35,12 +35,14 @@ private enum Player: String, CaseIterable {
                     set t to name of current track
                     set a to artist of current track
                     set u to artwork url of current track
+                    set pos to ((player position as integer) as string)
+                    set dur to (((duration of current track) / 1000 as integer) as string)
                     if player state is playing then
                         set p to "1"
                     else
                         set p to "0"
                     end if
-                    return t & "\n" & a & "\n" & u & "\n" & p
+                    return t & "\n" & a & "\n" & u & "\n" & p & "\n" & pos & "\n" & dur
                 else
                     return ""
                 end if
@@ -52,6 +54,8 @@ private enum Player: String, CaseIterable {
                 if player state is not stopped then
                     set t to name of current track
                     set a to artist of current track
+                    set pos to ((player position as integer) as string)
+                    set dur to ((duration of current track as integer) as string)
                     if player state is playing then
                         set p to "1"
                     else
@@ -64,9 +68,9 @@ private enum Player: String, CaseIterable {
                         set eof of f to 0
                         write imgData to f
                         close access f
-                        return t & "\n" & a & "\n" & tmpPath & "\n" & p
+                        return t & "\n" & a & "\n" & tmpPath & "\n" & p & "\n" & pos & "\n" & dur
                     on error
-                        return t & "\n" & a & "\n" & "" & "\n" & p
+                        return t & "\n" & a & "\n" & "" & "\n" & p & "\n" & pos & "\n" & dur
                     end try
                 else
                     return ""
@@ -85,14 +89,18 @@ final class NowPlayingService: ObservableObject {
     @Published var info = NowPlayingInfo()
     @Published var isAvailable = false
 
-    private var timer: Timer?
+    private var pollTimer: Timer?
+    private var tickTimer: Timer?
     private var activePlayer: Player?
-    private var artworkTask: URLSessionDataTask?
 
     init() {
         poll()
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             self?.poll()
+        }
+        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, self.info.isPlaying, self.info.duration > 0 else { return }
+            self.info.position = min(self.info.position + 1, self.info.duration)
         }
     }
 
@@ -105,13 +113,19 @@ final class NowPlayingService: ObservableObject {
                 let artist    = parts.count > 1 ? parts[1] : ""
                 let hint      = parts.count > 2 ? parts[2] : ""
                 let isPlaying = parts.count > 3 ? parts[3] == "1" : false
+                let position  = parts.count > 4 ? Double(parts[4]) ?? 0 : 0
+                let duration  = parts.count > 5 ? Double(parts[5]) ?? 0 : 0
                 guard !title.isEmpty else { continue }
 
                 let artwork = self?.loadArtwork(hint: hint, player: player)
                 DispatchQueue.main.async {
                     self?.activePlayer = player
                     self?.isAvailable  = true
-                    self?.info = NowPlayingInfo(title: title, artist: artist, isPlaying: isPlaying, artwork: artwork)
+                    self?.info = NowPlayingInfo(
+                        title: title, artist: artist,
+                        isPlaying: isPlaying, artwork: artwork,
+                        position: position, duration: duration
+                    )
                 }
                 return
             }
