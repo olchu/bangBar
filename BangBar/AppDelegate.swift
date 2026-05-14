@@ -60,13 +60,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let screenFrame = screen.frame
         let menuBarHeight = NSStatusBar.system.thickness
 
-        let panelWidth = hoverPanel?.frame.width ?? 560
-        let triggerZone = NSRect(
-            x: (screenFrame.width - panelWidth) / 2,
-            y: screenFrame.maxY - menuBarHeight,
-            width: panelWidth,
-            height: menuBarHeight
-        )
+        let triggerZone: NSRect
+        if let leftArea = screen.auxiliaryTopLeftArea,
+           let rightArea = screen.auxiliaryTopRightArea {
+            let notchX = leftArea.maxX
+            let notchWidth = rightArea.minX - leftArea.maxX
+            let notchHeight = leftArea.height
+            triggerZone = NSRect(
+                x: notchX,
+                y: screenFrame.maxY - notchHeight,
+                width: notchWidth,
+                height: notchHeight
+            )
+        } else {
+            let panelWidth = hoverPanel?.frame.width ?? 560
+            triggerZone = NSRect(
+                x: screenFrame.midX - panelWidth / 2,
+                y: screenFrame.maxY - menuBarHeight,
+                width: panelWidth,
+                height: menuBarHeight
+            )
+        }
 
         if triggerZone.contains(mouseLocation) {
             if !(hoverPanel?.isVisible ?? false) || hoverPanel?.isHiding == true {
