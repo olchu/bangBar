@@ -1,6 +1,46 @@
 import SwiftUI
 import Combine
 
+enum PanelLayout {
+    static let expandedHeight: CGFloat = 155
+    static let panelTopRadius: CGFloat = 22
+    static let panelTopEarInset: CGFloat = 22
+    static let compactMinimumWidth: CGFloat = 320
+    static let compactNotchSidePadding: CGFloat = 100
+    static let compactMaximumWidth: CGFloat = 360
+    static let expandedVisibleEdgePadding: CGFloat = 20
+    static let expandedHorizontalPadding: CGFloat = panelTopEarInset + panelTopRadius + expandedVisibleEdgePadding
+    static let expandedWidgetSpacing: CGFloat = 20
+    static let expandedDividerWidth: CGFloat = 1
+    static let expandedDividerHeight: CGFloat = 70
+
+    static let nowPlayingWidgetWidth: CGFloat = 300
+    static let nowPlayingWidgetHeight: CGFloat = 110
+    static let nowPlayingArtworkSize: CGFloat = 110
+    static let clockWidgetWidth: CGFloat = 100
+    static let calendarWidgetWidth: CGFloat = 140
+
+    static let expandedWidgetWidths: [CGFloat] = [
+        nowPlayingWidgetWidth,
+        expandedDividerWidth,
+        clockWidgetWidth
+    ]
+
+    static var expandedWidth: CGFloat {
+        let contentWidth = expandedWidgetWidths.reduce(0, +)
+        let spacingWidth = expandedWidgetSpacing * CGFloat(max(expandedWidgetWidths.count - 1, 0))
+        return expandedHorizontalPadding * 2 + contentWidth + spacingWidth
+    }
+
+    static func compactHorizontalPadding(for height: CGFloat) -> CGFloat {
+        min(max(height + 18, 50), 50)
+    }
+
+    static func compactWidth(for notchWidth: CGFloat) -> CGFloat {
+        min(max(notchWidth + compactNotchSidePadding * 2, compactMinimumWidth), compactMaximumWidth)
+    }
+}
+
 final class PanelState: ObservableObject {
     @Published var isExpanded = false
     @Published var isCompact = false
@@ -40,21 +80,31 @@ struct PanelContentView: View {
                     )
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
-                    HStack(spacing: 20) {
+                    HStack(spacing: PanelLayout.expandedWidgetSpacing) {
                         NowPlayingWidget(
                             service: nowPlaying,
                             date: currentTime,
                             hideArtwork: hideExpandedArtwork
                         )
+                        .frame(
+                            width: PanelLayout.nowPlayingWidgetWidth,
+                            height: PanelLayout.nowPlayingWidgetHeight,
+                            alignment: .topLeading
+                        )
 
                         Divider()
                             .background(Color.white.opacity(0.2))
-                            .frame(height: 70)
+                            .frame(
+                                width: PanelLayout.expandedDividerWidth,
+                                height: PanelLayout.expandedDividerHeight
+                            )
 
                         ClockWidget(date: currentTime)
+                            .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                     }
-                    .padding(.horizontal, 50)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
+                    .padding(.bottom, PanelLayout.expandedVisibleEdgePadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.18), value: state.contentVisible)
                 }
@@ -97,7 +147,7 @@ struct ClockWidget: View {
         Text(timeString)
             .font(.system(size: 32, weight: .thin, design: .monospaced))
             .foregroundColor(.white)
-            .frame(minWidth: 100, alignment: .leading)
+            .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
     }
 }
 
@@ -146,7 +196,7 @@ struct CalendarWidget: View {
                 }
             }
         }
-        .frame(minWidth: 140, alignment: .leading)
+        .frame(width: PanelLayout.calendarWidgetWidth, alignment: .leading)
     }
 }
 
@@ -168,7 +218,10 @@ struct NowPlayingWidget: View {
                             .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.3)))
                     }
                 }
-                .frame(width: 110, height: 110)
+                .frame(
+                    width: PanelLayout.nowPlayingArtworkSize,
+                    height: PanelLayout.nowPlayingArtworkSize
+                )
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .opacity(hideArtwork ? 0.0 : 1.0)
                 .transaction { transaction in
@@ -236,7 +289,11 @@ struct NowPlayingWidget: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 14)
             }
-            .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110, alignment: .topLeading)
+            .frame(
+                width: PanelLayout.nowPlayingWidgetWidth,
+                height: PanelLayout.nowPlayingWidgetHeight,
+                alignment: .topLeading
+            )
         } else {
             CalendarWidget(date: date)
         }
@@ -259,7 +316,7 @@ struct CompactNowPlayingWidget: View {
         GeometryReader { geo in
             let artworkSize = min(max(geo.size.height - 10, 22), 32)
             let indicatorHeight = min(max(geo.size.height - 16, 14), 20)
-            let horizontalPadding = min(max(geo.size.height + 12, 42), 52)
+            let horizontalPadding = PanelLayout.compactHorizontalPadding(for: geo.size.height)
             let indicatorWidth: CGFloat = 28
             let minimumArtworkGap: CGFloat = 34
             let hasEnoughCompactContentSpace = geo.size.width >= horizontalPadding * 2 + artworkSize + indicatorWidth + minimumArtworkGap
@@ -373,8 +430,8 @@ struct ArtworkHeroView: View {
     var body: some View {
         let p = min(max(progress, 0), 1)
         let compactSize = min(max(panelSize.height - 10, 22), 32)
-        let compactPadding = min(max(panelSize.height + 12, 42), 52)
-        let expandedSize: CGFloat = 110
+        let compactPadding = PanelLayout.compactHorizontalPadding(for: panelSize.height)
+        let expandedSize: CGFloat = PanelLayout.nowPlayingArtworkSize
 
         let startFrame = CGRect(
             x: compactPadding,
@@ -383,8 +440,8 @@ struct ArtworkHeroView: View {
             height: compactSize
         )
         let endFrame = CGRect(
-            x: 50,
-            y: (panelSize.height - expandedSize) / 2,
+            x: PanelLayout.expandedHorizontalPadding,
+            y: panelSize.height - PanelLayout.expandedVisibleEdgePadding - expandedSize,
             width: expandedSize,
             height: expandedSize
         )
@@ -520,9 +577,9 @@ struct StatRow: View {
 // MARK: - Notch Panel Shape
 
 struct NotchPanelShape: Shape {
-    var topRadius: CGFloat = 20
+    var topRadius: CGFloat = PanelLayout.panelTopRadius
     var bottomRadius: CGFloat = 26
-    var topEarInset: CGFloat = 18
+    var topEarInset: CGFloat = PanelLayout.panelTopEarInset
 
     func path(in rect: CGRect) -> Path {
         var p = Path()

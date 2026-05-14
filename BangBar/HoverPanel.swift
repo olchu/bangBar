@@ -5,9 +5,6 @@ import SwiftUI
 class HoverPanel: NSPanel {
     var isHiding = false
     var onHoverEvent: ((NSEvent) -> Void)?
-    private var panelHeight: CGFloat = 155
-    private var panelWidth: CGFloat = 620
-    private var compactWidth: CGFloat = 300
     private let state = PanelState()
     private let nowPlaying = NowPlayingService()
     private var cancellables = Set<AnyCancellable>()
@@ -52,10 +49,10 @@ class HoverPanel: NSPanel {
     convenience init() {
         let screen = NSScreen.main!
         let initialRect = NSRect(
-            x: screen.frame.midX - 620 / 2,
-            y: screen.frame.maxY - 155,
-            width: 620,
-            height: 155
+            x: screen.frame.midX - PanelLayout.expandedWidth / 2,
+            y: screen.frame.maxY - PanelLayout.expandedHeight,
+            width: PanelLayout.expandedWidth,
+            height: PanelLayout.expandedHeight
         )
         self.init(
             contentRect: initialRect,
@@ -193,11 +190,14 @@ class HoverPanel: NSPanel {
     }
 
     private func expandedFrame(on screen: NSScreen) -> NSRect {
-        NSRect(
-            x: screen.frame.midX - panelWidth / 2,
-            y: screen.frame.maxY - panelHeight,
-            width: panelWidth,
-            height: panelHeight
+        let width = PanelLayout.expandedWidth
+        let height = PanelLayout.expandedHeight
+
+        return NSRect(
+            x: screen.frame.midX - width / 2,
+            y: screen.frame.maxY - height,
+            width: width,
+            height: height
         )
     }
 
@@ -234,11 +234,11 @@ class HoverPanel: NSPanel {
     private func compactWidth(on screen: NSScreen) -> CGFloat {
         guard let leftArea = screen.auxiliaryTopLeftArea,
               let rightArea = screen.auxiliaryTopRightArea else {
-            return compactWidth
+            return PanelLayout.compactMinimumWidth
         }
 
         let notchWidth = rightArea.minX - leftArea.maxX
-        return min(max(notchWidth + 160, compactWidth), 390)
+        return PanelLayout.compactWidth(for: notchWidth)
     }
 
     private func concealedCompactWidth(on screen: NSScreen) -> CGFloat {

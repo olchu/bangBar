@@ -14,6 +14,8 @@ The panel background is pure sRGB black (`0,0,0`) inside the clipped notch shape
 
 - Triggered by hovering the stable notch trigger zone.
 - Panel appears pinned to the top edge.
+- Expanded panel width is calculated from `PanelLayout`: horizontal padding, fixed widget widths, divider width, and spacing.
+- Expanded panel width must not be maintained as a separate hardcoded window width.
 - The panel must not visually detach from the top edge during frame animation.
 - Expanded content fades in after the frame animation begins.
 
@@ -75,12 +77,28 @@ Album artwork should read visually as one continuous element between compact and
 
 - Compact mode shows album artwork on the left and a subtle animated playing indicator on the right.
 - The indicator uses thin low-opacity vertical bars so it does not distract from the menu bar.
-- Compact content uses minimal horizontal padding so artwork and the indicator remain visible at menu-bar height.
+- Compact content uses `PanelLayout.compactHorizontalPadding(for:)` so artwork and the indicator sit clear of the rounded side corners while remaining visible at menu-bar height.
 - Artwork size is smaller than the bar height and clipped with a small rounded rectangle.
 - Clicking artwork opens the active player.
 - Compact mode remains available only while music is playing.
 
 ## Current Widgets
+
+### Layout Constants
+
+- Expanded layout is configured by `PanelLayout`.
+- Widget sizes are fixed, not inferred from flexible SwiftUI content:
+  - `NowPlayingWidget`: 300×110
+  - `ClockWidget`: 100 pt wide
+  - divider: 1×70
+  - visible edge padding: 20 pt from the shaped side wall and bottom edge
+  - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
+  - compact width: `min(max(notchWidth + compactNotchSidePadding * 2, 340), 440)`, with `compactNotchSidePadding = 105`
+  - compact horizontal padding: `min(max(height + 18, 50), 60)`
+  - widget spacing: 20
+- Current expanded width formula:
+  - `padding * 2 + sum(widget widths) + spacing * (widget count - 1)`
+- Future widgets should add their fixed width to `PanelLayout.expandedWidgetWidths` so the panel grows automatically.
 
 ### ClockWidget
 - Shows current time in `HH:mm` format
