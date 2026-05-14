@@ -106,8 +106,11 @@ Album artwork should read visually as one continuous element between compact and
 - Updates every second via shared timer
 
 ### NowPlayingWidget
-- Shows artwork (110×110, rounded), title, artist, progress bar, playback controls
+- Shows artwork (110×110, rounded), title, artist, progress bar, playback controls, shuffle, and repeat controls
 - Supports Spotify and Apple Music via AppleScript
+- Shuffle and repeat state are polled with now-playing metadata.
+- Shuffle button toggles shuffle for Spotify and Music.
+- Repeat button cycles Music through `off → all → one → off`; Spotify toggles repeat as `off/all`.
 - Falls back to CalendarWidget when no music is playing
 - Click on artwork opens the player app
 - Title truncates with `…` if too long

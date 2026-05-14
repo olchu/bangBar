@@ -8,6 +8,14 @@ struct NowPlayingInfo {
     var artwork: NSImage? = nil
     var position: Double = 0
     var duration: Double = 0
+    var shuffleEnabled: Bool = false
+    var repeatMode: RepeatMode = .off
+}
+
+enum RepeatMode: String {
+    case off
+    case one
+    case all
 }
 
 private enum Player: String, CaseIterable {
@@ -25,7 +33,7 @@ private enum Player: String, CaseIterable {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleId }
     }
 
-    // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration
+    // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration\nshuffle\nrepeat
     var trackInfoScript: String {
         switch self {
         case .spotify:
@@ -42,7 +50,17 @@ private enum Player: String, CaseIterable {
                     else
                         set p to "0"
                     end if
-                    return t & "\n" & a & "\n" & u & "\n" & p & "\n" & pos & "\n" & dur
+                    if shuffling then
+                        set s to "1"
+                    else
+                        set s to "0"
+                    end if
+                    if repeating then
+                        set r to "all"
+                    else
+                        set r to "off"
+                    end if
+                    return t & "\n" & a & "\n" & u & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
                 else
                     return ""
                 end if
@@ -61,6 +79,12 @@ private enum Player: String, CaseIterable {
                     else
                         set p to "0"
                     end if
+                    if shuffle enabled then
+                        set s to "1"
+                    else
+                        set s to "0"
+                    end if
+                    set r to song repeat as string
                     set tmpPath to "/tmp/bangbar_artwork.jpg"
                     try
                         set imgData to raw data of artwork 1 of current track
@@ -68,9 +92,9 @@ private enum Player: String, CaseIterable {
                         set eof of f to 0
                         write imgData to f
                         close access f
-                        return t & "\n" & a & "\n" & tmpPath & "\n" & p & "\n" & pos & "\n" & dur
+                        return t & "\n" & a & "\n" & tmpPath & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
                     on error
-                        return t & "\n" & a & "\n" & "" & "\n" & p & "\n" & pos & "\n" & dur
+                        return t & "\n" & a & "\n" & "" & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
                     end try
                 else
                     return ""
@@ -83,6 +107,34 @@ private enum Player: String, CaseIterable {
     var playPauseScript: String { "tell application \"\(rawValue)\" to playpause" }
     var nextScript: String      { "tell application \"\(rawValue)\" to next track" }
     var prevScript: String      { "tell application \"\(rawValue)\" to previous track" }
+
+    var toggleShuffleScript: String {
+        switch self {
+        case .spotify:
+            return "tell application \"Spotify\" to set shuffling to not shuffling"
+        case .music:
+            return "tell application \"Music\" to set shuffle enabled to not shuffle enabled"
+        }
+    }
+
+    var cycleRepeatScript: String {
+        switch self {
+        case .spotify:
+            return "tell application \"Spotify\" to set repeating to not repeating"
+        case .music:
+            return """
+            tell application "Music"
+                if song repeat is off then
+                    set song repeat to all
+                else if song repeat is all then
+                    set song repeat to one
+                else
+                    set song repeat to off
+                end if
+            end tell
+            """
+        }
+    }
 }
 
 final class NowPlayingService: ObservableObject {
@@ -119,6 +171,8 @@ final class NowPlayingService: ObservableObject {
                 let isPlaying = parts.count > 3 ? parts[3] == "1" : false
                 let position  = parts.count > 4 ? Double(parts[4]) ?? 0 : 0
                 let duration  = parts.count > 5 ? Double(parts[5]) ?? 0 : 0
+                let shuffleEnabled = parts.count > 6 ? parts[6] == "1" : false
+                let repeatMode = parts.count > 7 ? RepeatMode(rawValue: parts[7]) ?? .off : .off
                 guard !title.isEmpty else { continue }
 
                 let artwork = self?.loadArtwork(hint: hint, player: player)
@@ -128,7 +182,9 @@ final class NowPlayingService: ObservableObject {
                     self?.info = NowPlayingInfo(
                         title: title, artist: artist,
                         isPlaying: isPlaying, artwork: artwork,
-                        position: position, duration: duration
+                        position: position, duration: duration,
+                        shuffleEnabled: shuffleEnabled,
+                        repeatMode: repeatMode
                     )
                 }
                 return
@@ -169,6 +225,8 @@ final class NowPlayingService: ObservableObject {
     func togglePlayPause() { sendCommand(activePlayer?.playPauseScript) }
     func nextTrack()        { sendCommand(activePlayer?.nextScript) }
     func previousTrack()    { sendCommand(activePlayer?.prevScript) }
+    func toggleShuffle()    { sendCommand(activePlayer?.toggleShuffleScript) }
+    func cycleRepeat()      { sendCommand(activePlayer?.cycleRepeatScript) }
 
     func openPlayer() {
         guard let player = activePlayer,

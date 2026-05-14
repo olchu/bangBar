@@ -270,7 +270,7 @@ struct NowPlayingWidget: View {
                         }
                     }
 
-                    HStack(spacing: 24) {
+                    HStack(spacing: 20) {
                         Button(action: { service.previousTrack() }) {
                             Image(systemName: "backward.fill")
                         }
@@ -280,6 +280,14 @@ struct NowPlayingWidget: View {
                         }
                         Button(action: { service.nextTrack() }) {
                             Image(systemName: "forward.fill")
+                        }
+                        Button(action: { service.toggleShuffle() }) {
+                            Image(systemName: "shuffle")
+                                .foregroundStyle(service.info.shuffleEnabled ? Color.white : Color.white.opacity(0.35))
+                        }
+                        Button(action: { service.cycleRepeat() }) {
+                            Image(systemName: service.info.repeatMode == .one ? "repeat.1" : "repeat")
+                                .foregroundStyle(service.info.repeatMode == .off ? Color.white.opacity(0.35) : Color.white)
                         }
                     }
                     .buttonStyle(.plain)
