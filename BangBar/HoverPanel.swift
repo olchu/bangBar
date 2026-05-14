@@ -8,6 +8,7 @@ class HoverPanel: NSPanel {
     private let state = PanelState()
     private var hideWorkItem: DispatchWorkItem?
     private let hideDelay: TimeInterval = 0.45
+    private var openedAt: Date = .distantPast
 
     override init(
         contentRect: NSRect,
@@ -55,6 +56,7 @@ class HoverPanel: NSPanel {
 
     func slideIn() {
         isHiding = false
+        openedAt = Date()
         hideWorkItem?.cancel()
         hideWorkItem = nil
 
@@ -63,17 +65,24 @@ class HoverPanel: NSPanel {
 
         if !isVisible {
             state.isExpanded = false
+            state.contentVisible = false
             orderFront(nil)
         }
 
         DispatchQueue.main.async { [weak self] in
             self?.state.isExpanded = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                self?.state.contentVisible = true
+            }
         }
     }
 
     func slideOut() {
+        guard Date().timeIntervalSince(openedAt) > 0.5 else { return }
         isHiding = true
+
         state.isExpanded = false
+        state.contentVisible = false
 
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
