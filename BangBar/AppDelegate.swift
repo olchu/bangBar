@@ -82,14 +82,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
-        if triggerZone.contains(mouseLocation) {
-            if !(hoverPanel?.isVisible ?? false) || hoverPanel?.isHiding == true {
-                hoverPanel?.slideIn()
+        let isHoveringCompactPanel = hoverPanel?.isCompactMode == true
+            && hoverPanel?.frame.contains(mouseLocation) == true
+
+        if triggerZone.contains(mouseLocation) || isHoveringCompactPanel {
+            if let panel = hoverPanel,
+               (!panel.isVisible || panel.isHiding || panel.isCompactMode),
+               !panel.isAnimatingFrame {
+                panel.slideIn()
             }
         } else {
             if let panel = hoverPanel, panel.isVisible, !panel.isHiding {
                 let panelFrame = panel.frame
-                if !panelFrame.contains(mouseLocation) {
+                if !panel.isCompactMode && !panelFrame.contains(mouseLocation) {
                     panel.slideOut()
                 }
             }

@@ -3,12 +3,13 @@ import Combine
 
 final class PanelState: ObservableObject {
     @Published var isExpanded = false
+    @Published var isCompact = false
     @Published var contentVisible = false
 }
 
 struct PanelContentView: View {
     @ObservedObject var state: PanelState
-    @StateObject private var nowPlaying = NowPlayingService()
+    @ObservedObject var nowPlaying: NowPlayingService
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -16,24 +17,30 @@ struct PanelContentView: View {
         ZStack {
             Color.black
 
-            HStack(spacing: 20) {
-                NowPlayingWidget(service: nowPlaying, date: currentTime)
+            if state.isCompact {
+                CompactNowPlayingWidget(service: nowPlaying)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else {
+                HStack(spacing: 20) {
+                    NowPlayingWidget(service: nowPlaying, date: currentTime)
 
-                Divider()
-                    .background(Color.white.opacity(0.2))
-                    .frame(height: 70)
+                    Divider()
+                        .background(Color.white.opacity(0.2))
+                        .frame(height: 70)
 
-                ClockWidget(date: currentTime)
+                    ClockWidget(date: currentTime)
+                }
+                .padding(.horizontal, 50)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(state.contentVisible ? 1.0 : 0.0)
+                .animation(.easeOut(duration: 0.18), value: state.contentVisible)
             }
-            .padding(.horizontal, 50)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .opacity(state.contentVisible ? 1.0 : 0.0)
-            .animation(.easeOut(duration: 0.18), value: state.contentVisible)
         }
         .clipShape(NotchPanelShape())
-        .scaleEffect(state.isExpanded ? 1.0 : 0.22, anchor: .top)
-        .opacity(state.isExpanded ? 1.0 : 0.0)
+        .scaleEffect(state.isExpanded || state.isCompact ? 1.0 : 0.22, anchor: .top)
+        .opacity(state.isExpanded || state.isCompact ? 1.0 : 0.0)
         .animation(.spring(response: 0.42, dampingFraction: 0.72), value: state.isExpanded)
+        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(timer) { date in
             currentTime = date
@@ -193,6 +200,83 @@ struct NowPlayingWidget: View {
         } else {
             CalendarWidget(date: date)
         }
+    }
+}
+
+struct CompactNowPlayingWidget: View {
+    @ObservedObject var service: NowPlayingService
+
+    var body: some View {
+        GeometryReader { geo in
+            let artworkSize = min(max(geo.size.height - 10, 22), 32)
+            let indicatorHeight = min(max(geo.size.height - 16, 14), 20)
+            let horizontalPadding = min(max(geo.size.height + 12, 42), 52)
+
+            HStack {
+                artworkView
+                    .frame(width: artworkSize, height: artworkSize)
+                    .clipShape(RoundedRectangle(cornerRadius: min(7, artworkSize / 4)))
+                    .onTapGesture { service.openPlayer() }
+
+                Spacer()
+
+                PlayingIndicator(isPlaying: service.info.isPlaying, maxHeight: indicatorHeight)
+                    .frame(width: 28, height: indicatorHeight)
+            }
+            .padding(.horizontal, horizontalPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var artworkView: some View {
+        Group {
+            if let artwork = service.info.artwork {
+                Image(nsImage: artwork)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color.white.opacity(0.08)
+                    .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.45)))
+            }
+        }
+    }
+}
+
+struct PlayingIndicator: View {
+    let isPlaying: Bool
+    let maxHeight: CGFloat
+
+    @State private var isAnimating = false
+    private let idleHeights: [CGFloat] = [0.46, 0.68, 0.86, 0.58]
+    private let activeHeights: [CGFloat] = [0.88, 0.42, 0.72, 0.96]
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 3) {
+            ForEach(idleHeights.indices, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.white.opacity(isPlaying ? 0.36 : 0.16))
+                    .frame(width: 2.5, height: maxHeight * heightMultiplier(for: index))
+                    .animation(
+                        isPlaying
+                            ? .easeInOut(duration: 0.46 + Double(index) * 0.08)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.07)
+                            : .easeOut(duration: 0.18),
+                        value: isAnimating
+                    )
+            }
+        }
+        .onAppear {
+            isAnimating = isPlaying
+        }
+        .onChange(of: isPlaying) { _, newValue in
+            isAnimating = newValue
+        }
+    }
+
+    private func heightMultiplier(for index: Int) -> CGFloat {
+        guard isPlaying else { return idleHeights[index] }
+        return isAnimating ? activeHeights[index] : idleHeights[index]
     }
 }
 

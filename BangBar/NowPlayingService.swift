@@ -89,6 +89,10 @@ final class NowPlayingService: ObservableObject {
     @Published var info = NowPlayingInfo()
     @Published var isAvailable = false
 
+    var isCurrentlyPlaying: Bool {
+        isAvailable && info.isPlaying
+    }
+
     private var pollTimer: Timer?
     private var tickTimer: Timer?
     private var activePlayer: Player?
