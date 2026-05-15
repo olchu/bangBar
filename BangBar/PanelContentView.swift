@@ -20,7 +20,7 @@ enum PanelLayout {
     static let nowPlayingArtworkSize: CGFloat = 110
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
-    static let clockWidgetWidth: CGFloat = 120
+    static let clockWidgetWidth: CGFloat = 170
     static let calendarWidgetWidth: CGFloat = 140
 
     static let expandedWidgetWidths: [CGFloat] = [
@@ -165,61 +165,88 @@ struct PanelContentView: View {
 
 struct ClockWidget: View {
     let date: Date
+    private let dateColumnWidth: CGFloat = 44
 
-    var timeString: String {
+    private var hourString: String {
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        f.dateFormat = "HH"
         return f.string(from: date)
     }
 
-    var dayString: String {
+    private var minuteString: String {
+        let f = DateFormatter()
+        f.dateFormat = "mm"
+        return f.string(from: date)
+    }
+
+    private var dayString: String {
         let f = DateFormatter()
         f.dateFormat = "d"
         return f.string(from: date)
     }
 
-    var monthString: String {
+    private var monthString: String {
         let f = DateFormatter()
         f.locale = .autoupdatingCurrent
         f.dateFormat = "MMM"
         return f.string(from: date).replacingOccurrences(of: ".", with: "")
     }
 
-    var weekdayString: String {
+    private var weekdayString: String {
         let f = DateFormatter()
         f.locale = .autoupdatingCurrent
-        f.dateFormat = "EEEE"
-        return f.string(from: date).capitalized
+        f.dateFormat = "EEE"
+        return f.string(from: date)
+            .replacingOccurrences(of: ".", with: "")
+            .uppercased()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .center, spacing: 7) {
-                Text(dayString)
-                    .font(.system(size: 38, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .frame(height: 40, alignment: .center)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(monthString)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
-                        .lineLimit(1)
-
-                    Text(weekdayString)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.65))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .frame(height: 40, alignment: .center)
+        HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(hourString)
+                Text(":")
+                    .foregroundStyle(.white.opacity(0.42))
+                    .offset(y: -1)
+                Text(minuteString)
             }
+            .font(.system(size: 38, weight: .bold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.94))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.74)
+            .fixedSize(horizontal: true, vertical: false)
 
-            Text(timeString)
-                .font(.system(size: 24, weight: .regular, design: .monospaced))
-                .foregroundColor(.white.opacity(0.42))
+            Spacer(minLength: 6)
+
+            VStack(alignment: .center, spacing: 4) {
+                Text(weekdayString)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.82))
+                    .frame(width: dateColumnWidth, height: 27, alignment: .center)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.84))
+                    )
+
+                Text(dayString)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .monospacedDigit()
+                    .frame(width: dateColumnWidth, alignment: .center)
+
+                Text(monthString.uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.46))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                    .frame(width: dateColumnWidth, alignment: .center)
+                    .offset(x: 1)
+            }
+            .frame(width: dateColumnWidth, alignment: .center)
         }
-            .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
+        .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
     }
 }
 
