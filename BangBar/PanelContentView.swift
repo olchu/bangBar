@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import AVFoundation
 
 enum PanelLayout {
     static let expandedHeight: CGFloat = 155
@@ -17,11 +18,15 @@ enum PanelLayout {
     static let nowPlayingWidgetWidth: CGFloat = 300
     static let nowPlayingWidgetHeight: CGFloat = 110
     static let nowPlayingArtworkSize: CGFloat = 110
+    static let mirrorWidgetWidth: CGFloat = 130
+    static let mirrorWidgetHeight: CGFloat = 110
     static let clockWidgetWidth: CGFloat = 120
     static let calendarWidgetWidth: CGFloat = 140
 
     static let expandedWidgetWidths: [CGFloat] = [
         nowPlayingWidgetWidth,
+        expandedDividerWidth,
+        mirrorWidgetWidth,
         expandedDividerWidth,
         clockWidgetWidth
     ]
@@ -54,6 +59,7 @@ final class PanelState: ObservableObject {
 struct PanelContentView: View {
     @ObservedObject var state: PanelState
     @ObservedObject var nowPlaying: NowPlayingService
+    @StateObject private var mirror = MirrorCameraService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -99,6 +105,19 @@ struct PanelContentView: View {
                                 height: PanelLayout.expandedDividerHeight
                             )
 
+                        MirrorWidget(service: mirror)
+                            .frame(
+                                width: PanelLayout.mirrorWidgetWidth,
+                                height: PanelLayout.mirrorWidgetHeight
+                            )
+
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .frame(
+                                width: PanelLayout.expandedDividerWidth,
+                                height: PanelLayout.expandedDividerHeight
+                            )
+
                         ClockWidget(date: currentTime)
                             .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                     }
@@ -128,6 +147,16 @@ struct PanelContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(timer) { date in
             currentTime = date
+        }
+        .onChange(of: state.isExpanded) { _, isExpanded in
+            if !isExpanded {
+                mirror.stop()
+            }
+        }
+        .onChange(of: state.isCompact) { _, isCompact in
+            if isCompact {
+                mirror.stop()
+            }
         }
     }
 }
@@ -240,6 +269,108 @@ struct CalendarWidget: View {
             }
         }
         .frame(width: PanelLayout.calendarWidgetWidth, alignment: .leading)
+    }
+}
+
+struct MirrorWidget: View {
+    @ObservedObject var service: MirrorCameraService
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.07))
+
+            if service.state == .running {
+                CameraPreviewView(session: service.session)
+                    .scaleEffect(x: -1, y: 1)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+
+            if service.state == .running {
+                Button(action: { service.toggle() }) {
+                    Image(systemName: "video.slash.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(Color.black.opacity(0.48)))
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(8)
+            } else {
+                Button(action: { service.toggle() }) {
+                    Image(systemName: iconName)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(iconColor)
+                        .frame(width: 54, height: 54)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .onDisappear {
+            service.stop()
+        }
+    }
+
+    private var iconName: String {
+        switch service.state {
+        case .off:
+            return "video.fill"
+        case .requesting:
+            return "video.badge.ellipsis"
+        case .running:
+            return "video.fill"
+        case .stopping:
+            return "video.slash.fill"
+        case .denied, .failed:
+            return "video.slash.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch service.state {
+        case .denied, .failed:
+            return .white.opacity(0.35)
+        case .requesting, .stopping:
+            return .white.opacity(0.55)
+        case .off, .running:
+            return .white.opacity(0.72)
+        }
+    }
+}
+
+struct CameraPreviewView: NSViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeNSView(context: Context) -> CameraPreviewContainerView {
+        let view = CameraPreviewContainerView()
+        view.previewLayer.session = session
+        view.previewLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateNSView(_ nsView: CameraPreviewContainerView, context: Context) {
+        nsView.previewLayer.session = session
+    }
+}
+
+final class CameraPreviewContainerView: NSView {
+    let previewLayer = AVCaptureVideoPreviewLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer = previewLayer
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func layout() {
+        super.layout()
+        previewLayer.frame = bounds
     }
 }
 
