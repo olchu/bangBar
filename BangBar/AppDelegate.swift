@@ -19,7 +19,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "BangBar")
+            let image = NSImage(named: "statusbar")
+                ?? NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "BangBar")
+            image?.size = NSSize(width: 18, height: 18)
+            image?.isTemplate = true
+
+            button.image = image
             button.action = #selector(statusBarClicked)
             button.target = self
         }

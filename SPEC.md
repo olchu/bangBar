@@ -89,7 +89,7 @@ Album artwork should read visually as one continuous element between compact and
 - Expanded layout is configured by `PanelLayout`.
 - Widget sizes are fixed, not inferred from flexible SwiftUI content:
   - `NowPlayingWidget`: 300×110
-  - `ClockWidget`: 100 pt wide
+  - `ClockWidget`: 120 pt wide
   - divider: 1×70
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -101,8 +101,13 @@ Album artwork should read visually as one continuous element between compact and
 - Future widgets should add their fixed width to `PanelLayout.expandedWidgetWidths` so the panel grows automatically.
 
 ### ClockWidget
-- Shows current time in `HH:mm` format
-- Font: 32pt thin monospaced
+- Shows current time in `HH:mm` format, plus day number, short month, and weekday
+- Date is the primary top block: large bold day number with month and weekday
+- Month and weekday use the user's current system locale.
+- Time is secondary below the date, smaller, gray, and monospaced
+- Shows compact weather under the time when local weather is available: SF Symbol, temperature, and locality/condition
+- Weather uses `WeatherService`, Open-Meteo, and one-shot Core Location. There is no fallback location; if macOS does not provide a coordinate or the request fails, the weather row is hidden.
+- Date uses a compact two-column layout so Russian weekday names fit within the fixed widget width
 - Updates every second via shared timer
 
 ### NowPlayingWidget
@@ -123,22 +128,25 @@ Album artwork should read visually as one continuous element between compact and
 
 ### WeatherWidget
 
+**Status:** Folded into `ClockWidget` for the current compact right-side layout.
+
 **Goal:** Show current temperature and weather condition.
 
 **Data source:** [Open-Meteo](https://open-meteo.com/) — free, no API key required.
-- Endpoint: `https://api.open-meteo.com/v1/forecast?latitude=LAT&longitude=LON&current=temperature_2m,weathercode`
-- Location: obtained once via `CLLocationManager` (one-shot, no continuous tracking)
-- Fallback: if location denied, use hardcoded default coords (configurable in code)
+- Endpoint: `https://api.open-meteo.com/v1/forecast?latitude=LAT&longitude=LON&current=temperature_2m,weather_code&temperature_unit=celsius`
+- Location: obtained via `CLLocationManager` request-location calls, without continuous tracking
+- Locality: resolved via `MKReverseGeocodingRequest` and shown when available
+- Fallback: none. If location permission, location lookup, geocoding, or weather loading fails, hide the weather row instead of showing default-city weather.
 
 **Update interval:** Every 30 minutes.
 
 **Display:**
 ```
 [SF Symbol icon]  +18°
-                  Partly cloudy
+                  Locality
 ```
-- Temperature: 20pt semibold, white
-- Condition: 12pt, white 50% opacity
+- Temperature: 11pt semibold monospaced, white 48% opacity
+- Locality/condition: 10pt medium, white 48% opacity
 - Icon: SF Symbol mapped from WMO weather code (see mapping table below)
 - No label header
 
@@ -156,7 +164,8 @@ Album artwork should read visually as one continuous element between compact and
 **Service:** `WeatherService: ObservableObject`
 - Polls Open-Meteo via `URLSession.shared.dataTask`
 - Parses JSON with `JSONDecoder`
-- Stores `temperature: Double`, `weatherCode: Int`
+- Stores `temperature: Double`, `weatherCode: Int`, and optional `locationTitle`
+- Clears weather state when Core Location cannot provide a usable coordinate
 
 ---
 
