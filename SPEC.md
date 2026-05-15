@@ -105,8 +105,6 @@ Album artwork should read visually as one continuous element between compact and
 - Date is the primary top block: large bold day number with month and weekday
 - Month and weekday use the user's current system locale.
 - Time is secondary below the date, smaller, gray, and monospaced
-- Shows compact weather under the time when local weather is available: SF Symbol, temperature, and locality/condition
-- Weather uses `WeatherService`, Open-Meteo, and one-shot Core Location. There is no fallback location; if macOS does not provide a coordinate or the request fails, the weather row is hidden.
 - Date uses a compact two-column layout so Russian weekday names fit within the fixed widget width
 - Updates every second via shared timer
 
@@ -125,49 +123,6 @@ Album artwork should read visually as one continuous element between compact and
 ---
 
 ## Planned Widgets
-
-### WeatherWidget
-
-**Status:** Folded into `ClockWidget` for the current compact right-side layout.
-
-**Goal:** Show current temperature and weather condition.
-
-**Data source:** [Open-Meteo](https://open-meteo.com/) — free, no API key required.
-- Endpoint: `https://api.open-meteo.com/v1/forecast?latitude=LAT&longitude=LON&current=temperature_2m,weather_code&temperature_unit=celsius`
-- Location: obtained via `CLLocationManager` request-location calls, without continuous tracking
-- Locality: resolved via `MKReverseGeocodingRequest` and shown when available
-- Fallback: none. If location permission, location lookup, geocoding, or weather loading fails, hide the weather row instead of showing default-city weather.
-
-**Update interval:** Every 30 minutes.
-
-**Display:**
-```
-[SF Symbol icon]  +18°
-                  Locality
-```
-- Temperature: 11pt semibold monospaced, white 48% opacity
-- Locality/condition: 10pt medium, white 48% opacity
-- Icon: SF Symbol mapped from WMO weather code (see mapping table below)
-- No label header
-
-**WMO → SF Symbol mapping (key codes):**
-| WMO | Condition | SF Symbol |
-|-----|-----------|-----------|
-| 0 | Clear sky | `sun.max.fill` |
-| 1–3 | Partly cloudy | `cloud.sun.fill` |
-| 45–48 | Fog | `cloud.fog.fill` |
-| 51–67 | Rain/drizzle | `cloud.rain.fill` |
-| 71–77 | Snow | `cloud.snow.fill` |
-| 80–82 | Rain showers | `cloud.heavyrain.fill` |
-| 95–99 | Thunderstorm | `cloud.bolt.rain.fill` |
-
-**Service:** `WeatherService: ObservableObject`
-- Polls Open-Meteo via `URLSession.shared.dataTask`
-- Parses JSON with `JSONDecoder`
-- Stores `temperature: Double`, `weatherCode: Int`, and optional `locationTitle`
-- Clears weather state when Core Location cannot provide a usable coordinate
-
----
 
 ### MoonWidget
 
@@ -232,7 +187,7 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 ## Layout Plan (after new widgets)
 
 ```
-[NowPlayingWidget] | Divider | [WeatherWidget] | [MoonWidget] | [PomodoroWidget] | [ClockWidget]
+[NowPlayingWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [ClockWidget]
 ```
 
 Panel width may need to increase to accommodate all widgets.

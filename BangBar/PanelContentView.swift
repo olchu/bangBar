@@ -54,7 +54,6 @@ final class PanelState: ObservableObject {
 struct PanelContentView: View {
     @ObservedObject var state: PanelState
     @ObservedObject var nowPlaying: NowPlayingService
-    @StateObject private var weather = WeatherService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -100,7 +99,7 @@ struct PanelContentView: View {
                                 height: PanelLayout.expandedDividerHeight
                             )
 
-                        ClockWidget(date: currentTime, weather: weather)
+                        ClockWidget(date: currentTime)
                             .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                     }
                     .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
@@ -137,7 +136,6 @@ struct PanelContentView: View {
 
 struct ClockWidget: View {
     let date: Date
-    @ObservedObject var weather: WeatherService
 
     var timeString: String {
         let f = DateFormatter()
@@ -191,30 +189,8 @@ struct ClockWidget: View {
             Text(timeString)
                 .font(.system(size: 24, weight: .regular, design: .monospaced))
                 .foregroundColor(.white.opacity(0.42))
-
-            weatherRow
         }
             .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var weatherRow: some View {
-        if let info = weather.info {
-            HStack(spacing: 5) {
-                Image(systemName: info.symbolName)
-                    .font(.system(size: 10, weight: .semibold))
-
-                Text(info.temperatureString)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-
-                Text(info.locationTitle ?? info.conditionTitle)
-                    .font(.system(size: 10, weight: .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-            .foregroundColor(.white.opacity(0.48))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 
