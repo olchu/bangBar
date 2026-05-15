@@ -18,7 +18,7 @@ enum PanelLayout {
     static let nowPlayingWidgetWidth: CGFloat = 300
     static let nowPlayingWidgetHeight: CGFloat = 110
     static let nowPlayingArtworkSize: CGFloat = 110
-    static let mirrorWidgetWidth: CGFloat = 118
+    static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
     static let clockWidgetWidth: CGFloat = 120
     static let calendarWidgetWidth: CGFloat = 140
@@ -277,45 +277,30 @@ struct MirrorWidget: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(service.state == .running ? 0.14 : 0.10),
-                            Color.white.opacity(0.035)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(borderGradient, lineWidth: 1)
-                )
-                .shadow(color: Color.white.opacity(service.state == .running ? 0.12 : 0.04), radius: 12)
-
             if service.state == .running {
                 CameraPreviewView(session: service.session)
                     .scaleEffect(x: -1, y: 1)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
-                            .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                            .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
                     )
+                    .shadow(color: Color.white.opacity(0.10), radius: 10)
+                    .transition(.scale(scale: 0.62).combined(with: .opacity))
             }
 
             if service.state == .running {
                 Button(action: { service.toggle() }) {
                     Image(systemName: "video.slash.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 25, height: 25)
+                        .frame(width: 23, height: 23)
                         .background(Circle().fill(Color.black.opacity(0.55)))
                         .overlay(Circle().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(7)
+                .padding(2)
             } else {
                 Button(action: { service.toggle() }) {
                     ZStack {
@@ -334,18 +319,20 @@ struct MirrorWidget: View {
                             .overlay(Circle().strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
 
                         Image(systemName: iconName)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(iconColor)
 
                         statusDot
-                            .offset(x: 18, y: -18)
+                            .offset(x: 16, y: -16)
                     }
-                        .frame(width: 58, height: 58)
+                        .frame(width: 52, height: 52)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .transition(.scale(scale: 0.82).combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.30, dampingFraction: 0.78), value: service.state)
         .onDisappear {
             service.stop()
         }
@@ -375,18 +362,6 @@ struct MirrorWidget: View {
         case .off, .running:
             return .white.opacity(0.72)
         }
-    }
-
-    private var borderGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color.white.opacity(0.22),
-                Color.white.opacity(0.05),
-                Color.white.opacity(0.13)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
     }
 
     @ViewBuilder
