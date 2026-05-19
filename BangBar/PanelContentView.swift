@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import AVFoundation
+import AppKit
 
 enum PanelLayout {
     static let expandedHeight: CGFloat = 155
@@ -257,6 +258,8 @@ struct ClockWidget: View {
                             compactEventRow(for: calendarEvents.upcomingEvents[1])
                         }
                     }
+                } else if case .authorized = calendarEvents.authorizationState {
+                    EmptyCalendarEventsView()
                 } else {
                     HStack(alignment: .center, spacing: 5) {
                         Image(systemName: "calendar")
@@ -277,6 +280,71 @@ struct ClockWidget: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private struct EmptyCalendarEventsView: View {
+        var body: some View {
+            HStack(alignment: .center, spacing: 8) {
+                AnimatedGIFView(resourceName: "man")
+                    .frame(width: 70, height: 70)
+
+                VStack(alignment: .center, spacing: 3) {
+                    Text("No plans")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    Text("enjoy the quiet")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.38))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        }
+    }
+
+    private struct AnimatedGIFView: NSViewRepresentable {
+        let resourceName: String
+
+        func makeNSView(context: Context) -> NSView {
+            let container = NSView()
+            container.clipsToBounds = true
+
+            let imageView = NSImageView()
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            imageView.imageAlignment = .alignCenter
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            imageView.animates = true
+            imageView.canDrawSubviewsIntoLayer = true
+            imageView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
+            imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+
+            container.addSubview(imageView)
+            NSLayoutConstraint.activate([
+                imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                imageView.topAnchor.constraint(equalTo: container.topAnchor),
+                imageView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+
+            return container
+        }
+
+        func updateNSView(_ view: NSView, context: Context) {
+            guard let imageView = view.subviews.first as? NSImageView else { return }
+            guard imageView.image == nil,
+                  let url = Bundle.main.url(forResource: resourceName, withExtension: "gif") else {
+                return
+            }
+
+            imageView.image = NSImage(contentsOf: url)
+        }
     }
 
     private func eventDetails(for event: UpcomingCalendarEvent) -> some View {
