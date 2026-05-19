@@ -205,7 +205,8 @@ Album artwork should read visually as one continuous element between compact and
 
 1. Add `PomodoroWidget` as the next widget.
 2. Add settings entry buttons that open a settings panel.
-3. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+3. Consider adding `RemindersWidget` after the Pomodoro/settings work.
+4. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -269,6 +270,40 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 
 ---
 
+### RemindersWidget
+
+**Goal:** Show a small list or count of incomplete Apple Reminders that matter now.
+
+**Data source:** Apple Reminders via EventKit.
+
+- Use `EKEventStore` with reminder entity type (`.reminder`).
+- Requires `NSRemindersFullAccessUsageDescription`.
+- Sandboxed macOS app must include `com.apple.security.personal-information.reminders`.
+- Request access from an explicit user action, not passively on launch.
+- Use `requestFullAccessToReminders` on modern macOS.
+- Fetch reminders with EventKit reminder predicates, for example incomplete reminders due today or overdue.
+- Ignore completed reminders by default.
+
+**Possible display modes:**
+```
+3 tasks
+2 overdue
+```
+or:
+```
+09:00  Pay invoice
+Today  Buy milk
+```
+
+**Service:** `ReminderService: ObservableObject`
+
+- Tracks authorization state separately from calendar authorization.
+- Fetches incomplete reminders asynchronously through EventKit callbacks.
+- Normalizes reminders into app-owned value types before rendering.
+- Refreshes periodically while the panel is expanded and when reminder access changes.
+
+---
+
 ## Planned Settings Panel
 
 **Goal:** Provide buttons that open a dedicated settings panel from the main UI.
@@ -293,3 +328,58 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 
 Panel width may need to increase to accommodate all widgets.
 Each widget separated by `Divider` at 70pt height.
+
+`RemindersWidget` can be added later as another optional widget once the settings panel can enable/disable optional surfaces.
+
+---
+
+## Potential Widget Backlog
+
+These are not immediate commitments, but useful directions to consider after `PomodoroWidget`, settings, and `RemindersWidget`.
+
+### FocusWidget
+
+- Shows current macOS Focus / Do Not Disturb state.
+- Offers a compact toggle if the system API allows it.
+- Should stay visually quiet; focus status is useful only if it does not become another distraction.
+
+### WeatherWidget
+
+- Shows current temperature and short condition text, e.g. `12° Rain`.
+- Requires choosing a data source such as WeatherKit or another provider.
+- Should avoid heavy decorative weather art; this panel needs concise glanceable data.
+
+### BatteryWidget
+
+- Shows MacBook battery level and charging state.
+- Could later include connected accessory battery levels if available.
+- Best display is likely a percentage plus tiny charging/status icon.
+
+### QuickLauncherWidget
+
+- Provides 2-4 icon buttons for frequent actions or apps.
+- Candidate actions: open Calendar, Reminders, Music, app settings.
+- Should use SF Symbols / familiar icons and avoid text-heavy buttons.
+
+### ClipboardWidget
+
+- Shows a short preview of the latest clipboard content.
+- Could offer quick clear/open actions.
+- Must be privacy-conscious and should probably be opt-in from settings.
+
+### NetworkWidget
+
+- Shows Wi-Fi / VPN / online status.
+- Useful when switching between networks or debugging connectivity.
+- Should avoid noisy live throughput unless there is a clear need.
+
+### SystemLoadWidget
+
+- Shows a compact health indicator for CPU/RAM/thermal pressure.
+- Should avoid becoming a dense monitoring dashboard.
+- Prefer one small status summary over multiple always-changing numbers.
+
+### NextAlarmWidget
+
+- Shows the next alarm or timer if a reliable macOS data source is available.
+- Feasibility needs investigation; this should not be built until the API path is clear.
