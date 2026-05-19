@@ -20,7 +20,7 @@ enum PanelLayout {
     static let nowPlayingArtworkSize: CGFloat = 110
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
-    static let clockWidgetWidth: CGFloat = 205
+    static let clockWidgetWidth: CGFloat = 190
     static let calendarWidgetWidth: CGFloat = 140
 
     static let expandedWidgetWidths: [CGFloat] = [
@@ -107,6 +107,7 @@ struct PanelContentView: View {
 
                         ClockWidget(date: currentTime, calendarEvents: calendarEvents)
                             .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
+                            .offset(x: -8)
 
                         Divider()
                             .background(Color.white.opacity(0.2))
@@ -172,8 +173,7 @@ struct PanelContentView: View {
 struct ClockWidget: View {
     let date: Date
     @ObservedObject var calendarEvents: CalendarEventService
-    private let dateColumnWidth: CGFloat = 40
-    private let headerHeight: CGFloat = 54
+    private let headerHeight: CGFloat = 43
 
     private var hourString: String {
         let f = DateFormatter()
@@ -211,7 +211,7 @@ struct ClockWidget: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(hourString)
                     Text(":")
@@ -226,9 +226,9 @@ struct ClockWidget: View {
                 .minimumScaleFactor(0.74)
                 .fixedSize(horizontal: true, vertical: false)
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 8)
 
-                dateColumn
+                inlineDate
             }
             .frame(height: headerHeight, alignment: .top)
 
@@ -370,33 +370,26 @@ struct ClockWidget: View {
         return f.string(from: date)
     }
 
-    private var dateColumn: some View {
-        VStack(alignment: .center, spacing: 4) {
+    private var inlineDate: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(weekdayString)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.black.opacity(0.82))
-                .frame(width: dateColumnWidth, height: 24, alignment: .center)
-                .background(
-                    Capsule()
-                        .fill(Color.white.opacity(0.84))
-                )
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.48))
 
             Text(dayString)
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.72))
                 .monospacedDigit()
-                .frame(width: dateColumnWidth, alignment: .center)
 
             Text(monthString.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.46))
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
-                .frame(width: dateColumnWidth, alignment: .center)
-                .offset(x: 1)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.48))
         }
-        .frame(width: dateColumnWidth, alignment: .center)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(alignment: .trailing)
+        .offset(y: 1)
     }
 
     private var eventSummary: String {
