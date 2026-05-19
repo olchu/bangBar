@@ -84,6 +84,23 @@ Album artwork should read visually as one continuous element between compact and
 
 ## Current Widgets
 
+### Component Structure
+
+- `PanelContentView` is the thin composition root for the visible panel:
+  - owns shared runtime state used by the panel surface (`MirrorCameraService`, `CalendarEventService`, current time timer);
+  - chooses compact vs expanded content;
+  - wires panel-level animation, clipping, opacity, and hover-driven lifecycle hooks.
+- Panel constants and observable panel animation state live in `PanelLayout.swift`.
+- Widget implementations are split by responsibility:
+  - `NowPlayingWidgets.swift`: expanded now-playing widget, compact now-playing widget, artwork placeholder, artwork hero transition, and playing indicator;
+  - `ClockWidget.swift`: clock header, calendar event rendering, empty calendar state, and looping no-plans MP4 view;
+  - `MirrorWidget.swift`: mirror button, camera preview SwiftUI wrapper, and AppKit preview container;
+  - `NotchPanelShape.swift`: custom panel clipping shape.
+- Legacy/standalone widgets live outside `PanelContentView`:
+  - `CalendarWidget.swift`;
+  - `SystemWidget.swift`.
+- New widget UI should be added as a separate file instead of growing `PanelContentView.swift`.
+
 ### Layout Constants
 
 - Expanded layout is configured by `PanelLayout`.
@@ -184,6 +201,12 @@ Album artwork should read visually as one continuous element between compact and
 
 ## Planned Widgets
 
+### Near-Term Plan
+
+1. Add `PomodoroWidget` as the next widget.
+2. Add settings entry buttons that open a settings panel.
+3. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+
 ### MoonWidget
 
 **Goal:** Show current moon phase and days until next full moon.
@@ -214,6 +237,8 @@ or if today is full moon:
 
 ### PomodoroWidget
 
+**Priority:** Next planned widget.
+
 **Goal:** Pomodoro timer — 25 min work / 5 min break cycles.
 
 **Display:**
@@ -241,6 +266,22 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 - Uses `Timer` on `.main` run loop
 - Persists completed pomodoro count in `UserDefaults`
 - Does NOT send notifications (requires entitlement) — panel visual feedback only
+
+---
+
+## Planned Settings Panel
+
+**Goal:** Provide buttons that open a dedicated settings panel from the main UI.
+
+- Add compact, low-noise settings buttons where they are discoverable but do not compete with primary widget content.
+- Clicking a settings button opens the app settings panel/window.
+- Settings panel should be implemented separately from `PanelContentView`.
+- Initial settings surface should be enough to configure planned widgets and panel behavior without editing code.
+- Candidate settings:
+  - enable/disable optional widgets;
+  - Pomodoro work/break/long-break durations;
+  - calendar visibility/options;
+  - now-playing player preferences if needed.
 
 ---
 
