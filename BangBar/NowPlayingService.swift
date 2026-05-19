@@ -192,6 +192,7 @@ final class NowPlayingService: ObservableObject {
             DispatchQueue.main.async {
                 self?.activePlayer = nil
                 self?.isAvailable  = false
+                self?.info = NowPlayingInfo()
             }
         }
     }
