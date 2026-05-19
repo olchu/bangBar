@@ -89,36 +89,96 @@ Album artwork should read visually as one continuous element between compact and
 - Expanded layout is configured by `PanelLayout`.
 - Widget sizes are fixed, not inferred from flexible SwiftUI content:
   - `NowPlayingWidget`: 300×110
-  - `ClockWidget`: 120 pt wide
+  - `ClockWidget`: 190×110
+  - `MirrorWidget`: 94×94
   - divider: 1×70
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
-  - compact width: `min(max(notchWidth + compactNotchSidePadding * 2, 340), 440)`, with `compactNotchSidePadding = 105`
-  - compact horizontal padding: `min(max(height + 18, 50), 60)`
+  - compact width: `min(max(notchWidth + compactNotchSidePadding * 2, 320), 360)`, with `compactNotchSidePadding = 100`
+  - compact horizontal padding: `min(max(height + 18, 50), 50)`
   - widget spacing: 20
 - Current expanded width formula:
   - `padding * 2 + sum(widget widths) + spacing * (widget count - 1)`
 - Future widgets should add their fixed width to `PanelLayout.expandedWidgetWidths` so the panel grows automatically.
 
 ### ClockWidget
-- Shows current time in `HH:mm` format, plus day number, short month, and weekday
-- Date is the primary top block: large bold day number with month and weekday
-- Month and weekday use the user's current system locale.
-- Time is secondary below the date, smaller, gray, and monospaced
-- Date uses a compact two-column layout so Russian weekday names fit within the fixed widget width
-- Updates every second via shared timer
+
+- Combines the clock and calendar-event surface in one 190×110 widget.
+- Header shows current time in `HH:mm` format:
+  - hours and minutes are large, bold, rounded, and monospaced;
+  - the colon is dimmer than the digits.
+- Date appears on the same row as the time, aligned to the right side of the clock widget:
+  - format is `EEE d MMM`, e.g. `TUE 19 MAY`;
+  - weekday and month are small and dim;
+  - day number is slightly larger, bolder, and brighter;
+  - month and weekday use the user's current system locale.
+- The widget updates every second via the shared timer.
+- Calendar event data refreshes at most once per minute while authorized.
+
+### Calendar Events In ClockWidget
+
+- Calendar events are provided by `CalendarEventService` using EventKit.
+- The app requires calendar permission and uses `NSCalendarsFullAccessUsageDescription`.
+- The app entitlement includes `com.apple.security.personal-information.calendars`.
+- Passive startup checks the current calendar authorization status but does not request access automatically.
+- Clicking the calendar area is the user action that:
+  - requests full calendar access when status is not determined;
+  - opens macOS Calendar privacy settings when access is denied or restricted.
+- Calendar access states:
+  - `unknown`: show access prompt text;
+  - `requesting`: show access prompt text while request is in flight;
+  - `authorized`: show events or empty state;
+  - `denied`: show settings prompt;
+  - `failed`: show failure prompt and log the failure.
+- The service fetches up to two upcoming events for today:
+  - all-day events are ignored;
+  - events that already ended are ignored;
+  - events are sorted by start date;
+  - title whitespace is trimmed;
+  - each event carries its calendar color.
+- Event rendering:
+  - the first event is the primary row;
+  - the second event, when present, is rendered as a compact secondary row;
+  - each event has its own vertical left marker in that event's calendar color;
+  - the event start time and title use the event calendar color;
+  - the end time is not shown;
+  - no timeline/progress line is shown;
+  - calendar icons are not shown, to preserve title space;
+  - each event shows relative status below the title: `starts in N min` or `ends in N min`.
+- Empty authorized state:
+  - shown when calendar access is authorized and there are no more non-all-day events today;
+  - displays a left-aligned looping `man.mp4` illustration at 55×55;
+  - text block to the right is centered in the remaining space;
+  - text is `No plans` and `walking free`;
+  - MP4 playback uses `AVQueuePlayer` + `AVPlayerLooper`, muted, with no controls;
+  - playback uses a video-only composition and trims the final frame to reduce visible loop hesitation.
 
 ### NowPlayingWidget
-- Shows artwork (110×110, rounded), title, artist, progress bar, playback controls, shuffle, and repeat controls
-- Supports Spotify and Apple Music via AppleScript
+
+- Always shows the player widget in expanded mode; it does not fall back to a calendar widget when no player is open.
+- Shows artwork (110×110, rounded), title, artist, progress bar, playback controls, shuffle, and repeat controls.
+- When no player is open:
+  - title is `No player open`;
+  - subtitle is `Ready when music starts`;
+  - artwork area shows the placeholder artwork instead of stale artwork;
+  - controls are disabled/dimmed.
+- Supports Spotify and Apple Music via AppleScript.
 - Shuffle and repeat state are polled with now-playing metadata.
 - Shuffle button toggles shuffle for Spotify and Music.
 - Repeat button cycles Music through `off → all → one → off`; Spotify toggles repeat as `off/all`.
-- Falls back to CalendarWidget when no music is playing
-- Click on artwork opens the player app
-- Title truncates with `…` if too long
-- Progress bar updates every second via local tick timer (no extra AppleScript calls)
+- Click on artwork opens the player app.
+- Title truncates with `…` if too long.
+- Progress bar updates every second via local tick timer (no extra AppleScript calls).
 - Expanded artwork participates in the hero artwork transition from compact mode.
+- When the active player closes or no track can be read, `NowPlayingService` clears the entire `NowPlayingInfo`, including artwork, so stale artwork is not displayed.
+
+### MirrorWidget
+
+- Mirror widget is shown on the right side of the expanded panel.
+- Default state is a circular video button.
+- Clicking starts the camera preview when permission is available.
+- Running state shows a mirrored camera preview clipped to a rounded rectangle.
+- The mirror stops when compact mode is entered, when the expanded panel disappears, or when explicitly toggled off.
 
 ---
 
@@ -187,7 +247,7 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 ## Layout Plan (after new widgets)
 
 ```
-[NowPlayingWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [ClockWidget]
+[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [MoonWidget] | [PomodoroWidget] | Divider | [MirrorWidget]
 ```
 
 Panel width may need to increase to accommodate all widgets.
