@@ -60,6 +60,7 @@ struct PanelContentView: View {
     @ObservedObject var state: PanelState
     @ObservedObject var nowPlaying: NowPlayingService
     @StateObject private var mirror = MirrorCameraService()
+    @StateObject private var calendarEvents = CalendarEventService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -89,7 +90,6 @@ struct PanelContentView: View {
                     HStack(spacing: PanelLayout.expandedWidgetSpacing) {
                         NowPlayingWidget(
                             service: nowPlaying,
-                            date: currentTime,
                             hideArtwork: hideExpandedArtwork
                         )
                         .frame(
@@ -105,7 +105,7 @@ struct PanelContentView: View {
                                 height: PanelLayout.expandedDividerHeight
                             )
 
-                        ClockWidget(date: currentTime)
+                        ClockWidget(date: currentTime, calendarEvents: calendarEvents)
                             .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
 
                         Divider()
@@ -147,10 +147,16 @@ struct PanelContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(timer) { date in
             currentTime = date
+            calendarEvents.refreshIfNeeded(now: date)
+        }
+        .onAppear {
+            calendarEvents.start()
         }
         .onChange(of: state.isExpanded) { _, isExpanded in
             if !isExpanded {
                 mirror.stop()
+            } else {
+                calendarEvents.start()
             }
         }
         .onChange(of: state.isCompact) { _, isCompact in
@@ -165,6 +171,7 @@ struct PanelContentView: View {
 
 struct ClockWidget: View {
     let date: Date
+    @ObservedObject var calendarEvents: CalendarEventService
     private let dateColumnWidth: CGFloat = 44
 
     private var hourString: String {
@@ -202,7 +209,7 @@ struct ClockWidget: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        ZStack(alignment: .topLeading) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(hourString)
                 Text(":")
@@ -217,36 +224,99 @@ struct ClockWidget: View {
             .minimumScaleFactor(0.74)
             .fixedSize(horizontal: true, vertical: false)
 
-            Spacer(minLength: 6)
+            dateColumn
+                .frame(
+                    width: PanelLayout.clockWidgetWidth,
+                    height: PanelLayout.nowPlayingWidgetHeight,
+                    alignment: .trailing
+                )
 
-            VStack(alignment: .center, spacing: 4) {
-                Text(weekdayString)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.black.opacity(0.82))
-                    .frame(width: dateColumnWidth, height: 27, alignment: .center)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.84))
-                    )
-
-                Text(dayString)
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
-                    .monospacedDigit()
-                    .frame(width: dateColumnWidth, alignment: .center)
-
-                Text(monthString.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.46))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-                    .frame(width: dateColumnWidth, alignment: .center)
-                    .offset(x: 1)
-            }
-            .frame(width: dateColumnWidth, alignment: .center)
+            eventLine
+                .frame(
+                    width: PanelLayout.clockWidgetWidth - dateColumnWidth - 14,
+                    alignment: .leading
+                )
+                .frame(
+                    width: PanelLayout.clockWidgetWidth,
+                    height: PanelLayout.nowPlayingWidgetHeight,
+                    alignment: .bottomLeading
+                )
         }
-        .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
+        .padding(.top, 2)
+        .frame(
+            width: PanelLayout.clockWidgetWidth,
+            height: PanelLayout.nowPlayingWidgetHeight,
+            alignment: .topLeading
+        )
+    }
+
+    private var eventLine: some View {
+        Button(action: { calendarEvents.requestAccessFromUserAction() }) {
+            HStack(alignment: .top, spacing: 5) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.38))
+                    .frame(width: 12)
+                    .padding(.top, 1)
+
+                Text(eventSummary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.48))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var dateColumn: some View {
+        VStack(alignment: .center, spacing: 4) {
+            Text(weekdayString)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.black.opacity(0.82))
+                .frame(width: dateColumnWidth, height: 27, alignment: .center)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.84))
+                )
+
+            Text(dayString)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .monospacedDigit()
+                .frame(width: dateColumnWidth, alignment: .center)
+
+            Text(monthString.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.46))
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+                .frame(width: dateColumnWidth, alignment: .center)
+                .offset(x: 1)
+        }
+        .frame(width: dateColumnWidth, alignment: .center)
+    }
+
+    private var eventSummary: String {
+        if calendarEvents.authorizationDenied {
+            return "Calendar access needed"
+        }
+
+        guard let event = calendarEvents.nextEvent else {
+            return "No more today"
+        }
+
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+
+        let title = event.title.isEmpty ? "Untitled" : event.title
+        return "\(f.string(from: event.startDate))  \(title)"
     }
 }
 
@@ -444,108 +514,129 @@ final class CameraPreviewContainerView: NSView {
 
 struct NowPlayingWidget: View {
     @ObservedObject var service: NowPlayingService
-    let date: Date
     let hideArtwork: Bool
 
+    private var title: String {
+        service.isAvailable ? service.info.title : "No player open"
+    }
+
+    private var subtitle: String {
+        service.isAvailable ? service.info.artist : "Ready when music starts"
+    }
+
     var body: some View {
-        if service.isAvailable {
-            HStack(alignment: .top, spacing: 12) {
-                Group {
-                    if let artwork = service.info.artwork {
-                        Image(nsImage: artwork)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        Color.white.opacity(0.08)
-                            .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.3)))
-                    }
+        HStack(alignment: .top, spacing: 12) {
+            Group {
+                if let artwork = service.info.artwork {
+                    Image(nsImage: artwork)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    ArtworkPlaceholder()
                 }
-                .frame(
-                    width: PanelLayout.nowPlayingArtworkSize,
-                    height: PanelLayout.nowPlayingArtworkSize
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .opacity(hideArtwork ? 0.0 : 1.0)
-                .transaction { transaction in
-                    transaction.animation = nil
-                }
-                .onTapGesture { service.openPlayer() }
-                .allowsHitTesting(!hideArtwork)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(service.info.title)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(service.info.artist)
-                            .font(.system(size: 12))
-                            .foregroundColor(.white.opacity(0.5))
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    if service.info.duration > 0 {
-                        VStack(spacing: 3) {
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.15))
-                                        .frame(height: 3)
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.8))
-                                        .frame(width: geo.size.width * min(service.info.position / service.info.duration, 1), height: 3)
-                                }
-                            }
-                            .frame(height: 3)
-
-                            HStack {
-                                Text(formatTime(service.info.position))
-                                Spacer()
-                                Text(formatTime(service.info.duration))
-                            }
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.4))
-                        }
-                    }
-
-                    HStack(spacing: 20) {
-                        Button(action: { service.previousTrack() }) {
-                            Image(systemName: "backward.fill")
-                        }
-                        Button(action: { service.togglePlayPause() }) {
-                            Image(systemName: service.info.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 18))
-                        }
-                        Button(action: { service.nextTrack() }) {
-                            Image(systemName: "forward.fill")
-                        }
-                        Button(action: { service.toggleShuffle() }) {
-                            Image(systemName: "shuffle")
-                                .foregroundStyle(service.info.shuffleEnabled ? Color.white : Color.white.opacity(0.35))
-                        }
-                        Button(action: { service.cycleRepeat() }) {
-                            Image(systemName: service.info.repeatMode == .one ? "repeat.1" : "repeat")
-                                .foregroundStyle(service.info.repeatMode == .off ? Color.white.opacity(0.35) : Color.white)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.white)
-                    .font(.system(size: 15))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 14)
             }
             .frame(
-                width: PanelLayout.nowPlayingWidgetWidth,
-                height: PanelLayout.nowPlayingWidgetHeight,
-                alignment: .topLeading
+                width: PanelLayout.nowPlayingArtworkSize,
+                height: PanelLayout.nowPlayingArtworkSize
             )
-        } else {
-            CalendarWidget(date: date)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .opacity(hideArtwork ? 0.0 : 1.0)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+            .onTapGesture { service.openPlayer() }
+            .allowsHitTesting(service.isAvailable && !hideArtwork)
+
+            VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                if service.info.duration > 0 {
+                    VStack(spacing: 3) {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(height: 3)
+                                Capsule()
+                                    .fill(Color.white.opacity(0.8))
+                                    .frame(width: geo.size.width * min(service.info.position / service.info.duration, 1), height: 3)
+                            }
+                        }
+                        .frame(height: 3)
+
+                        HStack {
+                            Text(formatTime(service.info.position))
+                            Spacer()
+                            Text(formatTime(service.info.duration))
+                        }
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.4))
+                    }
+                }
+
+                HStack(spacing: 20) {
+                    Button(action: { service.previousTrack() }) {
+                        Image(systemName: "backward.fill")
+                    }
+                    Button(action: { service.togglePlayPause() }) {
+                        Image(systemName: service.info.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 18))
+                    }
+                    Button(action: { service.nextTrack() }) {
+                        Image(systemName: "forward.fill")
+                    }
+                    Button(action: { service.toggleShuffle() }) {
+                        Image(systemName: "shuffle")
+                            .foregroundStyle(service.info.shuffleEnabled ? Color.white : Color.white.opacity(0.35))
+                    }
+                    Button(action: { service.cycleRepeat() }) {
+                        Image(systemName: service.info.repeatMode == .one ? "repeat.1" : "repeat")
+                            .foregroundStyle(service.info.repeatMode == .off ? Color.white.opacity(0.35) : Color.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.white.opacity(service.isAvailable ? 1.0 : 0.35))
+                .font(.system(size: 15))
+                .disabled(!service.isAvailable)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 14)
+        }
+        .frame(
+            width: PanelLayout.nowPlayingWidgetWidth,
+            height: PanelLayout.nowPlayingWidgetHeight,
+            alignment: .topLeading
+        )
+    }
+}
+
+struct ArtworkPlaceholder: View {
+    var body: some View {
+        LinearGradient(
+            colors: [
+                Color.white.opacity(0.12),
+                Color.white.opacity(0.05)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay {
+            Image(systemName: "music.note")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundColor(.white.opacity(0.35))
         }
     }
 }

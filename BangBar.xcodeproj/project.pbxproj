@@ -261,6 +261,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "BangBar uses AppleScript to show Now Playing info from Spotify and Apple Music.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "BangBar uses the camera for the mirror widget.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "BangBar shows your next upcoming meeting for today.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "BangBar shows your next upcoming meeting for today.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -294,6 +296,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "BangBar uses the camera for the mirror widget.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "BangBar shows your next upcoming meeting for today.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "BangBar shows your next upcoming meeting for today.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
