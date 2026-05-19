@@ -18,8 +18,12 @@ final class CalendarEventService: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var nextEvent: UpcomingCalendarEvent?
+    @Published private(set) var upcomingEvents: [UpcomingCalendarEvent] = []
     @Published private(set) var authorizationState: AuthorizationState = .unknown
+
+    var nextEvent: UpcomingCalendarEvent? {
+        upcomingEvents.first
+    }
 
     var authorizationDenied: Bool {
         if case .denied = authorizationState {
@@ -39,13 +43,13 @@ final class CalendarEventService: ObservableObject {
             refresh()
         case .notDetermined, .writeOnly:
             authorizationState = .unknown
-            nextEvent = nil
+            upcomingEvents = []
         case .denied, .restricted:
             authorizationState = .denied
-            nextEvent = nil
+            upcomingEvents = []
         @unknown default:
             authorizationState = .failed("Unknown calendar authorization status")
-            nextEvent = nil
+            upcomingEvents = []
         }
     }
 
@@ -76,11 +80,11 @@ final class CalendarEventService: ObservableObject {
             requestAccess()
         case .denied, .restricted:
             authorizationState = .denied
-            nextEvent = nil
+            upcomingEvents = []
             openCalendarPrivacySettings()
         @unknown default:
             authorizationState = .failed("Unknown calendar authorization status")
-            nextEvent = nil
+            upcomingEvents = []
         }
     }
 
@@ -95,11 +99,11 @@ final class CalendarEventService: ObservableObject {
                     self.refresh()
                 } else if let error {
                     self.authorizationState = .failed(error.localizedDescription)
-                    self.nextEvent = nil
+                    self.upcomingEvents = []
                     NSLog("BangBar calendar access request failed: %@", error.localizedDescription)
                 } else {
                     self.authorizationState = .denied
-                    self.nextEvent = nil
+                    self.upcomingEvents = []
                 }
             }
         }
@@ -134,14 +138,14 @@ final class CalendarEventService: ObservableObject {
             calendars: nil
         )
 
-        nextEvent = eventStore.events(matching: predicate)
+        upcomingEvents = eventStore.events(matching: predicate)
             .filter { event in
                 !event.isAllDay && event.endDate > now
             }
             .sorted { lhs, rhs in
                 lhs.startDate < rhs.startDate
             }
-            .first
+            .prefix(2)
             .map { event in
                 UpcomingCalendarEvent(
                     title: event.title.trimmingCharacters(in: .whitespacesAndNewlines),

@@ -20,7 +20,7 @@ enum PanelLayout {
     static let nowPlayingArtworkSize: CGFloat = 110
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
-    static let clockWidgetWidth: CGFloat = 170
+    static let clockWidgetWidth: CGFloat = 205
     static let calendarWidgetWidth: CGFloat = 140
 
     static let expandedWidgetWidths: [CGFloat] = [
@@ -172,7 +172,8 @@ struct PanelContentView: View {
 struct ClockWidget: View {
     let date: Date
     @ObservedObject var calendarEvents: CalendarEventService
-    private let dateColumnWidth: CGFloat = 44
+    private let dateColumnWidth: CGFloat = 40
+    private let headerHeight: CGFloat = 54
 
     private var hourString: String {
         let f = DateFormatter()
@@ -209,40 +210,34 @@ struct ClockWidget: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(hourString)
-                Text(":")
-                    .foregroundStyle(.white.opacity(0.42))
-                    .offset(y: -1)
-                Text(minuteString)
-            }
-            .font(.system(size: 38, weight: .bold, design: .rounded))
-            .foregroundStyle(.white.opacity(0.94))
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.74)
-            .fixedSize(horizontal: true, vertical: false)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(hourString)
+                    Text(":")
+                        .foregroundStyle(.white.opacity(0.42))
+                        .offset(y: -1)
+                    Text(minuteString)
+                }
+                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.94))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+                .fixedSize(horizontal: true, vertical: false)
 
-            dateColumn
-                .frame(
-                    width: PanelLayout.clockWidgetWidth,
-                    height: PanelLayout.nowPlayingWidgetHeight,
-                    alignment: .trailing
-                )
+                Spacer(minLength: 6)
+
+                dateColumn
+            }
+            .frame(height: headerHeight, alignment: .top)
 
             eventLine
                 .frame(
-                    width: PanelLayout.clockWidgetWidth - dateColumnWidth - 14,
+                    width: PanelLayout.clockWidgetWidth,
                     alignment: .leading
                 )
-                .frame(
-                    width: PanelLayout.clockWidgetWidth,
-                    height: PanelLayout.nowPlayingWidgetHeight,
-                    alignment: .bottomLeading
-                )
         }
-        .padding(.top, 2)
         .frame(
             width: PanelLayout.clockWidgetWidth,
             height: PanelLayout.nowPlayingWidgetHeight,
@@ -252,26 +247,96 @@ struct ClockWidget: View {
 
     private var eventLine: some View {
         Button(action: { calendarEvents.requestAccessFromUserAction() }) {
-            HStack(alignment: .top, spacing: 5) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(eventTint)
-                    .frame(width: 12)
-                    .padding(.top, 1)
+            Group {
+                if let event = calendarEvents.nextEvent,
+                   case .authorized = calendarEvents.authorizationState {
+                    VStack(alignment: .leading, spacing: 4) {
+                        eventDetails(for: event)
 
-                Text(eventSummary)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(eventTint)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                        if calendarEvents.upcomingEvents.count > 1 {
+                            compactEventRow(for: calendarEvents.upcomingEvents[1])
+                        }
+                    }
+                } else {
+                    HStack(alignment: .center, spacing: 5) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(eventTint)
+                            .frame(width: 12)
+
+                        Text(eventSummary)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(eventTint)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .bottomLeading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func eventDetails(for event: UpcomingCalendarEvent) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(timeString(from: event.startDate))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(eventTint)
+                    .monospacedDigit()
+
+                Text(event.title.isEmpty ? "Untitled" : event.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(eventTint)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+            }
+
+            Text(relativeEventStatus(for: event))
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.white.opacity(0.42))
+                .lineLimit(1)
+        }
+        .padding(.leading, 8)
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(tint(for: event).opacity(0.85))
+                .frame(width: 2)
+        }
+    }
+
+    private func compactEventRow(for event: UpcomingCalendarEvent) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(timeString(from: event.startDate))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint(for: event).opacity(0.5))
+                    .monospacedDigit()
+
+                Text(event.title.isEmpty ? "Untitled" : event.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(tint(for: event).opacity(0.5))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+            }
+
+            Text(relativeEventStatus(for: event))
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.28))
+                .lineLimit(1)
+        }
+        .padding(.leading, 8)
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(tint(for: event).opacity(0.75))
+                .frame(width: 2)
+        }
     }
 
     private var eventTint: Color {
@@ -283,26 +348,48 @@ struct ClockWidget: View {
         return Color(nsColor: event.calendarColor).opacity(0.9)
     }
 
+    private func tint(for event: UpcomingCalendarEvent) -> Color {
+        Color(nsColor: event.calendarColor)
+    }
+
+    private func relativeEventStatus(for event: UpcomingCalendarEvent) -> String {
+        if date < event.startDate {
+            return "starts in \(minutesBetween(date, event.startDate)) min"
+        }
+
+        return "ends in \(minutesBetween(date, event.endDate)) min"
+    }
+
+    private func minutesBetween(_ start: Date, _ end: Date) -> Int {
+        max(Int(ceil(end.timeIntervalSince(start) / 60)), 0)
+    }
+
+    private func timeString(from date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: date)
+    }
+
     private var dateColumn: some View {
         VStack(alignment: .center, spacing: 4) {
             Text(weekdayString)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(.black.opacity(0.82))
-                .frame(width: dateColumnWidth, height: 27, alignment: .center)
+                .frame(width: dateColumnWidth, height: 24, alignment: .center)
                 .background(
                     Capsule()
                         .fill(Color.white.opacity(0.84))
                 )
 
             Text(dayString)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
                 .monospacedDigit()
                 .frame(width: dateColumnWidth, alignment: .center)
 
             Text(monthString.uppercased())
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.46))
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
@@ -328,11 +415,8 @@ struct ClockWidget: View {
             return "No more today"
         }
 
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-
         let title = event.title.isEmpty ? "Untitled" : event.title
-        return "\(f.string(from: event.startDate))  \(title)"
+        return "\(timeString(from: event.startDate))  \(title)"
     }
 }
 
