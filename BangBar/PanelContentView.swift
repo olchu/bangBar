@@ -295,7 +295,7 @@ struct ClockWidget: View {
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .center)
 
-                    Text("enjoy the quiet")
+                    Text("walking free")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.38))
                         .lineLimit(1)
