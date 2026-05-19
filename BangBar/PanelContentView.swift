@@ -285,8 +285,8 @@ struct ClockWidget: View {
     private struct EmptyCalendarEventsView: View {
         var body: some View {
             HStack(alignment: .center, spacing: 8) {
-                AnimatedGIFView(resourceName: "man")
-                    .frame(width: 70, height: 70)
+                LoopingVideoView(resourceName: "man")
+                    .frame(width: 55, height: 55)
 
                 VStack(alignment: .center, spacing: 3) {
                     Text("No plans")
@@ -307,43 +307,98 @@ struct ClockWidget: View {
         }
     }
 
-    private struct AnimatedGIFView: NSViewRepresentable {
+    private struct LoopingVideoView: NSViewRepresentable {
         let resourceName: String
 
-        func makeNSView(context: Context) -> NSView {
-            let container = NSView()
-            container.clipsToBounds = true
-
-            let imageView = NSImageView()
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            imageView.imageAlignment = .alignCenter
-            imageView.imageScaling = .scaleProportionallyUpOrDown
-            imageView.animates = true
-            imageView.canDrawSubviewsIntoLayer = true
-            imageView.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
-            imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-
-            container.addSubview(imageView)
-            NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                imageView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                imageView.topAnchor.constraint(equalTo: container.topAnchor),
-                imageView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-            ])
-
-            return container
+        func makeCoordinator() -> Coordinator {
+            Coordinator()
         }
 
-        func updateNSView(_ view: NSView, context: Context) {
-            guard let imageView = view.subviews.first as? NSImageView else { return }
-            guard imageView.image == nil,
-                  let url = Bundle.main.url(forResource: resourceName, withExtension: "gif") else {
+        func makeNSView(context: Context) -> VideoContainerView {
+            let view = VideoContainerView()
+            view.playerLayer.videoGravity = .resizeAspect
+            return view
+        }
+
+        func updateNSView(_ view: VideoContainerView, context: Context) {
+            guard context.coordinator.player == nil,
+                  let url = Bundle.main.url(forResource: resourceName, withExtension: "mp4") else {
                 return
             }
 
-            imageView.image = NSImage(contentsOf: url)
+            let item = Self.loopingItem(from: url)
+            let player = AVQueuePlayer()
+            player.isMuted = true
+            player.actionAtItemEnd = .none
+            player.automaticallyWaitsToMinimizeStalling = false
+            context.coordinator.player = player
+            context.coordinator.looper = AVPlayerLooper(player: player, templateItem: item)
+            view.playerLayer.player = player
+            player.play()
+        }
+
+        private static func loopingItem(from url: URL) -> AVPlayerItem {
+            let asset = AVURLAsset(url: url)
+            let composition = AVMutableComposition()
+
+            guard let sourceTrack = asset.tracks(withMediaType: .video).first,
+                  let compositionTrack = composition.addMutableTrack(
+                    withMediaType: .video,
+                    preferredTrackID: kCMPersistentTrackID_Invalid
+                  ) else {
+                return AVPlayerItem(url: url)
+            }
+
+            let frameRate = max(Double(sourceTrack.nominalFrameRate), 1)
+            let frameDuration = CMTime(seconds: 1 / frameRate, preferredTimescale: sourceTrack.timeRange.duration.timescale)
+            let duration = CMTimeMaximum(.zero, sourceTrack.timeRange.duration - frameDuration)
+            let timeRange = CMTimeRange(start: sourceTrack.timeRange.start, duration: duration)
+
+            do {
+                try compositionTrack.insertTimeRange(timeRange, of: sourceTrack, at: .zero)
+                compositionTrack.preferredTransform = sourceTrack.preferredTransform
+            } catch {
+                return AVPlayerItem(url: url)
+            }
+
+            let item = AVPlayerItem(asset: composition)
+            item.preferredForwardBufferDuration = 0
+            return item
+        }
+
+        static func dismantleNSView(_ view: VideoContainerView, coordinator: Coordinator) {
+            coordinator.player?.pause()
+            coordinator.looper = nil
+            coordinator.player = nil
+            view.playerLayer.player = nil
+        }
+
+        final class Coordinator {
+            var player: AVQueuePlayer?
+            var looper: AVPlayerLooper?
+        }
+
+        final class VideoContainerView: NSView {
+            let playerLayer = AVPlayerLayer()
+
+            override init(frame frameRect: NSRect) {
+                super.init(frame: frameRect)
+                wantsLayer = true
+                layer?.backgroundColor = NSColor.clear.cgColor
+                playerLayer.backgroundColor = NSColor.clear.cgColor
+                playerLayer.masksToBounds = true
+                layer?.addSublayer(playerLayer)
+            }
+
+            @available(*, unavailable)
+            required init?(coder: NSCoder) {
+                nil
+            }
+
+            override func layout() {
+                super.layout()
+                playerLayer.frame = bounds
+            }
         }
     }
 

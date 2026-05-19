@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BB0000010000000000000001 /* man.gif in Resources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000002 /* man.gif */; };
+		BB0000010000000000000001 /* man.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000002 /* man.mp4 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		BB0000010000000000000002 /* man.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = man.gif; sourceTree = "<group>"; };
+		BB0000010000000000000002 /* man.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = man.mp4; sourceTree = "<group>"; };
 		A54429422FB5CF5300AB5D82 /* BangBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BangBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -38,7 +38,7 @@
 			isa = PBXGroup;
 			children = (
 				A54429442FB5CF5300AB5D82 /* BangBar */,
-				BB0000010000000000000002 /* man.gif */,
+				BB0000010000000000000002 /* man.mp4 */,
 				A54429432FB5CF5300AB5D82 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -115,7 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BB0000010000000000000001 /* man.gif in Resources */,
+				BB0000010000000000000001 /* man.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
