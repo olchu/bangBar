@@ -448,6 +448,10 @@ final class HoverHostingView<Content: View>: NSHostingView<Content> {
     var onHoverEvent: ((NSEvent) -> Void)?
     private var hoverTrackingArea: NSTrackingArea?
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
 

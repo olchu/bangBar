@@ -255,13 +255,13 @@ struct ClockWidget: View {
             HStack(alignment: .top, spacing: 5) {
                 Image(systemName: "calendar")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.38))
+                    .foregroundStyle(eventTint)
                     .frame(width: 12)
                     .padding(.top, 1)
 
                 Text(eventSummary)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.48))
+                    .foregroundStyle(eventTint)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
@@ -272,6 +272,15 @@ struct ClockWidget: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var eventTint: Color {
+        guard let event = calendarEvents.nextEvent,
+              case .authorized = calendarEvents.authorizationState else {
+            return .white.opacity(0.48)
+        }
+
+        return Color(nsColor: event.calendarColor).opacity(0.9)
     }
 
     private var dateColumn: some View {
@@ -304,8 +313,15 @@ struct ClockWidget: View {
     }
 
     private var eventSummary: String {
-        if calendarEvents.authorizationDenied {
-            return "Calendar access needed"
+        switch calendarEvents.authorizationState {
+        case .unknown, .requesting:
+            return "Allow calendar access"
+        case .denied:
+            return "Open Calendar settings"
+        case .failed:
+            return "Calendar access failed"
+        case .authorized:
+            break
         }
 
         guard let event = calendarEvents.nextEvent else {

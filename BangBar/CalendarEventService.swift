@@ -6,11 +6,28 @@ struct UpcomingCalendarEvent {
     let title: String
     let startDate: Date
     let endDate: Date
+    let calendarColor: NSColor
 }
 
 final class CalendarEventService: ObservableObject {
+    enum AuthorizationState {
+        case unknown
+        case requesting
+        case authorized
+        case denied
+        case failed(String)
+    }
+
     @Published private(set) var nextEvent: UpcomingCalendarEvent?
-    @Published private(set) var authorizationDenied = false
+    @Published private(set) var authorizationState: AuthorizationState = .unknown
+
+    var authorizationDenied: Bool {
+        if case .denied = authorizationState {
+            return true
+        }
+
+        return false
+    }
 
     private let eventStore = EKEventStore()
     private var lastRefreshDate: Date?
@@ -18,15 +35,16 @@ final class CalendarEventService: ObservableObject {
     func start() {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .fullAccess, .authorized:
+            authorizationState = .authorized
             refresh()
         case .notDetermined, .writeOnly:
-            requestAccess()
-        case .denied, .restricted:
-            authorizationDenied = true
+            authorizationState = .unknown
             nextEvent = nil
-            openCalendarPrivacySettings()
+        case .denied, .restricted:
+            authorizationState = .denied
+            nextEvent = nil
         @unknown default:
-            authorizationDenied = true
+            authorizationState = .failed("Unknown calendar authorization status")
             nextEvent = nil
         }
     }
@@ -45,29 +63,42 @@ final class CalendarEventService: ObservableObject {
     }
 
     func requestAccessFromUserAction() {
+        if authorizationDenied {
+            openCalendarPrivacySettings()
+            return
+        }
+
         switch EKEventStore.authorizationStatus(for: .event) {
         case .fullAccess, .authorized:
+            authorizationState = .authorized
             refresh()
         case .notDetermined, .writeOnly:
             requestAccess()
         case .denied, .restricted:
-            authorizationDenied = true
+            authorizationState = .denied
             nextEvent = nil
+            openCalendarPrivacySettings()
         @unknown default:
-            authorizationDenied = true
+            authorizationState = .failed("Unknown calendar authorization status")
             nextEvent = nil
         }
     }
 
     private func requestAccess() {
-        eventStore.requestFullAccessToEvents { [weak self] granted, _ in
+        authorizationState = .requesting
+        eventStore.requestFullAccessToEvents { [weak self] granted, error in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.authorizationDenied = !granted
 
                 if granted {
+                    self.authorizationState = .authorized
                     self.refresh()
+                } else if let error {
+                    self.authorizationState = .failed(error.localizedDescription)
+                    self.nextEvent = nil
+                    NSLog("BangBar calendar access request failed: %@", error.localizedDescription)
                 } else {
+                    self.authorizationState = .denied
                     self.nextEvent = nil
                 }
             }
@@ -75,15 +106,25 @@ final class CalendarEventService: ObservableObject {
     }
 
     private func openCalendarPrivacySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") else {
-            return
+        let urlStrings = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy"
+        ]
+
+        for urlString in urlStrings {
+            guard let url = URL(string: urlString) else { continue }
+            if NSWorkspace.shared.open(url) {
+                return
+            }
         }
 
-        NSWorkspace.shared.open(url)
+        if let settingsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
+            NSWorkspace.shared.open(settingsURL)
+        }
     }
 
     private func refresh() {
-        authorizationDenied = false
+        authorizationState = .authorized
 
         let now = Date()
         let endOfDay = Calendar.current.startOfDay(for: now).addingTimeInterval(24 * 60 * 60)
@@ -105,7 +146,8 @@ final class CalendarEventService: ObservableObject {
                 UpcomingCalendarEvent(
                     title: event.title.trimmingCharacters(in: .whitespacesAndNewlines),
                     startDate: event.startDate,
-                    endDate: event.endDate
+                    endDate: event.endDate,
+                    calendarColor: NSColor(cgColor: event.calendar.cgColor) ?? .white
                 )
             }
     }
