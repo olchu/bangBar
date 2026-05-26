@@ -8,6 +8,7 @@ enum BangBarSettings {
         static let showMirrorWidget = "showMirrorWidget"
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
+        static let showPomodoroWidget = "showPomodoroWidget"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -18,7 +19,8 @@ enum BangBarSettings {
             Key.showClockWidget: true,
             Key.showMirrorWidget: true,
             Key.accentColorHex: defaultAccentColorHex,
-            Key.tintWalkingMan: true
+            Key.tintWalkingMan: true,
+            Key.showPomodoroWidget: true
         ])
     }
 
@@ -32,6 +34,10 @@ enum BangBarSettings {
 
     static var showMirrorWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showMirrorWidget) as? Bool ?? true
+    }
+
+    static var showPomodoroWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showPomodoroWidget) as? Bool ?? true
     }
 }
 

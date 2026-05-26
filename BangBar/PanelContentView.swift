@@ -9,8 +9,10 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
+    @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @StateObject private var mirror = MirrorCameraService()
     @StateObject private var calendarEvents = CalendarEventService()
+    @StateObject private var pomodoro = PomodoroService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -146,6 +148,8 @@ struct PanelContentView: View {
                     ClockWidget(date: currentTime, calendarEvents: calendarEvents)
                         .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                         .offset(x: -8)
+                case .pomodoro:
+                    PomodoroWidget(service: pomodoro)
                 case .mirror:
                     MirrorWidget(service: mirror)
                         .frame(
@@ -166,6 +170,9 @@ struct PanelContentView: View {
         if showClockWidget {
             widgets.append(.clock)
         }
+        if showPomodoroWidget {
+            widgets.append(.pomodoro)
+        }
         if showMirrorWidget {
             widgets.append(.mirror)
         }
@@ -177,6 +184,7 @@ struct PanelContentView: View {
 private enum PanelWidget: Hashable {
     case nowPlaying
     case clock
+    case pomodoro
     case mirror
 }
 
