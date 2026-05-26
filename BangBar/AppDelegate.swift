@@ -5,9 +5,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var hoverPanel: HoverPanel?
     var mouseMonitor: Any?
+    private var settingsWindow: NSWindow?
     private var compactExpansionGraceUntil: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        BangBarSettings.registerDefaults()
         NSApp.setActivationPolicy(.accessory)
         setupStatusBar()
         setupHoverPanel()
@@ -48,6 +50,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hoverPanel = HoverPanel()
         hoverPanel?.onHoverEvent = { [weak self] event in
             self?.handleMouseMove(event)
+        }
+        hoverPanel?.onOpenSettings = { [weak self] in
+            self?.openSettings()
         }
     }
 
@@ -134,7 +139,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
-        // TODO: settings window
+        if settingsWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 440, height: 470),
+                styleMask: [.titled, .closable, .miniaturizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Настройки BangBar"
+            window.contentViewController = NSHostingController(rootView: SettingsView())
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc func quit() {

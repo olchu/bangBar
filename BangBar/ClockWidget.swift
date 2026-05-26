@@ -114,10 +114,15 @@ struct ClockWidget: View {
     }
 
     private struct EmptyCalendarEventsView: View {
+        @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+        @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
+        private var accentColor: Color { Color(hex: accentColorHex) }
+
         var body: some View {
             HStack(alignment: .center, spacing: 8) {
                 LoopingVideoView(resourceName: "man")
                     .frame(width: 55, height: 55)
+                    .colorMultiply(tintWalkingMan ? accentColor : .white)
 
                 VStack(alignment: .center, spacing: 3) {
                     Text("No plans")
@@ -324,6 +329,9 @@ struct ClockWidget: View {
         return f.string(from: date)
     }
 
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+    private var accentColor: Color { Color(hex: accentColorHex) }
+
     private var inlineDate: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(weekdayString)
@@ -332,7 +340,7 @@ struct ClockWidget: View {
 
             Text(dayString)
                 .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(accentColor)
                 .monospacedDigit()
 
             Text(monthString.uppercased())

@@ -127,7 +127,7 @@ Album artwork should read visually as one continuous element between compact and
 - Date appears on the same row as the time, aligned to the right side of the clock widget:
   - format is `EEE d MMM`, e.g. `TUE 19 MAY`;
   - weekday and month are small and dim;
-  - day number is slightly larger, bolder, and brighter;
+  - day number is slightly larger, bolder, and rendered in the user's accent color;
   - month and weekday use the user's current system locale.
 - The widget updates every second via the shared timer.
 - Calendar event data refreshes at most once per minute while authorized.
@@ -168,7 +168,8 @@ Album artwork should read visually as one continuous element between compact and
   - text block to the right is centered in the remaining space;
   - text is `No plans` and `walking free`;
   - MP4 playback uses `AVQueuePlayer` + `AVPlayerLooper`, muted, with no controls;
-  - playback uses a video-only composition and trims the final frame to reduce visible loop hesitation.
+  - playback uses a video-only composition and trims the final frame to reduce visible loop hesitation;
+  - when "Tint walking figure" is enabled in settings, `.colorMultiply(accentColor)` is applied to the video view.
 
 ### NowPlayingWidget
 
@@ -177,7 +178,7 @@ Album artwork should read visually as one continuous element between compact and
 - When no player is open:
   - title is `No player open`;
   - subtitle is `Ready when music starts`;
-  - artwork area shows the placeholder artwork instead of stale artwork;
+  - artwork area shows `ArtworkPlaceholder`: dark background, accent-colored music note with a soft radial glow;
   - controls are disabled/dimmed.
 - Supports Spotify and Apple Music via AppleScript.
 - Shuffle and repeat state are polled with now-playing metadata.
@@ -304,19 +305,26 @@ Today  Buy milk
 
 ---
 
-## Planned Settings Panel
+## Settings Panel
 
-**Goal:** Provide buttons that open a dedicated settings panel from the main UI.
+Implemented as a standard macOS settings window (`SettingsView`), opened from the app menu.
 
-- Add compact, low-noise settings buttons where they are discoverable but do not compete with primary widget content.
-- Clicking a settings button opens the app settings panel/window.
-- Settings panel should be implemented separately from `PanelContentView`.
-- Initial settings surface should be enough to configure planned widgets and panel behavior without editing code.
-- Candidate settings:
-  - enable/disable optional widgets;
-  - Pomodoro work/break/long-break durations;
-  - calendar visibility/options;
-  - now-playing player preferences if needed.
+**Launch section:**
+- Toggle: Open BangBar at login (via `SMAppService`)
+
+**Widgets section:**
+- Toggle: Music — show/hide `NowPlayingWidget`
+- Toggle: Clock & Calendar — show/hide `ClockWidget`
+- Toggle: Mirror — show/hide `MirrorWidget`
+- Color picker: Accent color — stored as hex string in `UserDefaults`, default `#FF383C`; Reset button disables itself when the current value equals the default
+- Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation
+
+**Permissions section:**
+- Camera: shows authorization status, requests access or opens System Settings
+- Calendar: shows authorization status, requests full access or opens System Settings
+- Automation: opens System Settings › Privacy › Automation (required for Spotify/Music AppleScript control)
+
+**Accent color** is read via `@AppStorage` in `ClockWidget` (day number) and `ArtworkPlaceholder` (glow + icon). The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 
 ---
 

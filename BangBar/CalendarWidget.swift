@@ -33,7 +33,7 @@ struct CalendarWidget: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(dayString)
                     .font(.system(size: 40, weight: .thin))
-                    .foregroundColor(.white)
+                    .foregroundColor(Color(red: 1.0, green: 0.22, blue: 0.235))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(monthString)

@@ -5,6 +5,7 @@ import SwiftUI
 class HoverPanel: NSPanel {
     var isHiding = false
     var onHoverEvent: ((NSEvent) -> Void)?
+    var onOpenSettings: (() -> Void)?
     private let state = PanelState()
     private let nowPlaying = NowPlayingService()
     private var cancellables = Set<AnyCancellable>()
@@ -74,7 +75,13 @@ class HoverPanel: NSPanel {
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
 
-        let contentView = HoverHostingView(rootView: PanelContentView(state: state, nowPlaying: nowPlaying))
+        let contentView = HoverHostingView(rootView: PanelContentView(
+            state: state,
+            nowPlaying: nowPlaying,
+            onOpenSettings: { [weak self] in
+                self?.onOpenSettings?()
+            }
+        ))
         contentView.onHoverEvent = { [weak self] event in
             self?.onHoverEvent?(event)
         }
@@ -86,6 +93,13 @@ class HoverPanel: NSPanel {
             .receive(on: RunLoop.main)
             .sink { [weak self] info, isAvailable in
                 self?.syncCompactVisibility(isMusicPlaying: isAvailable && info.isPlaying)
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.resizeExpandedPanelForCurrentSettings()
             }
             .store(in: &cancellables)
     }
@@ -199,6 +213,11 @@ class HoverPanel: NSPanel {
             width: width,
             height: height
         )
+    }
+
+    private func resizeExpandedPanelForCurrentSettings() {
+        guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = NSScreen.main else { return }
+        setFrame(expandedFrame(on: screen), display: true)
     }
 
     private func compactFrame(on screen: NSScreen) -> NSRect {

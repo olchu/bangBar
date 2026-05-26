@@ -113,19 +113,21 @@ struct NowPlayingWidget: View {
 }
 
 struct ArtworkPlaceholder: View {
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+
+    private var accentColor: Color { Color(hex: accentColorHex) }
+
     var body: some View {
-        LinearGradient(
-            colors: [
-                Color.white.opacity(0.12),
-                Color.white.opacity(0.05)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
+        ZStack {
+            Color(red: 0.08, green: 0.06, blue: 0.07)
+            Circle()
+                .fill(accentColor.opacity(0.25))
+                .frame(width: 38, height: 38)
+                .blur(radius: 14)
             Image(systemName: "music.note")
                 .font(.system(size: 28, weight: .semibold))
-                .foregroundColor(.white.opacity(0.35))
+                .foregroundColor(accentColor)
+                .shadow(color: accentColor.opacity(0.5), radius: 4)
         }
     }
 }
@@ -214,8 +216,7 @@ struct CompactNowPlayingWidget: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Color.white.opacity(0.08)
-                    .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.45)))
+                ArtworkPlaceholder()
             }
         }
     }
@@ -294,8 +295,7 @@ struct ArtworkHeroView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Color.white.opacity(0.08)
-                    .overlay(Image(systemName: "music.note").foregroundColor(.white.opacity(0.45)))
+                ArtworkPlaceholder()
             }
         }
     }

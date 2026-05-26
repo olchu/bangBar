@@ -21,18 +21,60 @@ enum PanelLayout {
     static let mirrorWidgetHeight: CGFloat = 94
     static let clockWidgetWidth: CGFloat = 190
     static let calendarWidgetWidth: CGFloat = 140
+    static let emptyWidgetWidth: CGFloat = 220
 
-    static let expandedWidgetWidths: [CGFloat] = [
-        nowPlayingWidgetWidth,
-        expandedDividerWidth,
-        clockWidgetWidth,
-        expandedDividerWidth,
-        mirrorWidgetWidth
-    ]
+    static var expandedWidgetWidths: [CGFloat] {
+        expandedWidgetWidths(
+            showNowPlaying: BangBarSettings.showNowPlayingWidget,
+            showClock: BangBarSettings.showClockWidget,
+            showMirror: BangBarSettings.showMirrorWidget
+        )
+    }
 
     static var expandedWidth: CGFloat {
-        let contentWidth = expandedWidgetWidths.reduce(0, +)
-        let spacingWidth = expandedWidgetSpacing * CGFloat(max(expandedWidgetWidths.count - 1, 0))
+        expandedWidth(
+            showNowPlaying: BangBarSettings.showNowPlayingWidget,
+            showClock: BangBarSettings.showClockWidget,
+            showMirror: BangBarSettings.showMirrorWidget
+        )
+    }
+
+    static func expandedWidgetWidths(
+        showNowPlaying: Bool,
+        showClock: Bool,
+        showMirror: Bool
+    ) -> [CGFloat] {
+        var widths: [CGFloat] = []
+
+        if showNowPlaying {
+            widths.append(nowPlayingWidgetWidth)
+        }
+        if showClock {
+            widths.append(clockWidgetWidth)
+        }
+        if showMirror {
+            widths.append(mirrorWidgetWidth)
+        }
+
+        guard !widths.isEmpty else { return [emptyWidgetWidth] }
+
+        return widths.enumerated().flatMap { index, width in
+            index == 0 ? [width] : [expandedDividerWidth, width]
+        }
+    }
+
+    static func expandedWidth(
+        showNowPlaying: Bool,
+        showClock: Bool,
+        showMirror: Bool
+    ) -> CGFloat {
+        let widths = expandedWidgetWidths(
+            showNowPlaying: showNowPlaying,
+            showClock: showClock,
+            showMirror: showMirror
+        )
+        let contentWidth = widths.reduce(0, +)
+        let spacingWidth = expandedWidgetSpacing * CGFloat(max(widths.count - 1, 0))
         return expandedHorizontalPadding * 2 + contentWidth + spacingWidth
     }
 
