@@ -63,7 +63,7 @@ struct PomodoroWidget: View {
 
                 Text(service.timeString)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.94))
+                    .foregroundStyle(.white.opacity(service.isRunning ? 0.94 : 0.52))
                     .monospacedDigit()
                     .lineLimit(1)
 
@@ -138,7 +138,7 @@ struct CompactPomodoroWidget: View {
                 VStack(alignment: .center, spacing: 1) {
                     Text(service.timeString)
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.95))
+                        .foregroundStyle(.white.opacity(service.isRunning ? 0.95 : 0.56))
                         .monospacedDigit()
                         .lineLimit(1)
 
