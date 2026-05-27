@@ -82,6 +82,13 @@ struct PomodoroWidget: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white.opacity(0.45))
             }
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.6)
+                    .onEnded { _ in
+                        service.resetIncludingCycles()
+                    }
+            )
+            .help("Reset timer. Long press to reset cycles.")
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .padding(.leading, -8)

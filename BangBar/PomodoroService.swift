@@ -49,6 +49,12 @@ final class PomodoroService: ObservableObject {
         didJustComplete = false
     }
 
+    func resetIncludingCycles() {
+        reset()
+        completedPomodoros = 0
+        UserDefaults.standard.set(completedPomodoros, forKey: Self.completedKey)
+    }
+
     private func resume() {
         ticker?.invalidate()
         isRunning = true
