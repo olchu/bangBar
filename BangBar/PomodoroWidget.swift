@@ -73,6 +73,7 @@ struct PomodoroWidget: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
                     .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 1))
+                    .offset(y: 2)
             }
             .allowsHitTesting(false)
 
@@ -84,6 +85,16 @@ struct PomodoroWidget: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .padding(.leading, -8)
+            .padding(.bottom, 6)
+
+            Button(action: service.togglePlayPause) {
+                Image(systemName: service.isRunning ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            .padding(.trailing, -8)
             .padding(.bottom, 6)
         }
         .frame(width: PanelLayout.pomodoroWidgetWidth, height: PanelLayout.pomodoroWidgetWidth)

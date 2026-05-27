@@ -239,20 +239,19 @@ or if today is full moon:
 
 ### PomodoroWidget
 
-**Priority:** Next planned widget.
-
 **Goal:** Pomodoro timer — 25 min work / 5 min break cycles.
 
-**Display:**
-```
-[play/pause]  25:00
-              Work
-```
-- Timer: 24pt thin monospaced, white
-- Label: "Work" or "Break", 11pt, white 50% opacity
-- Single play/pause button (SF Symbol `play.fill` / `pause.fill`)
-- On work session end: brief visual flash + auto-start break
-- On break end: auto-start next work session
+**Layout:** Square 110×110, implemented in `PomodoroWidget.swift` + `PomodoroService.swift`.
+
+**Visual design:**
+- Circular tick ring: 72 evenly-spaced dashes around the perimeter; elapsed ticks colored in accent color, remaining ticks at 18% opacity
+- Center: colored dot + session label (9pt semibold rounded, uppercased); dot and label dim when paused
+- Timer: 26pt bold rounded + `.monospacedDigit()`, white 94% opacity
+- Cycle counter: `"N / 4"` in a capsule outline (9pt, white 50%)
+- Bottom-left: `arrow.counterclockwise` reset button (13pt bold, white 45%)
+- Bottom-right: `play.fill` / `pause.fill` button (13pt bold, white 45%)
+- Tapping anywhere on the widget also toggles play/pause
+- Accent color is shared with the rest of the panel via `@AppStorage`
 
 **State machine:**
 ```
@@ -261,13 +260,21 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 
 **Durations:**
 - Work: 25 min
-- Break: 5 min
+- Short break: 5 min
 - Long break after 4 pomodoros: 15 min
 
+**Cycle counter** shows which pomodoro in the current set of 4:
+- During work: `(completedPomodoros % 4) + 1`
+- During break: completed count in cycle (shows 4 after the 4th)
+
 **Service:** `PomodoroService: ObservableObject`
+- `@Published` properties: `sessionType`, `isRunning`, `secondsRemaining`, `completedPomodoros`, `didJustComplete`
 - Uses `Timer` on `.main` run loop
-- Persists completed pomodoro count in `UserDefaults`
+- `completedPomodoros` persisted in `UserDefaults`
+- `reset()` stops timer and returns to work session at 25:00
+- Auto-advances to next session on completion; `didJustComplete` briefly set true for flash feedback
 - Does NOT send notifications (requires entitlement) — panel visual feedback only
+- Enabled/disabled via "Pomodoro" toggle in Settings
 
 ---
 

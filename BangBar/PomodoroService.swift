@@ -33,7 +33,7 @@ final class PomodoroService: ObservableObject {
     var sessionLabel: String {
         switch sessionType {
         case .work: return "Work"
-        case .shortBreak: return "Short Break"
+        case .shortBreak: return "Break"
         case .longBreak: return "Long Break"
         }
     }
@@ -50,10 +50,14 @@ final class PomodoroService: ObservableObject {
     }
 
     private func resume() {
+        ticker?.invalidate()
         isRunning = true
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             self?.tick()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        ticker = timer
     }
 
     private func pause() {
@@ -63,7 +67,7 @@ final class PomodoroService: ObservableObject {
     }
 
     private func tick() {
-        secondsRemaining -= 1
+        secondsRemaining = max(secondsRemaining - 1, 0)
         guard secondsRemaining <= 0 else { return }
         advance()
     }
