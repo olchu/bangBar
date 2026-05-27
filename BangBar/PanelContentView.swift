@@ -4,6 +4,7 @@ import Combine
 struct PanelContentView: View {
     @ObservedObject var state: PanelState
     @ObservedObject var nowPlaying: NowPlayingService
+    @ObservedObject var pomodoro: PomodoroService
     let onOpenSettings: () -> Void
 
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
@@ -12,7 +13,6 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @StateObject private var mirror = MirrorCameraService()
     @StateObject private var calendarEvents = CalendarEventService()
-    @StateObject private var pomodoro = PomodoroService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -30,13 +30,7 @@ struct PanelContentView: View {
                     .ignoresSafeArea()
 
                 if state.isCompact {
-                    CompactNowPlayingWidget(
-                        service: nowPlaying,
-                        artworkRevealAllowed: state.compactArtworkRevealAllowed,
-                        indicatorRevealAllowed: state.compactIndicatorRevealAllowed,
-                        animateArtworkReveal: state.compactArtworkRevealAnimated,
-                        hideArtwork: state.artworkHeroProgress != nil
-                    )
+                    compactWidget
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     HStack(spacing: PanelLayout.expandedWidgetSpacing) {
@@ -63,7 +57,7 @@ struct PanelContentView: View {
                     PanelChromeControls(
                         onOpenSettings: onOpenSettings
                     )
-                    .padding(.top, 10)
+                    .padding(.top, 0)
                     .padding(.trailing, 52)
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.16), value: state.contentVisible)
@@ -108,6 +102,22 @@ struct PanelContentView: View {
             if !isVisible {
                 mirror.stop()
             }
+        }
+    }
+
+    @ViewBuilder
+    private var compactWidget: some View {
+        switch state.compactContent {
+        case .pomodoro:
+            CompactPomodoroWidget(service: pomodoro)
+        case .nowPlaying:
+            CompactNowPlayingWidget(
+                service: nowPlaying,
+                artworkRevealAllowed: state.compactArtworkRevealAllowed,
+                indicatorRevealAllowed: state.compactIndicatorRevealAllowed,
+                animateArtworkReveal: state.compactArtworkRevealAnimated,
+                hideArtwork: state.artworkHeroProgress != nil
+            )
         }
     }
 
@@ -194,7 +204,7 @@ private struct PanelChromeControls: View {
     var body: some View {
         Button(action: onOpenSettings) {
             Image(systemName: "gearshape")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .frame(width: 28, height: 28)
         }
         .help("Настройки")

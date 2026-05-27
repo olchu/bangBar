@@ -8,6 +8,7 @@ class HoverPanel: NSPanel {
     var onOpenSettings: (() -> Void)?
     private let state = PanelState()
     private let nowPlaying = NowPlayingService()
+    private let pomodoro = PomodoroService()
     private var cancellables = Set<AnyCancellable>()
     private var hideWorkItem: DispatchWorkItem?
     private var artworkHeroCleanupWorkItem: DispatchWorkItem?
@@ -78,6 +79,7 @@ class HoverPanel: NSPanel {
         let contentView = HoverHostingView(rootView: PanelContentView(
             state: state,
             nowPlaying: nowPlaying,
+            pomodoro: pomodoro,
             onOpenSettings: { [weak self] in
                 self?.onOpenSettings?()
             }
@@ -92,7 +94,21 @@ class HoverPanel: NSPanel {
             .combineLatest(nowPlaying.$isAvailable)
             .receive(on: RunLoop.main)
             .sink { [weak self] info, isAvailable in
-                self?.syncCompactVisibility(isMusicPlaying: isAvailable && info.isPlaying)
+                self?.syncCompactVisibility(
+                    isMusicPlaying: isAvailable && info.isPlaying,
+                    isPomodoroRunning: self?.pomodoro.isRunning == true
+                )
+            }
+            .store(in: &cancellables)
+
+        pomodoro.$isRunning
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isRunning in
+                self?.syncCompactVisibility(
+                    isMusicPlaying: self?.nowPlaying.isCurrentlyPlaying == true,
+                    isPomodoroRunning: isRunning
+                )
             }
             .store(in: &cancellables)
 
@@ -120,6 +136,7 @@ class HoverPanel: NSPanel {
 
         guard let screen = NSScreen.main else { return }
         let wasCompact = state.isCompact
+        let wasNowPlayingCompact = state.compactContent == .nowPlaying
         let targetFrame = expandedFrame(on: screen)
 
         if !isVisible {
@@ -132,7 +149,7 @@ class HoverPanel: NSPanel {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            if wasCompact {
+            if wasCompact, wasNowPlayingCompact {
                 self.updateStateWithoutAnimation {
                     self.state.artworkHeroProgress = 0
                 }
@@ -162,6 +179,15 @@ class HoverPanel: NSPanel {
                     self.artworkHeroCleanupWorkItem = cleanupWork
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: cleanupWork)
                 }
+            } else if wasCompact {
+                self.state.artworkHeroProgress = nil
+                self.animateFrame(to: targetFrame, duration: 0.30, completion: {
+                    self.state.isCompact = false
+                    self.state.isExpanded = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+                        self.state.contentVisible = true
+                    }
+                })
             } else {
                 self.state.artworkHeroProgress = nil
                 self.state.isCompact = false
@@ -179,7 +205,7 @@ class HoverPanel: NSPanel {
         guard Date().timeIntervalSince(openedAt) > 0.5 else { return }
         isHiding = true
 
-        if nowPlaying.isCurrentlyPlaying {
+        if pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
             enterCompactMode()
             return
         }
@@ -271,7 +297,10 @@ class HoverPanel: NSPanel {
     }
 
     private func enterCompactMode() {
+        let nextCompactContent: PanelState.CompactContent = pomodoro.isRunning ? .pomodoro : .nowPlaying
+
         if isVisible, state.isCompact, !state.isExpanded, !isHiding {
+            state.compactContent = nextCompactContent
             return
         }
 
@@ -292,6 +321,7 @@ class HoverPanel: NSPanel {
                 state.contentVisible = false
                 state.isExpanded = false
                 state.isCompact = true
+                state.compactContent = nextCompactContent
                 state.artworkHeroProgress = nil
                 state.compactArtworkRevealAnimated = true
                 state.compactArtworkRevealAllowed = false
@@ -316,6 +346,7 @@ class HoverPanel: NSPanel {
             state.contentVisible = false
             state.isExpanded = false
             state.artworkHeroProgress = 1
+            state.compactContent = nextCompactContent
             state.compactArtworkRevealAnimated = false
             state.compactArtworkRevealAllowed = false
             state.compactIndicatorRevealAllowed = true
@@ -340,8 +371,9 @@ class HoverPanel: NSPanel {
         }
     }
 
-    private func syncCompactVisibility(isMusicPlaying: Bool) {
-        if isMusicPlaying {
+    private func syncCompactVisibility(isMusicPlaying: Bool, isPomodoroRunning: Bool) {
+        if isPomodoroRunning || isMusicPlaying {
+            state.compactContent = isPomodoroRunning ? .pomodoro : .nowPlaying
             if !isVisible || isHiding {
                 enterCompactMode()
             }
@@ -379,11 +411,11 @@ class HoverPanel: NSPanel {
         let compactFrame = compactFrame(on: screen)
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            guard self.isHiding, !self.nowPlaying.isCurrentlyPlaying else { return }
+            guard self.isHiding, !self.nowPlaying.isCurrentlyPlaying, !self.pomodoro.isRunning else { return }
 
             self.animateFrame(to: self.concealedCompactFrame(on: screen), duration: 0.24, completion: { [weak self] in
                 guard let self else { return }
-                if self.isHiding, !self.nowPlaying.isCurrentlyPlaying {
+                if self.isHiding, !self.nowPlaying.isCurrentlyPlaying, !self.pomodoro.isRunning {
                     self.orderOut(nil)
                     self.isHiding = false
                     self.updateStateWithoutAnimation {

@@ -34,7 +34,7 @@ final class PomodoroService: ObservableObject {
         switch sessionType {
         case .work: return "Work"
         case .shortBreak: return "Break"
-        case .longBreak: return "Long Break"
+        case .longBreak: return "Rest"
         }
     }
 

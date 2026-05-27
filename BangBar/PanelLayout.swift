@@ -89,8 +89,14 @@ enum PanelLayout {
 }
 
 final class PanelState: ObservableObject {
+    enum CompactContent {
+        case nowPlaying
+        case pomodoro
+    }
+
     @Published var isExpanded = false
     @Published var isCompact = false
+    @Published var compactContent: CompactContent = .nowPlaying
     @Published var contentVisible = false
     @Published var compactArtworkRevealAllowed = true
     @Published var compactIndicatorRevealAllowed = true
