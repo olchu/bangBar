@@ -107,7 +107,7 @@ Album artwork should read visually as one continuous element between compact and
 - Widget sizes are fixed, not inferred from flexible SwiftUI content:
   - `NowPlayingWidget`: 300×110
   - `ClockWidget`: 190×110
-  - `MoonWidget`: 110×110
+  - `MoonWidget`: 100×110, with a 90×90 moon image
   - `PomodoroWidget`: 110×110
   - `MirrorWidget`: 94×94
   - divider: 1×70
@@ -214,25 +214,24 @@ Album artwork should read visually as one continuous element between compact and
 
 ### MoonWidget
 
-**Goal:** Show current moon phase and days until next full moon.
+**Goal:** Show current moon phase, illuminated percentage, and next full moon date.
 
 **Data source:** Calculated locally — no network required.
-- Use standard astronomical formula (synodic period = 29.53059 days)
-- Reference new moon: Jan 6, 2000 18:14 UTC (known epoch)
+- Compute approximate solar and lunar ecliptic longitudes from J2000.
+- Current illumination uses lunar elongation: `(1 - cos(elongation)) / 2`.
+- Next full moon date is found by sampling forward from the current date and refining the illumination peak.
 
 **Display:**
 ```
-🌕  Full moon
-    in 3 days
+                 100%
+       [MoonTexture]
+                 Jun 1
 ```
-or if today is full moon:
-```
-🌕  Full moon
-    today
-```
-- Phase icon: Unicode moon emoji or SF Symbol (`moon.full`, `moon.circle`, etc.)
+- Moon image: `MoonTexture` asset clipped to a circle.
+- Phase shadow: render a darkened full `MoonTexture` base, then render the bright texture above it through a calculated illumination mask. The mask area matches the calculated illumination percentage; everything outside it stays under shadow.
 - Phase name: current phase name
-- Days to next full moon shown when > 0
+- Visible percentage: rounded illuminated fraction
+- Full moon date: next calculated full moon date, never a past date
 
 **Phases (8):** New → Waxing Crescent → First Quarter → Waxing Gibbous → Full → Waning Gibbous → Last Quarter → Waning Crescent
 
