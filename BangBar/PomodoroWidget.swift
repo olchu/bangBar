@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct PomodoroWidget: View {
-    @ObservedObject var service: PomodoroService
+    @ObservedObject var
+    service: PomodoroService
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
 
     private var accentColor: Color { Color(hex: accentColorHex) }

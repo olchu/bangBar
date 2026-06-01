@@ -5,6 +5,7 @@ enum BangBarSettings {
     enum Key {
         static let showNowPlayingWidget = "showNowPlayingWidget"
         static let showClockWidget = "showClockWidget"
+        static let showMoonWidget = "showMoonWidget"
         static let showMirrorWidget = "showMirrorWidget"
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
@@ -17,6 +18,7 @@ enum BangBarSettings {
         UserDefaults.standard.register(defaults: [
             Key.showNowPlayingWidget: true,
             Key.showClockWidget: true,
+            Key.showMoonWidget: true,
             Key.showMirrorWidget: true,
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
@@ -30,6 +32,10 @@ enum BangBarSettings {
 
     static var showClockWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showClockWidget) as? Bool ?? true
+    }
+
+    static var showMoonWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showMoonWidget) as? Bool ?? true
     }
 
     static var showMirrorWidget: Bool {
@@ -63,4 +69,3 @@ extension Color {
         )
     }
 }
-

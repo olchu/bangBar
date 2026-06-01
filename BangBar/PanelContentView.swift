@@ -9,6 +9,7 @@ struct PanelContentView: View {
 
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
+    @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @StateObject private var mirror = MirrorCameraService()
@@ -158,6 +159,13 @@ struct PanelContentView: View {
                     ClockWidget(date: currentTime, calendarEvents: calendarEvents)
                         .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                         .offset(x: -8)
+                case .moon:
+                    MoonWidget(date: currentTime)
+                        .frame(
+                            width: PanelLayout.moonWidgetWidth,
+                            height: PanelLayout.nowPlayingWidgetHeight,
+                            alignment: .center
+                        )
                 case .pomodoro:
                     PomodoroWidget(service: pomodoro)
                 case .mirror:
@@ -180,6 +188,9 @@ struct PanelContentView: View {
         if showClockWidget {
             widgets.append(.clock)
         }
+        if showMoonWidget {
+            widgets.append(.moon)
+        }
         if showPomodoroWidget {
             widgets.append(.pomodoro)
         }
@@ -194,6 +205,7 @@ struct PanelContentView: View {
 private enum PanelWidget: Hashable {
     case nowPlaying
     case clock
+    case moon
     case pomodoro
     case mirror
 }

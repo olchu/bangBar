@@ -7,6 +7,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
+    @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
@@ -29,6 +30,7 @@ struct SettingsView: View {
                 Section("Widgets") {
                     Toggle("Music", isOn: $showNowPlayingWidget)
                     Toggle("Clock & Calendar", isOn: $showClockWidget)
+                    Toggle("Moon", isOn: $showMoonWidget)
                     Toggle("Pomodoro", isOn: $showPomodoroWidget)
                     Toggle("Mirror", isOn: $showMirrorWidget)
                     HStack {

@@ -107,6 +107,8 @@ Album artwork should read visually as one continuous element between compact and
 - Widget sizes are fixed, not inferred from flexible SwiftUI content:
   - `NowPlayingWidget`: 300×110
   - `ClockWidget`: 190×110
+  - `MoonWidget`: 110×110
+  - `PomodoroWidget`: 110×110
   - `MirrorWidget`: 94×94
   - divider: 1×70
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
@@ -204,10 +206,11 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Near-Term Plan
 
-1. Add `PomodoroWidget` as the next widget.
-2. Add settings entry buttons that open a settings panel.
-3. Consider adding `RemindersWidget` after the Pomodoro/settings work.
-4. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+1. `PomodoroWidget` is implemented and wired into the expanded panel, compact mode, and Settings.
+2. Settings entry points are implemented through the app menu and expanded-panel chrome button.
+3. Add `MoonWidget` next as a local, no-permission widget.
+4. Consider adding `RemindersWidget` after the Moon widget.
+5. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -234,6 +237,8 @@ or if today is full moon:
 **Phases (8):** New → Waxing Crescent → First Quarter → Waxing Gibbous → Full → Waning Gibbous → Last Quarter → Waning Crescent
 
 **No service needed** — pure computed properties on a struct `MoonPhase`.
+
+**Settings:** Enabled/disabled via "Moon" toggle in Settings.
 
 ---
 
@@ -322,6 +327,8 @@ Implemented as a standard macOS settings window (`SettingsView`), opened from th
 **Widgets section:**
 - Toggle: Music — show/hide `NowPlayingWidget`
 - Toggle: Clock & Calendar — show/hide `ClockWidget`
+- Toggle: Moon — show/hide `MoonWidget`
+- Toggle: Pomodoro — show/hide `PomodoroWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
 - Color picker: Accent color — stored as hex string in `UserDefaults`, default `#FF383C`; Reset button disables itself when the current value equals the default
 - Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation

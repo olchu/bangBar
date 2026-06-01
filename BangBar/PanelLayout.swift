@@ -20,6 +20,7 @@ enum PanelLayout {
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
     static let clockWidgetWidth: CGFloat = 190
+    static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
     static let calendarWidgetWidth: CGFloat = 140
     static let emptyWidgetWidth: CGFloat = 220
@@ -28,6 +29,7 @@ enum PanelLayout {
         expandedWidgetWidths(
             showNowPlaying: BangBarSettings.showNowPlayingWidget,
             showClock: BangBarSettings.showClockWidget,
+            showMoon: BangBarSettings.showMoonWidget,
             showPomodoro: BangBarSettings.showPomodoroWidget,
             showMirror: BangBarSettings.showMirrorWidget
         )
@@ -37,6 +39,7 @@ enum PanelLayout {
         expandedWidth(
             showNowPlaying: BangBarSettings.showNowPlayingWidget,
             showClock: BangBarSettings.showClockWidget,
+            showMoon: BangBarSettings.showMoonWidget,
             showPomodoro: BangBarSettings.showPomodoroWidget,
             showMirror: BangBarSettings.showMirrorWidget
         )
@@ -45,6 +48,7 @@ enum PanelLayout {
     static func expandedWidgetWidths(
         showNowPlaying: Bool,
         showClock: Bool,
+        showMoon: Bool,
         showPomodoro: Bool,
         showMirror: Bool
     ) -> [CGFloat] {
@@ -52,6 +56,7 @@ enum PanelLayout {
 
         if showNowPlaying { widths.append(nowPlayingWidgetWidth) }
         if showClock { widths.append(clockWidgetWidth) }
+        if showMoon { widths.append(moonWidgetWidth) }
         if showPomodoro { widths.append(pomodoroWidgetWidth) }
         if showMirror { widths.append(mirrorWidgetWidth) }
 
@@ -65,12 +70,14 @@ enum PanelLayout {
     static func expandedWidth(
         showNowPlaying: Bool,
         showClock: Bool,
+        showMoon: Bool,
         showPomodoro: Bool,
         showMirror: Bool
     ) -> CGFloat {
         let widths = expandedWidgetWidths(
             showNowPlaying: showNowPlaying,
             showClock: showClock,
+            showMoon: showMoon,
             showPomodoro: showPomodoro,
             showMirror: showMirror
         )
