@@ -228,6 +228,7 @@ Album artwork should read visually as one continuous element between compact and
                  Jun 1
 ```
 - Moon image: `MoonTexture` asset clipped to a circle.
+- Moon cycle progress: thin red arc around the 90×90 moon image, filling from the previous full moon toward the next full moon date.
 - Phase shadow: render a darkened full `MoonTexture` base, then render the bright texture above it through a calculated illumination mask. The mask area matches the calculated illumination percentage; everything outside it stays under shadow.
 - Phase name: current phase name
 - Visible percentage: rounded illuminated fraction

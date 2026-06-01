@@ -15,6 +15,7 @@ struct MoonWidget: View {
 
     var body: some View {
         ZStack {
+            moonProgressArc
             moonDisk
 
             cornerText("\(phase.illuminationPercent)%", alignment: .trailing)
@@ -68,6 +69,42 @@ struct MoonWidget: View {
         .shadow(color: .black.opacity(0.62), radius: 7, y: 2)
         .shadow(color: accentColor.opacity(0.16), radius: 14)
     }
+
+    private var moonProgressArc: some View {
+        let progress = CGFloat(phase.fullMoonCycleProgress)
+
+        return ZStack {
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    Color.red.opacity(0.24),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
+                .frame(width: 96, height: 96)
+                .rotationEffect(.degrees(-90))
+                .blur(radius: 6)
+
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    Color.red.opacity(0.2),
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                )
+                .frame(width: 96, height: 96)
+                .rotationEffect(.degrees(-90))
+                .blur(radius: 3)
+
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    Color.red.opacity(0.52),
+                    style: StrokeStyle(lineWidth: 0.65, lineCap: .round)
+                )
+                .frame(width: 96, height: 96)
+                .rotationEffect(.degrees(-90))
+        }
+        .allowsHitTesting(false)
+    }
 }
 
 struct MoonPhase {
@@ -110,6 +147,17 @@ struct MoonPhase {
 
     var fullMoonDateText: String {
         Self.fullMoonDateFormatter.string(from: Self.nextFullMoon(after: date))
+    }
+
+    var fullMoonCycleProgress: Double {
+        let previousFullMoon = Self.previousFullMoon(before: date)
+        let nextFullMoon = Self.nextFullMoon(after: date)
+        let cycleLength = nextFullMoon.timeIntervalSince(previousFullMoon)
+
+        guard cycleLength > 0 else { return 0 }
+
+        let progress = date.timeIntervalSince(previousFullMoon) / cycleLength
+        return min(max(progress, 0), 1)
     }
 
     var illuminationFraction: Double {
@@ -161,6 +209,30 @@ struct MoonPhase {
         let refinedDate = refinedFullMoon(near: bestDate, window: sampleStep)
         guard refinedDate >= date else {
             return nextFullMoon(after: date.addingTimeInterval(sampleStep))
+        }
+
+        return refinedDate
+    }
+
+    private static func previousFullMoon(before date: Date) -> Date {
+        let sampleStep = 6.0 * 60 * 60
+        let sampleCount = Int((synodicPeriod * secondsPerDay) / sampleStep)
+        var bestDate = date
+        var bestIllumination = -Double.infinity
+
+        for sample in 0...sampleCount {
+            let candidate = date.addingTimeInterval(-Double(sample) * sampleStep)
+            let illumination = illuminationFraction(on: candidate)
+
+            if illumination > bestIllumination {
+                bestIllumination = illumination
+                bestDate = candidate
+            }
+        }
+
+        let refinedDate = refinedFullMoon(near: bestDate, window: sampleStep)
+        guard refinedDate <= date else {
+            return previousFullMoon(before: date.addingTimeInterval(-sampleStep))
         }
 
         return refinedDate
