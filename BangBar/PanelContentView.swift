@@ -12,9 +12,11 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
+    @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @StateObject private var mirror = MirrorCameraService()
     @StateObject private var calendarEvents = CalendarEventService()
+    @StateObject private var reminders = ReminderService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -79,15 +81,15 @@ struct PanelContentView: View {
             calendarEvents.refreshIfNeeded(now: date)
         }
         .onAppear {
-            if showClockWidget {
-                calendarEvents.start()
-            }
+            if showClockWidget { calendarEvents.start() }
+            if showRemindersWidget { reminders.start() }
         }
         .onChange(of: state.isExpanded) { _, isExpanded in
             if !isExpanded {
                 mirror.stop()
-            } else if showClockWidget {
-                calendarEvents.start()
+            } else {
+                if showClockWidget { calendarEvents.start() }
+                if showRemindersWidget { reminders.refresh() }
             }
         }
         .onChange(of: state.isCompact) { _, isCompact in
@@ -96,9 +98,10 @@ struct PanelContentView: View {
             }
         }
         .onChange(of: showClockWidget) { _, isVisible in
-            if isVisible {
-                calendarEvents.start()
-            }
+            if isVisible { calendarEvents.start() }
+        }
+        .onChange(of: showRemindersWidget) { _, isVisible in
+            if isVisible { reminders.start() }
         }
         .onChange(of: showMirrorWidget) { _, isVisible in
             if !isVisible {
@@ -169,6 +172,13 @@ struct PanelContentView: View {
                         )
                 case .pomodoro:
                     PomodoroWidget(service: pomodoro)
+                case .reminders:
+                    RemindersWidget(service: reminders)
+                        .frame(
+                            width: PanelLayout.remindersWidgetWidth,
+                            height: PanelLayout.nowPlayingWidgetHeight,
+                            alignment: .topLeading
+                        )
                 case .mirror:
                     MirrorWidget(service: mirror)
                         .frame(
@@ -194,6 +204,8 @@ struct PanelContentView: View {
             return showMoonWidget
         case .pomodoro:
             return showPomodoroWidget
+        case .reminders:
+            return showRemindersWidget
         case .mirror:
             return showMirrorWidget
         }

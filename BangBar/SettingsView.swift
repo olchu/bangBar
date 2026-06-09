@@ -11,6 +11,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
+    @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
+    @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
@@ -223,6 +225,11 @@ struct SettingsView: View {
                         )
                     )
 
+                    if widget == .reminders && showRemindersWidget {
+                        SettingsDivider()
+                        RemindersListPickerRow(selectedListId: $reminderListId, accentColor: accentColor)
+                    }
+
                     if index < widgetOrder.count - 1 {
                         SettingsDivider()
                     }
@@ -241,6 +248,8 @@ struct SettingsView: View {
             return $showMoonWidget
         case .pomodoro:
             return $showPomodoroWidget
+        case .reminders:
+            return $showRemindersWidget
         case .mirror:
             return $showMirrorWidget
         }
@@ -925,6 +934,68 @@ private struct SettingsOutlineButtonStyle: ButtonStyle {
                             .stroke(SettingsTheme.border, lineWidth: 1)
                     )
             )
+    }
+}
+
+private struct RemindersListPickerRow: View {
+    @Binding var selectedListId: String
+    let accentColor: Color
+
+    @State private var lists: [(id: String, title: String)] = []
+
+    var body: some View {
+        HStack {
+            Text("List")
+                .font(SettingsTheme.rowFont)
+                .foregroundStyle(SettingsTheme.primaryText)
+
+            Spacer()
+
+            Menu {
+                Button("All Reminders") { selectedListId = "" }
+                if !lists.isEmpty {
+                    Divider()
+                    ForEach(lists, id: \.id) { list in
+                        Button(list.title) { selectedListId = list.id }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(selectedTitle)
+                        .font(SettingsTheme.captionFont)
+                        .foregroundStyle(SettingsTheme.primaryText)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(SettingsTheme.secondaryText)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(SettingsTheme.border.opacity(0.45))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(SettingsTheme.border, lineWidth: 1)
+                        )
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .frame(height: 52)
+        .onAppear { loadLists() }
+    }
+
+    private var selectedTitle: String {
+        if selectedListId.isEmpty { return "All Reminders" }
+        return lists.first { $0.id == selectedListId }?.title ?? "All Reminders"
+    }
+
+    private func loadLists() {
+        let status = EKEventStore.authorizationStatus(for: .reminder)
+        guard status == .fullAccess else { return }
+        let store = EKEventStore()
+        lists = store.calendars(for: .reminder).map { (id: $0.calendarIdentifier, title: $0.title) }
     }
 }
 

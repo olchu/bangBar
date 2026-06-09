@@ -6,6 +6,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case clock
     case moon
     case pomodoro
+    case reminders
     case mirror
 
     var id: String { rawValue }
@@ -20,6 +21,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Moon"
         case .pomodoro:
             return "Pomodoro"
+        case .reminders:
+            return "Reminders"
         case .mirror:
             return "Mirror"
         }
@@ -35,6 +38,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Moon phase and cycle"
         case .pomodoro:
             return "Focus timer and sessions"
+        case .reminders:
+            return "Today's tasks and overdue"
         case .mirror:
             return "Quick mirror access"
         }
@@ -50,6 +55,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "moon"
         case .pomodoro:
             return "stopwatch"
+        case .reminders:
+            return "bell.badge"
         case .mirror:
             return "rectangle.portrait"
         }
@@ -65,6 +72,8 @@ enum BangBarSettings {
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
         static let showPomodoroWidget = "showPomodoroWidget"
+        static let showRemindersWidget = "showRemindersWidget"
+        static let reminderListId = "reminderListId"
         static let widgetOrder = "widgetOrder"
     }
 
@@ -80,6 +89,7 @@ enum BangBarSettings {
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.showPomodoroWidget: true,
+            Key.showRemindersWidget: true,
             Key.widgetOrder: defaultWidgetOrderRaw
         ])
     }
@@ -123,6 +133,10 @@ enum BangBarSettings {
 
     static var showPomodoroWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showPomodoroWidget) as? Bool ?? true
+    }
+
+    static var showRemindersWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showRemindersWidget) as? Bool ?? true
     }
 }
 

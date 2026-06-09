@@ -170,7 +170,7 @@ struct MoonWidget: View {
         .frame(width: 87.3, height: 87.3)
         .clipShape(Circle())
         .offset(y: 3)
-        .shadow(color: .black.opacity(0.72), radius: 7, y: 2)
+        .shadow(color: .black.opacity(0.30), radius: 7, y: 2)
         .shadow(color: accentColor.opacity(0.16), radius: 14)
     }
 

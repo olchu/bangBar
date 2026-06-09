@@ -22,6 +22,7 @@ enum PanelLayout {
     static let clockWidgetWidth: CGFloat = 190
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
+    static let remindersWidgetWidth: CGFloat = 130
     static let calendarWidgetWidth: CGFloat = 140
     static let emptyWidgetWidth: CGFloat = 220
 
@@ -31,6 +32,7 @@ enum PanelLayout {
             showClock: BangBarSettings.showClockWidget,
             showMoon: BangBarSettings.showMoonWidget,
             showPomodoro: BangBarSettings.showPomodoroWidget,
+            showReminders: BangBarSettings.showRemindersWidget,
             showMirror: BangBarSettings.showMirrorWidget
         )
     }
@@ -41,6 +43,7 @@ enum PanelLayout {
             showClock: BangBarSettings.showClockWidget,
             showMoon: BangBarSettings.showMoonWidget,
             showPomodoro: BangBarSettings.showPomodoroWidget,
+            showReminders: BangBarSettings.showRemindersWidget,
             showMirror: BangBarSettings.showMirrorWidget
         )
     }
@@ -50,6 +53,7 @@ enum PanelLayout {
         showClock: Bool,
         showMoon: Bool,
         showPomodoro: Bool,
+        showReminders: Bool,
         showMirror: Bool
     ) -> [CGFloat] {
         var widths: [CGFloat] = []
@@ -58,6 +62,7 @@ enum PanelLayout {
         if showClock { widths.append(clockWidgetWidth) }
         if showMoon { widths.append(moonWidgetWidth) }
         if showPomodoro { widths.append(pomodoroWidgetWidth) }
+        if showReminders { widths.append(remindersWidgetWidth) }
         if showMirror { widths.append(mirrorWidgetWidth) }
 
         guard !widths.isEmpty else { return [emptyWidgetWidth] }
@@ -72,6 +77,7 @@ enum PanelLayout {
         showClock: Bool,
         showMoon: Bool,
         showPomodoro: Bool,
+        showReminders: Bool,
         showMirror: Bool
     ) -> CGFloat {
         let widths = expandedWidgetWidths(
@@ -79,6 +85,7 @@ enum PanelLayout {
             showClock: showClock,
             showMoon: showMoon,
             showPomodoro: showPomodoro,
+            showReminders: showReminders,
             showMirror: showMirror
         )
         let contentWidth = widths.reduce(0, +)
