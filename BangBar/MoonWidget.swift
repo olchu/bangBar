@@ -71,13 +71,13 @@ struct MoonWidget: View {
             HStack(spacing: 4) {
                 if showsDot {
                     Circle()
-                        .fill(Color.red)
+                        .fill(accentColor)
                         .frame(width: 4, height: 4)
                 }
 
                 Text(value)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.red.opacity(0.95))
+                    .foregroundStyle(accentColor.opacity(0.95))
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
             }
@@ -130,7 +130,7 @@ struct MoonWidget: View {
         VStack(alignment: .trailing, spacing: 2) {
             Text(value)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.red.opacity(0.95))
+                .foregroundStyle(accentColor.opacity(0.95))
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
 
