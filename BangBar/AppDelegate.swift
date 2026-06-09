@@ -141,13 +141,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openSettings() {
         if settingsWindow == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 440, height: 470),
-                styleMask: [.titled, .closable, .miniaturizable],
+                contentRect: NSRect(x: 0, y: 0, width: 1180, height: 700),
+                styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
             window.title = "Настройки BangBar"
-            window.contentViewController = NSHostingController(rootView: SettingsView())
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.backgroundColor = .black
+            window.isMovableByWindowBackground = true
+            window.minSize = NSSize(width: 960, height: 600)
+            let hostingController = NSHostingController(rootView: SettingsView())
+            hostingController.view.wantsLayer = true
+            hostingController.view.layer?.backgroundColor = NSColor.black.cgColor
+            window.contentViewController = hostingController
+            applyBlackTitlebarBackground(to: window)
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindow = window
@@ -159,5 +169,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quit() {
         NSApp.terminate(nil)
+    }
+
+    private func applyBlackTitlebarBackground(to window: NSWindow) {
+        guard let frameView = window.contentView?.superview else { return }
+
+        frameView.wantsLayer = true
+        frameView.layer?.backgroundColor = NSColor.black.cgColor
+        updateVisualEffectViews(in: frameView)
+    }
+
+    private func updateVisualEffectViews(in view: NSView) {
+        if let visualEffectView = view as? NSVisualEffectView {
+            visualEffectView.material = .windowBackground
+            visualEffectView.blendingMode = .withinWindow
+            visualEffectView.state = .inactive
+            visualEffectView.wantsLayer = true
+            visualEffectView.layer?.backgroundColor = NSColor.black.cgColor
+        }
+
+        for subview in view.subviews {
+            updateVisualEffectViews(in: subview)
+        }
     }
 }

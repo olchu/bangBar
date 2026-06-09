@@ -107,7 +107,7 @@ Album artwork should read visually as one continuous element between compact and
 - Widget sizes are fixed, not inferred from flexible SwiftUI content:
   - `NowPlayingWidget`: 300×110
   - `ClockWidget`: 190×110
-  - `MoonWidget`: 130×110, with a 90×90 moon image
+  - `MoonWidget`: 110×110, with an 87.3×87.3 moon image
   - `PomodoroWidget`: 110×110
   - `MirrorWidget`: 94×94
   - divider: 1×70
@@ -223,16 +223,22 @@ Album artwork should read visually as one continuous element between compact and
 
 **Display:**
 ```
-                 100%
+100%                 21D
+ILLUM.           TO FULL
        [MoonTexture]
-                 Jun 1
+PHASE              FULL
+Last             Jun 30
 ```
 - Moon image: `MoonTexture` asset clipped to a circle.
-- Moon cycle progress: thin red arc around the 90×90 moon image, filling from the previous full moon toward the next full moon date.
+- No moon-cycle progress arc is drawn.
 - Phase shadow: render a darkened full `MoonTexture` base, then render the bright texture above it through a calculated illumination mask. The mask area matches the calculated illumination percentage; everything outside it stays under shadow.
-- Phase name: current phase name
-- Visible percentage: rounded illuminated fraction
-- Full moon date: next calculated full moon date, never a past date
+- Moon disk is slightly smaller than the original 90×90 design and vertically positioned to balance the text overlay.
+- Shadow side uses a darker overlay than the default texture shadow.
+- Top-left: rounded illuminated fraction, shown as a percent without a leading dot.
+- Top-right: days until the next full moon, formatted as `XD`, labelled `TO FULL`.
+- Bottom-left: `PHASE` label with the current phase short name below it, title-cased, white, medium weight.
+- Bottom-right: `FULL` label with the next calculated full moon date below it, white, medium weight; date is never in the past.
+- Accent-colored moon values use `BangBarSettings.Key.accentColorHex`; non-accent values remain white.
 
 **Phases (8):** New → Waxing Crescent → First Quarter → Waxing Gibbous → Full → Waning Gibbous → Last Quarter → Waning Crescent
 
@@ -319,10 +325,20 @@ Today  Buy milk
 
 ## Settings Panel
 
-Implemented as a standard macOS settings window (`SettingsView`), opened from the app menu.
+Implemented as a custom dark macOS settings window (`SettingsView`), opened from the app menu or expanded-panel chrome button.
 
-**Launch section:**
-- Toggle: Open BangBar at login (via `SMAppService`)
+**Window chrome:**
+- Initial size: 1180×700, minimum size 960×600.
+- Uses a transparent/full-size titlebar so the Apple window controls sit over the black settings surface.
+- Titlebar separator/material backgrounds are removed or forced black from `AppDelegate`.
+- Window can be dragged by its background.
+
+**Sidebar tabs:**
+- `WIDGETS`
+- `PERMISSIONS`
+- `APPEARANCE`
+- `ABOUT`
+- Tabs are centered in the left sidebar and highlight with the current accent color.
 
 **Widgets section:**
 - Toggle: Music — show/hide `NowPlayingWidget`
@@ -330,15 +346,18 @@ Implemented as a standard macOS settings window (`SettingsView`), opened from th
 - Toggle: Moon — show/hide `MoonWidget`
 - Toggle: Pomodoro — show/hide `PomodoroWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
-- Color picker: Accent color — stored as hex string in `UserDefaults`, default `#FF383C`; Reset button disables itself when the current value equals the default
-- Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation
 
 **Permissions section:**
+- Toggle: Open BangBar at login (via `SMAppService`)
 - Camera: shows authorization status, requests access or opens System Settings
 - Calendar: shows authorization status, requests full access or opens System Settings
 - Automation: opens System Settings › Privacy › Automation (required for Spotify/Music AppleScript control)
 
-**Accent color** is read via `@AppStorage` in `ClockWidget` (day number) and `ArtworkPlaceholder` (glow + icon). The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
+**Appearance section:**
+- Color picker: Accent color — stored as hex string in `UserDefaults`, default `#FF383C`; Reset button disables itself when the current value equals the default.
+- Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation.
+
+**Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 
 ---
 
