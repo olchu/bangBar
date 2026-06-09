@@ -9,6 +9,7 @@ struct NowPlayingWidget: View {
     private var accentColor: Color { Color(hex: accentColorHex) }
 
     @State private var dragPosition: Double? = nil
+    @State private var barWidth: CGFloat = 0
 
     private var title: String {
         service.isAvailable ? service.info.title : "No player open"
@@ -70,21 +71,10 @@ struct NowPlayingWidget: View {
                                     .frame(width: geo.size.width * min(displayPos / service.info.duration, 1), height: 3)
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        let fraction = max(0, min(value.location.x / geo.size.width, 1))
-                                        dragPosition = fraction * service.info.duration
-                                    }
-                                    .onEnded { value in
-                                        let fraction = max(0, min(value.location.x / geo.size.width, 1))
-                                        service.seek(to: fraction * service.info.duration)
-                                        dragPosition = nil
-                                    }
-                            )
+                            .onAppear { barWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, w in barWidth = w }
                         }
-                        .frame(height: 16)
+                        .frame(height: 3)
 
                         HStack {
                             Text(formatTime(dragPosition ?? service.info.position))
@@ -94,6 +84,21 @@ struct NowPlayingWidget: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(.white.opacity(0.4))
                     }
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                guard barWidth > 0 else { return }
+                                let fraction = max(0, min(value.location.x / barWidth, 1))
+                                dragPosition = fraction * service.info.duration
+                            }
+                            .onEnded { value in
+                                guard barWidth > 0 else { return }
+                                let fraction = max(0, min(value.location.x / barWidth, 1))
+                                service.seek(to: fraction * service.info.duration)
+                                dragPosition = nil
+                            }
+                    )
                 }
 
                 HStack(spacing: 20) {
