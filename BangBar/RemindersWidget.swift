@@ -11,7 +11,7 @@ struct RemindersWidget: View {
     private let maxVisible = 4
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
             headerRow
                 .padding(.top, 5)
 
@@ -209,5 +209,26 @@ private struct ReminderRow: View {
             .buttonStyle(.plain)
         }
         .animation(.easeOut(duration: 0.15), value: completing)
+        .onHover { hovering in
+            if hovering { TooltipManager.shared.show(text: tooltipText) }
+            else { TooltipManager.shared.hide() }
+        }
+    }
+
+    private var tooltipText: String {
+        var lines = [item.title]
+        if let date = item.dueDate {
+            let cal = Calendar.current
+            let comps = cal.dateComponents([.hour, .minute], from: date)
+            let hasTime = comps.hour != 0 || comps.minute != 0
+            let f = DateFormatter()
+            f.dateStyle = .full
+            f.timeStyle = hasTime ? .short : .none
+            let prefix = item.isOverdue ? "Overdue · " : "Due: "
+            lines.append(prefix + f.string(from: date))
+        } else if item.isOverdue {
+            lines.append("Overdue · no date")
+        }
+        return lines.joined(separator: "\n")
     }
 }
