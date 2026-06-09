@@ -20,7 +20,7 @@ enum PanelLayout {
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
     static let clockWidgetWidth: CGFloat = 190
-    static let moonWidgetWidth: CGFloat = 100
+    static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
     static let calendarWidgetWidth: CGFloat = 140
     static let emptyWidgetWidth: CGFloat = 220

@@ -107,7 +107,7 @@ Album artwork should read visually as one continuous element between compact and
 - Widget sizes are fixed, not inferred from flexible SwiftUI content:
   - `NowPlayingWidget`: 300×110
   - `ClockWidget`: 190×110
-  - `MoonWidget`: 100×110, with a 90×90 moon image
+  - `MoonWidget`: 130×110, with a 90×90 moon image
   - `PomodoroWidget`: 110×110
   - `MirrorWidget`: 94×94
   - divider: 1×70

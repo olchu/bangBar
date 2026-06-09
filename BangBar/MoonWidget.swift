@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 
 struct MoonWidget: View {
+    private static let infoOverlayHorizontalOutset: CGFloat = 8
+    private static let infoOverlayVerticalOutset: CGFloat = 4
+
     let date: Date
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
 
@@ -15,29 +18,129 @@ struct MoonWidget: View {
 
     var body: some View {
         ZStack {
-            moonProgressArc
             moonDisk
-
-            cornerText("\(phase.illuminationPercent)%", alignment: .trailing)
-                .frame(width: 38, alignment: .trailing)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-
-            cornerText(phase.fullMoonDateText, alignment: .trailing)
-                .frame(width: 52, alignment: .trailing)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            moonInfoOverlay
         }
         .frame(width: PanelLayout.moonWidgetWidth, height: PanelLayout.nowPlayingWidgetHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(phase.name), \(phase.illuminationPercent)% visible, next full moon \(phase.fullMoonDateText)")
     }
 
-    private func cornerText(_ text: String, alignment: TextAlignment) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white.opacity(0.62))
-            .multilineTextAlignment(alignment)
-            .lineLimit(1)
-            .minimumScaleFactor(0.62)
+    private var moonInfoOverlay: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                cornerMetric(
+                    label: "ILLUM.",
+                    value: "\(phase.illuminationPercent)%",
+                    alignment: .leading
+                )
+                .frame(width: 42, alignment: .leading)
+
+                Spacer(minLength: 0)
+
+                daysUntilFullMoonMetric(value: phase.daysUntilFullMoonText)
+                    .frame(width: 46, alignment: .trailing)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(alignment: .bottom, spacing: 8) {
+                phaseMetric(value: phase.shortName)
+                    .frame(width: 46, alignment: .leading)
+
+                Spacer(minLength: 0)
+
+                fullMoonMetric(value: phase.fullMoonDateText)
+                .frame(width: 46, alignment: .trailing)
+            }
+        }
+        .frame(
+            width: PanelLayout.moonWidgetWidth + Self.infoOverlayHorizontalOutset * 2,
+            height: PanelLayout.nowPlayingWidgetHeight + Self.infoOverlayVerticalOutset * 2
+        )
+        .allowsHitTesting(false)
+    }
+
+    private func cornerMetric(
+        label: String,
+        value: String,
+        alignment: HorizontalAlignment,
+        showsDot: Bool = false
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            HStack(spacing: 4) {
+                if showsDot {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 4, height: 4)
+                }
+
+                Text(value)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.red.opacity(0.95))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+            }
+            .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+
+            Text(label)
+                .font(.system(size: 5.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.42))
+                .tracking(1.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
+    }
+
+    private func phaseMetric(value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("PHASE")
+                .font(.system(size: 5.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.42))
+                .tracking(1.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+
+            Text(value)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+        }
+    }
+
+    private func fullMoonMetric(value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text("FULL")
+                .font(.system(size: 5.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.42))
+                .tracking(1.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+
+            Text(value)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+        }
+    }
+
+    private func daysUntilFullMoonMetric(value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(value)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.red.opacity(0.95))
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+
+            Text("TO FULL")
+                .font(.system(size: 5.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.42))
+                .tracking(1.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
     }
 
     private var moonDisk: some View {
@@ -45,14 +148,14 @@ struct MoonWidget: View {
             Image("MoonTexture")
                 .resizable()
                 .scaledToFill()
-                .frame(width: 90, height: 90)
+                .frame(width: 87.3, height: 87.3)
                 .saturation(0.48)
                 .brightness(-0.56)
 
             Image("MoonTexture")
                 .resizable()
                 .scaledToFill()
-                .frame(width: 90, height: 90)
+                .frame(width: 87.3, height: 87.3)
                 .saturation(0.42)
                 .contrast(0.86)
                 .brightness(-0.12)
@@ -64,47 +167,13 @@ struct MoonWidget: View {
                     )
                 }
         }
-        .frame(width: 90, height: 90)
+        .frame(width: 87.3, height: 87.3)
         .clipShape(Circle())
-        .shadow(color: .black.opacity(0.62), radius: 7, y: 2)
+        .offset(y: 3)
+        .shadow(color: .black.opacity(0.72), radius: 7, y: 2)
         .shadow(color: accentColor.opacity(0.16), radius: 14)
     }
 
-    private var moonProgressArc: some View {
-        let progress = CGFloat(phase.fullMoonCycleProgress)
-
-        return ZStack {
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    Color.red.opacity(0.24),
-                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                )
-                .frame(width: 96, height: 96)
-                .rotationEffect(.degrees(-90))
-                .blur(radius: 6)
-
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    Color.red.opacity(0.2),
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-                .frame(width: 96, height: 96)
-                .rotationEffect(.degrees(-90))
-                .blur(radius: 3)
-
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    Color.red.opacity(0.52),
-                    style: StrokeStyle(lineWidth: 0.65, lineCap: .round)
-                )
-                .frame(width: 96, height: 96)
-                .rotationEffect(.degrees(-90))
-        }
-        .allowsHitTesting(false)
-    }
 }
 
 struct MoonPhase {
@@ -141,17 +210,47 @@ struct MoonPhase {
         }
     }
 
+    var shortName: String {
+        switch phase {
+        case .new:
+            return "New"
+        case .waxingCrescent:
+            return "Waxing"
+        case .firstQuarter:
+            return "First"
+        case .waxingGibbous:
+            return "Waxing"
+        case .full:
+            return "Full"
+        case .waningGibbous:
+            return "Waning"
+        case .lastQuarter:
+            return "Last"
+        case .waningCrescent:
+            return "Waning"
+        }
+    }
+
     var illuminationPercent: Int {
         Int((illuminationFraction * 100).rounded())
     }
 
     var fullMoonDateText: String {
-        Self.fullMoonDateFormatter.string(from: Self.nextFullMoon(after: date))
+        Self.fullMoonDateFormatter.string(from: nextFullMoonDate)
+    }
+
+    var daysUntilFullMoonText: String {
+        let days = max(0, Int(ceil(nextFullMoonDate.timeIntervalSince(date) / Self.secondsPerDay)))
+        return "\(days)D"
+    }
+
+    var currentDateText: String {
+        Self.fullMoonDateFormatter.string(from: date)
     }
 
     var fullMoonCycleProgress: Double {
         let previousFullMoon = Self.previousFullMoon(before: date)
-        let nextFullMoon = Self.nextFullMoon(after: date)
+        let nextFullMoon = nextFullMoonDate
         let cycleLength = nextFullMoon.timeIntervalSince(previousFullMoon)
 
         guard cycleLength > 0 else { return 0 }
@@ -171,6 +270,10 @@ struct MoonPhase {
     private var phase: Phase {
         let index = Int((elongation / 45).rounded()) % Phase.allCases.count
         return Phase.allCases[index]
+    }
+
+    private var nextFullMoonDate: Date {
+        Self.nextFullMoon(after: date)
     }
 
     private enum Phase: CaseIterable {
