@@ -148,6 +148,8 @@ final class NowPlayingService: ObservableObject {
     private var pollTimer: Timer?
     private var tickTimer: Timer?
     private var activePlayer: Player?
+    private var artworkCacheKey: String = ""
+    private var artworkCacheImage: NSImage?
 
     init() {
         poll()
@@ -175,7 +177,7 @@ final class NowPlayingService: ObservableObject {
                 let repeatMode = parts.count > 7 ? RepeatMode(rawValue: parts[7]) ?? .off : .off
                 guard !title.isEmpty else { continue }
 
-                let artwork = self?.loadArtwork(hint: hint, player: player)
+                let artwork = self?.loadArtwork(hint: hint, player: player, title: title, artist: artist)
                 DispatchQueue.main.async {
                     self?.activePlayer = player
                     self?.isAvailable  = true
@@ -197,16 +199,41 @@ final class NowPlayingService: ObservableObject {
         }
     }
 
-    private func loadArtwork(hint: String, player: Player) -> NSImage? {
-        guard !hint.isEmpty else { return nil }
+    private func loadArtwork(hint: String, player: Player, title: String, artist: String) -> NSImage? {
         switch player {
         case .spotify:
-            guard let url = URL(string: hint),
+            guard !hint.isEmpty,
+                  let url = URL(string: hint),
                   let data = try? Data(contentsOf: url) else { return nil }
             return NSImage(data: data)
         case .music:
-            return NSImage(contentsOfFile: hint)
+            if !hint.isEmpty, let img = NSImage(contentsOfFile: hint) {
+                return img
+            }
+            let cacheKey = "\(title)|\(artist)"
+            if cacheKey == artworkCacheKey, let cached = artworkCacheImage {
+                return cached
+            }
+            let img = fetchITunesArtwork(title: title, artist: artist)
+            artworkCacheKey = cacheKey
+            artworkCacheImage = img
+            return img
         }
+    }
+
+    private func fetchITunesArtwork(title: String, artist: String) -> NSImage? {
+        let query = "\(title) \(artist)"
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        guard let url = URL(string: "https://itunes.apple.com/search?term=\(query)&entity=song&limit=1&media=music"),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let results = json["results"] as? [[String: Any]],
+              let first = results.first,
+              let artworkUrl = first["artworkUrl100"] as? String else { return nil }
+        let hiRes = artworkUrl.replacingOccurrences(of: "100x100bb", with: "300x300bb")
+        guard let imgUrl = URL(string: hiRes),
+              let imgData = try? Data(contentsOf: imgUrl) else { return nil }
+        return NSImage(data: imgData)
     }
 
     private func runScript(_ source: String) -> String? {
