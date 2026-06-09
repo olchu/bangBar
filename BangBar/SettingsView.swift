@@ -3,6 +3,7 @@ import AppKit
 import EventKit
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
@@ -12,7 +13,10 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
+    @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @State private var selectedSettingsTab = SettingsTab.widgets
+    @State private var widgetOrder = BangBarWidget.allCases
+    @State private var draggedWidget: BangBarWidget?
 
     private var accentColorBinding: Binding<Color> {
         Binding(
@@ -45,6 +49,12 @@ struct SettingsView: View {
         .containerBackground(SettingsTheme.background, for: .window)
         .frame(width: 1180, height: 700)
         .ignoresSafeArea(.container, edges: .top)
+        .onAppear {
+            loadWidgetOrder()
+        }
+        .onChange(of: widgetOrderRaw) { _, _ in
+            loadWidgetOrder()
+        }
     }
 
     private var titleBar: some View {
@@ -66,11 +76,8 @@ struct SettingsView: View {
         switch selectedSettingsTab {
         case .widgets:
             singleColumnContent(title: "WIDGETS", accentColor: accentColor) {
-                VStack(alignment: .leading, spacing: 14) {
-                    SettingsSectionLabel("WIDGETS")
-                    widgetsCard(accentColor: accentColor)
-                }
-                .frame(width: 520)
+                widgetsSection(accentColor: accentColor)
+                    .frame(width: 820)
             }
         case .permissions:
             singleColumnContent(title: "PERMISSIONS", accentColor: accentColor) {
@@ -141,19 +148,117 @@ struct SettingsView: View {
         }
     }
 
+    private func widgetsSection(accentColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Enable, disable and reorder widgets.")
+                    .font(SettingsTheme.captionFont)
+                    .foregroundStyle(SettingsTheme.secondaryText)
+
+                Text("Drag and drop to change their position in the bar.")
+                    .font(SettingsTheme.captionFont)
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
+
+            enabledWidgetsTray(accentColor: accentColor)
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("AVAILABLE WIDGETS")
+                widgetsCard(accentColor: accentColor)
+            }
+        }
+    }
+
+    private func enabledWidgetsTray(accentColor: Color) -> some View {
+        let enabledWidgets = widgetOrder.filter(isWidgetEnabled)
+
+        return SettingsCard {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(enabledWidgets) { widget in
+                        WidgetChip(widget: widget)
+                            .onDrag {
+                                draggedWidget = widget
+                                return NSItemProvider(object: widget.rawValue as NSString)
+                            } preview: {
+                                WidgetChip(widget: widget, isDragPreview: true)
+                            }
+                            .onDrop(
+                                of: [UTType.text],
+                                delegate: WidgetOrderDropDelegate(
+                                    targetWidget: widget,
+                                    widgets: $widgetOrder,
+                                    draggedWidget: $draggedWidget,
+                                    persist: persistWidgetOrder
+                                )
+                            )
+                    }
+
+                }
+                .padding(.vertical, 18)
+            }
+        }
+    }
+
     private func widgetsCard(accentColor: Color) -> some View {
         SettingsCard {
             VStack(spacing: 0) {
-                SettingsToggleRow(title: "Music", isOn: $showNowPlayingWidget, accentColor: accentColor)
-                SettingsDivider()
-                SettingsToggleRow(title: "Clock & Calendar", isOn: $showClockWidget, accentColor: accentColor)
-                SettingsDivider()
-                SettingsToggleRow(title: "Moon", isOn: $showMoonWidget, accentColor: accentColor)
-                SettingsDivider()
-                SettingsToggleRow(title: "Pomodoro", isOn: $showPomodoroWidget, accentColor: accentColor)
-                SettingsDivider()
-                SettingsToggleRow(title: "Mirror", isOn: $showMirrorWidget, accentColor: accentColor)
+                ForEach(Array(widgetOrder.enumerated()), id: \.element) { index, widget in
+                    WidgetSettingsRow(
+                        widget: widget,
+                        isEnabled: toggleBinding(for: widget),
+                        accentColor: accentColor
+                    )
+                    .onDrag {
+                        draggedWidget = widget
+                        return NSItemProvider(object: widget.rawValue as NSString)
+                    }
+                    .onDrop(
+                        of: [UTType.text],
+                        delegate: WidgetOrderDropDelegate(
+                            targetWidget: widget,
+                            widgets: $widgetOrder,
+                            draggedWidget: $draggedWidget,
+                            persist: persistWidgetOrder
+                        )
+                    )
+
+                    if index < widgetOrder.count - 1 {
+                        SettingsDivider()
+                    }
+                }
             }
+        }
+    }
+
+    private func toggleBinding(for widget: BangBarWidget) -> Binding<Bool> {
+        switch widget {
+        case .nowPlaying:
+            return $showNowPlayingWidget
+        case .clock:
+            return $showClockWidget
+        case .moon:
+            return $showMoonWidget
+        case .pomodoro:
+            return $showPomodoroWidget
+        case .mirror:
+            return $showMirrorWidget
+        }
+    }
+
+    private func isWidgetEnabled(_ widget: BangBarWidget) -> Bool {
+        toggleBinding(for: widget).wrappedValue
+    }
+
+    private func loadWidgetOrder() {
+        widgetOrder = BangBarSettings.widgetOrder(from: widgetOrderRaw)
+        persistWidgetOrder()
+    }
+
+    private func persistWidgetOrder() {
+        let normalizedOrder = BangBarSettings.widgetOrderRaw(from: widgetOrder)
+        if widgetOrderRaw != normalizedOrder {
+            widgetOrderRaw = normalizedOrder
         }
     }
 
@@ -596,6 +701,138 @@ private struct SettingsIllustrationPlaceholder: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.leading, 12)
         .padding(.bottom, 26)
+    }
+}
+
+private struct WidgetChip: View {
+    let widget: BangBarWidget
+    var isDragPreview = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            dragHandle
+
+            Image(systemName: widget.systemImage)
+                .font(.system(size: 22, weight: .medium))
+                .frame(width: 24)
+
+            Text(widget.title)
+                .font(SettingsTheme.rowFont)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(SettingsTheme.primaryText)
+        .padding(.horizontal, 14)
+        .frame(width: 132, height: 54)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isDragPreview ? SettingsTheme.background : SettingsTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(SettingsTheme.border, lineWidth: 1)
+                )
+        )
+    }
+
+    private var dragHandle: some View {
+        VStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(SettingsTheme.secondaryText.opacity(0.58))
+                        .frame(width: 2.5, height: 2.5)
+                    Circle()
+                        .fill(SettingsTheme.secondaryText.opacity(0.58))
+                        .frame(width: 2.5, height: 2.5)
+                }
+            }
+        }
+    }
+}
+
+private struct WidgetSettingsRow: View {
+    let widget: BangBarWidget
+    @Binding var isEnabled: Bool
+    let accentColor: Color
+
+    var body: some View {
+        HStack(spacing: 18) {
+            Image(systemName: widget.systemImage)
+                .font(.system(size: 25, weight: .medium))
+                .foregroundStyle(SettingsTheme.primaryText)
+                .frame(width: 36)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(widget.title)
+                    .font(SettingsTheme.rowFont)
+                    .foregroundStyle(SettingsTheme.primaryText)
+
+                Text(widget.subtitle)
+                    .font(SettingsTheme.captionFont)
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: $isEnabled)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(accentColor)
+
+            DragHandle()
+        }
+        .frame(height: 72)
+    }
+}
+
+private struct DragHandle: View {
+    var body: some View {
+        VStack(spacing: 5) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(SettingsTheme.secondaryText.opacity(0.72))
+                        .frame(width: 3, height: 3)
+                    Circle()
+                        .fill(SettingsTheme.secondaryText.opacity(0.72))
+                        .frame(width: 3, height: 3)
+                }
+            }
+        }
+        .frame(width: 32)
+    }
+}
+
+private struct WidgetOrderDropDelegate: DropDelegate {
+    let targetWidget: BangBarWidget
+    @Binding var widgets: [BangBarWidget]
+    @Binding var draggedWidget: BangBarWidget?
+    let persist: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard
+            let draggedWidget,
+            draggedWidget != targetWidget,
+            let fromIndex = widgets.firstIndex(of: draggedWidget),
+            let toIndex = widgets.firstIndex(of: targetWidget)
+        else {
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.16)) {
+            widgets.move(
+                fromOffsets: IndexSet(integer: fromIndex),
+                toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex
+            )
+        }
+        persist()
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        persist()
+        draggedWidget = nil
+        return true
     }
 }
 

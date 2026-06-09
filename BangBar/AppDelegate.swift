@@ -139,9 +139,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
+        var isNewSettingsWindow = false
+
         if settingsWindow == nil {
+            let initialContentSize = NSSize(width: 1180, height: 700)
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1180, height: 700),
+                contentRect: centeredSettingsContentRect(size: initialContentSize),
                 styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -151,7 +154,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.titlebarAppearsTransparent = true
             window.titlebarSeparatorStyle = .none
             window.backgroundColor = .black
-            window.isMovableByWindowBackground = true
+            window.isMovableByWindowBackground = false
+            window.animationBehavior = .none
             window.minSize = NSSize(width: 960, height: 600)
             let hostingController = NSHostingController(rootView: SettingsView())
             hostingController.view.wantsLayer = true
@@ -159,12 +163,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.contentViewController = hostingController
             applyBlackTitlebarBackground(to: window)
             window.isReleasedWhenClosed = false
-            window.center()
+            window.alphaValue = 0
+            centerSettingsWindow(window)
+            isNewSettingsWindow = true
             settingsWindow = window
         }
 
-        settingsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if let settingsWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            centerSettingsWindow(settingsWindow)
+            settingsWindow.makeKeyAndOrderFront(nil)
+
+            if isNewSettingsWindow {
+                DispatchQueue.main.async { [weak self, weak settingsWindow] in
+                    guard let settingsWindow else { return }
+                    self?.centerSettingsWindow(settingsWindow)
+                    settingsWindow.alphaValue = 1
+                }
+            } else {
+                settingsWindow.alphaValue = 1
+            }
+        }
     }
 
     @objc func quit() {
@@ -177,6 +196,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         frameView.wantsLayer = true
         frameView.layer?.backgroundColor = NSColor.black.cgColor
         updateVisualEffectViews(in: frameView)
+    }
+
+    private func centerSettingsWindow(_ window: NSWindow) {
+        guard let screen = settingsWindowScreen(for: window) else {
+            window.center()
+            return
+        }
+
+        let screenFrame = screen.visibleFrame
+        var frame = window.frame
+        frame.origin.x = screenFrame.midX - frame.width / 2
+        frame.origin.y = screenFrame.midY - frame.height / 2
+        frame.origin.x = min(max(frame.origin.x, screenFrame.minX), screenFrame.maxX - frame.width)
+        frame.origin.y = min(max(frame.origin.y, screenFrame.minY), screenFrame.maxY - frame.height)
+        window.setFrame(frame, display: false)
+    }
+
+    private func centeredSettingsContentRect(size: NSSize) -> NSRect {
+        guard let screen = settingsTargetScreen() else {
+            return NSRect(origin: .zero, size: size)
+        }
+
+        let screenFrame = screen.visibleFrame
+        let origin = NSPoint(
+            x: screenFrame.midX - size.width / 2,
+            y: screenFrame.midY - size.height / 2
+        )
+        return NSRect(origin: origin, size: size)
+    }
+
+    private func settingsWindowScreen(for window: NSWindow) -> NSScreen? {
+        settingsTargetScreen() ?? window.screen ?? NSScreen.main
+    }
+
+    private func settingsTargetScreen() -> NSScreen? {
+        statusItem?.button?.window?.screen ?? primarySettingsScreen()
+    }
+
+    private func primarySettingsScreen() -> NSScreen? {
+        let mainDisplayID = CGMainDisplayID()
+        return NSScreen.screens.first { screen in
+            guard
+                let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            else {
+                return false
+            }
+
+            return screenNumber.uint32Value == mainDisplayID
+        }
     }
 
     private func updateVisualEffectViews(in view: NSView) {

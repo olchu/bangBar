@@ -12,6 +12,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
+    @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @StateObject private var mirror = MirrorCameraService()
     @StateObject private var calendarEvents = CalendarEventService()
     @State private var currentTime = Date()
@@ -179,35 +180,24 @@ struct PanelContentView: View {
         }
     }
 
-    private var activeWidgets: [PanelWidget] {
-        var widgets: [PanelWidget] = []
-
-        if showNowPlayingWidget {
-            widgets.append(.nowPlaying)
-        }
-        if showClockWidget {
-            widgets.append(.clock)
-        }
-        if showMoonWidget {
-            widgets.append(.moon)
-        }
-        if showPomodoroWidget {
-            widgets.append(.pomodoro)
-        }
-        if showMirrorWidget {
-            widgets.append(.mirror)
-        }
-
-        return widgets
+    private var activeWidgets: [BangBarWidget] {
+        BangBarSettings.widgetOrder(from: widgetOrderRaw).filter(isWidgetVisible)
     }
-}
 
-private enum PanelWidget: Hashable {
-    case nowPlaying
-    case clock
-    case moon
-    case pomodoro
-    case mirror
+    private func isWidgetVisible(_ widget: BangBarWidget) -> Bool {
+        switch widget {
+        case .nowPlaying:
+            return showNowPlayingWidget
+        case .clock:
+            return showClockWidget
+        case .moon:
+            return showMoonWidget
+        case .pomodoro:
+            return showPomodoroWidget
+        case .mirror:
+            return showMirrorWidget
+        }
+    }
 }
 
 private struct PanelChromeControls: View {

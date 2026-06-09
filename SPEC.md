@@ -329,9 +329,10 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 
 **Window chrome:**
 - Initial size: 1180×700, minimum size 960×600.
+- Opening the settings window, including first creation, uses an initially centered content rect and keeps the new window transparent until its final centered frame is applied, so it does not visibly jump into place.
 - Uses a transparent/full-size titlebar so the Apple window controls sit over the black settings surface.
 - Titlebar separator/material backgrounds are removed or forced black from `AppDelegate`.
-- Window can be dragged by its background.
+- Window background dragging is disabled so it does not conflict with widget drag/drop inside settings.
 
 **Sidebar tabs:**
 - `WIDGETS`
@@ -341,6 +342,12 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Tabs are centered in the left sidebar and highlight with the current accent color.
 
 **Widgets section:**
+- Shows helper text explaining that widgets can be enabled, disabled, and reordered.
+- Top tray shows currently enabled widgets in saved order; top tray chips do not show toggles.
+- Top tray uses native SwiftUI `onDrag`/`onDrop` reordering for enabled widgets, with a solid black drag preview for each chip.
+- Available widgets list shows every widget with icon, title, description, toggle, and drag handle.
+- Drag/drop on either the top tray or available list updates `BangBarSettings.Key.widgetOrder`.
+- `PanelContentView` reads the saved widget order and renders enabled widgets in that order.
 - Toggle: Music — show/hide `NowPlayingWidget`
 - Toggle: Clock & Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`

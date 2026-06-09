@@ -1,6 +1,61 @@
 import Foundation
 import SwiftUI
 
+enum BangBarWidget: String, CaseIterable, Identifiable {
+    case nowPlaying
+    case clock
+    case moon
+    case pomodoro
+    case mirror
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .nowPlaying:
+            return "Music"
+        case .clock:
+            return "Clock & Calendar"
+        case .moon:
+            return "Moon"
+        case .pomodoro:
+            return "Pomodoro"
+        case .mirror:
+            return "Mirror"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .nowPlaying:
+            return "Control your music playback"
+        case .clock:
+            return "Time, date and upcoming events"
+        case .moon:
+            return "Moon phase and cycle"
+        case .pomodoro:
+            return "Focus timer and sessions"
+        case .mirror:
+            return "Quick mirror access"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .nowPlaying:
+            return "music.note"
+        case .clock:
+            return "calendar"
+        case .moon:
+            return "moon"
+        case .pomodoro:
+            return "stopwatch"
+        case .mirror:
+            return "rectangle.portrait"
+        }
+    }
+}
+
 enum BangBarSettings {
     enum Key {
         static let showNowPlayingWidget = "showNowPlayingWidget"
@@ -10,9 +65,11 @@ enum BangBarSettings {
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
         static let showPomodoroWidget = "showPomodoroWidget"
+        static let widgetOrder = "widgetOrder"
     }
 
     static let defaultAccentColorHex = "#FF383C"
+    static let defaultWidgetOrderRaw = widgetOrderRaw(from: BangBarWidget.allCases)
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -22,8 +79,30 @@ enum BangBarSettings {
             Key.showMirrorWidget: true,
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
-            Key.showPomodoroWidget: true
+            Key.showPomodoroWidget: true,
+            Key.widgetOrder: defaultWidgetOrderRaw
         ])
+    }
+
+    static func widgetOrder(from rawValue: String) -> [BangBarWidget] {
+        let decoded = rawValue
+            .split(separator: ",")
+            .compactMap { BangBarWidget(rawValue: String($0)) }
+
+        var ordered: [BangBarWidget] = []
+        for widget in decoded where !ordered.contains(widget) {
+            ordered.append(widget)
+        }
+
+        for widget in BangBarWidget.allCases where !ordered.contains(widget) {
+            ordered.append(widget)
+        }
+
+        return ordered
+    }
+
+    static func widgetOrderRaw(from widgets: [BangBarWidget]) -> String {
+        widgets.map(\.rawValue).joined(separator: ",")
     }
 
     static var showNowPlayingWidget: Bool {
