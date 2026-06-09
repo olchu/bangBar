@@ -85,9 +85,9 @@ private enum Player: String, CaseIterable {
                         set s to "0"
                     end if
                     set r to song repeat as string
-                    set tmpPath to "/tmp/bangbar_artwork.jpg"
+                    set tmpPath to "/tmp/bangbar_artwork.png"
                     try
-                        set imgData to raw data of artwork 1 of current track
+                        set imgData to data of artwork 1 of current track
                         set f to open for access POSIX file tmpPath with write permission
                         set eof of f to 0
                         write imgData to f
