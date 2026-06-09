@@ -5,6 +5,11 @@ struct NowPlayingWidget: View {
     @ObservedObject var service: NowPlayingService
     let hideArtwork: Bool
 
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+    private var accentColor: Color { Color(hex: accentColorHex) }
+
+    @State private var dragPosition: Double? = nil
+
     private var title: String {
         service.isAvailable ? service.info.title : "No player open"
     }
@@ -55,19 +60,34 @@ struct NowPlayingWidget: View {
                 if service.info.duration > 0 {
                     VStack(spacing: 3) {
                         GeometryReader { geo in
+                            let displayPos = dragPosition ?? service.info.position
                             ZStack(alignment: .leading) {
                                 Capsule()
                                     .fill(Color.white.opacity(0.15))
-                                    .frame(height: 3)
+                                    .frame(width: geo.size.width, height: 3)
                                 Capsule()
-                                    .fill(Color.white.opacity(0.8))
-                                    .frame(width: geo.size.width * min(service.info.position / service.info.duration, 1), height: 3)
+                                    .fill(accentColor)
+                                    .frame(width: geo.size.width * min(displayPos / service.info.duration, 1), height: 3)
                             }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { value in
+                                        let fraction = max(0, min(value.location.x / geo.size.width, 1))
+                                        dragPosition = fraction * service.info.duration
+                                    }
+                                    .onEnded { value in
+                                        let fraction = max(0, min(value.location.x / geo.size.width, 1))
+                                        service.seek(to: fraction * service.info.duration)
+                                        dragPosition = nil
+                                    }
+                            )
                         }
-                        .frame(height: 3)
+                        .frame(height: 16)
 
                         HStack {
-                            Text(formatTime(service.info.position))
+                            Text(formatTime(dragPosition ?? service.info.position))
                             Spacer()
                             Text(formatTime(service.info.duration))
                         }

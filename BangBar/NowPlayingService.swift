@@ -229,6 +229,20 @@ final class NowPlayingService: ObservableObject {
     func toggleShuffle()    { sendCommand(activePlayer?.toggleShuffleScript) }
     func cycleRepeat()      { sendCommand(activePlayer?.cycleRepeatScript) }
 
+    func seek(to position: Double) {
+        guard let player = activePlayer else { return }
+        let clamped = max(0, min(position, info.duration))
+        info.position = clamped
+        let script: String
+        switch player {
+        case .spotify:
+            script = "tell application \"Spotify\" to set player position to \(Int(clamped))"
+        case .music:
+            script = "tell application \"Music\" to set player position to \(clamped)"
+        }
+        sendCommand(script)
+    }
+
     func openPlayer() {
         guard let player = activePlayer,
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: player.bundleId) else { return }
