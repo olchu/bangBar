@@ -150,7 +150,7 @@ struct MoonWidget: View {
                 .scaledToFill()
                 .frame(width: 87.3, height: 87.3)
                 .saturation(0.48)
-                .brightness(-0.56)
+                .brightness(-0.65)
 
             Image("MoonTexture")
                 .resizable()
