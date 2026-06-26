@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 
 struct MoonWidget: View {
-    private static let infoOverlayHorizontalOutset: CGFloat = 8
     private static let infoOverlayVerticalOutset: CGFloat = 4
 
     let date: Date
@@ -55,7 +54,7 @@ struct MoonWidget: View {
             }
         }
         .frame(
-            width: PanelLayout.moonWidgetWidth + Self.infoOverlayHorizontalOutset * 2,
+            width: PanelLayout.moonWidgetWidth,
             height: PanelLayout.nowPlayingWidgetHeight + Self.infoOverlayVerticalOutset * 2
         )
         .allowsHitTesting(false)
