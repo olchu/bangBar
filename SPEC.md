@@ -210,7 +210,8 @@ Album artwork should read visually as one continuous element between compact and
 2. Settings entry points are implemented through the app menu and expanded-panel chrome button.
 3. Add `MoonWidget` next as a local, no-permission widget.
 4. Consider adding `RemindersWidget` after the Moon widget.
-5. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+5. Fix task hover tooltip positioning: when hovering a task/reminder row, the tooltip must appear near the hovered row inside or immediately adjacent to the panel/widget, not far away on the desktop. Audit coordinate-space conversion between SwiftUI/AppKit/window/screen coordinates and clamp the tooltip to the panel bounds when possible.
+6. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -341,6 +342,14 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - `ABOUT`
 - Tabs are centered in the left sidebar and highlight with the current accent color.
 
+**About section:**
+- Displays the app icon, app name, and current version (`CFBundleShortVersionString`).
+- Contains a "Check for Updates" button that triggers `UpdateService.checkForUpdates()`.
+- Shows update status text below the button: `Up to date`, `Version X.Y.Z available`, download progress percentage, or an error message.
+- When an update is available, a second "Update & Restart" button appears; tapping it calls `UpdateService.downloadAndInstall()`.
+- The check button is disabled while a check or download is in progress.
+- See **Auto-Update** section for the full implementation spec.
+
 **Widgets section:**
 - Shows helper text explaining that widgets can be enabled, disabled, and reordered.
 - Top tray shows currently enabled widgets in saved order; top tray chips do not show toggles.
@@ -365,6 +374,87 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation.
 
 **Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
+
+---
+
+## Auto-Update
+
+### Goal
+
+Allow the user to check for updates and install them without leaving the app, without Developer ID, and without any third-party framework.
+
+### Distribution
+
+- Releases are published on GitHub Releases, tagged with semver (`v1.2.3`).
+- Each release contains a single asset named `BangBar.zip` — a zip archive with `BangBar.app` at its root.
+- The GitHub repo owner and name are stored as compile-time constants in `UpdateService.swift`.
+
+### UpdateService
+
+`final class UpdateService: ObservableObject`, lives in `UpdateService.swift`.
+
+**State machine:**
+```
+idle → checking → upToDate
+                → available(latestVersion: String, downloadURL: URL)
+                → error(String)
+
+available → downloading(progress: Double)
+          → error(String)
+
+downloading → installing
+            → error(String)
+```
+
+**Published property:** `@Published var state: UpdateState`
+
+**Methods:**
+- `func checkForUpdates() async` — hits GitHub API, compares versions, transitions to `upToDate` or `available`.
+- `func downloadAndInstall() async` — downloads the zip, unzips, writes the updater script, launches it, terminates the app.
+
+### Version Check
+
+- GET `https://api.github.com/repos/<owner>/<repo>/releases/latest` using `URLSession.shared`.
+- Parse `tag_name` (strip leading `v`) and compare against `Bundle.main.infoDictionary["CFBundleShortVersionString"]` using semver component comparison (`Int` comparison per dot-segment, not string lexicographic).
+- Store `browser_download_url` of the asset named `BangBar.zip` for later download.
+- No GitHub auth token — public repo API only.
+
+### Download
+
+- `URLSession.shared.downloadTask(with:delegate:)` with a delegate that reports `fractionCompleted` to update `state` to `.downloading(progress)` on the main queue.
+- Save the downloaded zip to `FileManager.default.temporaryDirectory`.
+
+### Install
+
+1. Unzip via `Process`: `unzip -o <zip_path> -d <temp_dir>/BangBar_update/`
+2. Determine install destination: `Bundle.main.bundleURL` (replaces the running copy in-place).
+3. Write a shell script to `/tmp/bangbar_updater.sh`:
+   ```bash
+   #!/bin/bash
+   sleep 1.5
+   cp -R "<temp_dir>/BangBar_update/BangBar.app" "<install_destination>"
+   open "<install_destination>"
+   rm -rf "<temp_dir>/BangBar_update" /tmp/bangbar_updater.sh
+   ```
+4. `chmod +x /tmp/bangbar_updater.sh`
+5. Launch the script via `Process` with `launchPath = "/bin/bash"`, `arguments = ["/tmp/bangbar_updater.sh"]`, no pipe — fully detached.
+6. Call `NSApp.terminate(nil)`.
+
+The app quits; the script runs in the background, waits 1.5 s for the process to exit, copies the new app over itself, and reopens it.
+
+### Error Handling
+
+- Network failure or non-200 response → `.error("Could not reach update server")`
+- Zip not found in release assets → `.error("Update package not found")`
+- Unzip failure (non-zero exit) → `.error("Failed to unpack update")`
+- All errors are displayed as status text in the ABOUT tab; no alerts.
+
+### Constraints
+
+- No Sparkle, no third-party dependencies.
+- No sandbox, no hardened runtime — direct `cp -R` works without privilege escalation.
+- No background polling — update check is user-initiated only (button in ABOUT tab).
+- No delta updates — always downloads the full zip.
 
 ---
 

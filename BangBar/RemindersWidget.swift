@@ -89,6 +89,7 @@ struct RemindersWidget: View {
                     .foregroundStyle(.white.opacity(0.28))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var emptyState: some View {
@@ -209,10 +210,12 @@ private struct ReminderRow: View {
             .buttonStyle(.plain)
         }
         .animation(.easeOut(duration: 0.15), value: completing)
-        .onHover { hovering in
-            if hovering { TooltipManager.shared.show(text: tooltipText) }
-            else { TooltipManager.shared.hide() }
-        }
+        .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
+        .contentShape(Rectangle())
+        .overlay(
+            ReminderTooltipTrackingView(text: tooltipText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        )
     }
 
     private var tooltipText: String {
@@ -230,5 +233,69 @@ private struct ReminderRow: View {
             lines.append("Overdue · no date")
         }
         return lines.joined(separator: "\n")
+    }
+}
+
+private struct ReminderTooltipTrackingView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> ReminderTooltipTrackingNSView {
+        let view = ReminderTooltipTrackingNSView(frame: .zero)
+        view.text = text
+        return view
+    }
+
+    func updateNSView(_ nsView: ReminderTooltipTrackingNSView, context: Context) {
+        nsView.text = text
+    }
+}
+
+private final class ReminderTooltipTrackingNSView: NSView {
+    var text = ""
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        showTooltip(for: event)
+        super.mouseEntered(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        TooltipManager.shared.hide()
+        super.mouseExited(with: event)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            TooltipManager.shared.hide()
+        }
+    }
+
+    private func showTooltip(for event: NSEvent) {
+        guard let window else { return }
+        let cursorRect = NSRect(origin: event.locationInWindow, size: .zero)
+        let cursorPoint = window.convertToScreen(cursorRect).origin
+        TooltipManager.shared.show(text: text, near: cursorPoint, offset: CGSize(width: 14, height: 10))
     }
 }

@@ -4,24 +4,35 @@ import SwiftUI
 final class TooltipManager {
     static let shared = TooltipManager()
     private var panel: NSPanel?
+    private var hostingView: NSHostingView<TooltipContent>?
+    private var currentText: String?
 
     private init() {}
 
-    func show(text: String) {
-        hide()
+    func show(text: String, nearCursorOffset offset: CGSize = CGSize(width: 14, height: 10)) {
+        show(text: text, near: NSEvent.mouseLocation, offset: offset)
+    }
 
-        let hostingView = NSHostingView(rootView: TooltipContent(text: text))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 240, height: 200)
+    func show(text: String, near cursorPoint: NSPoint, offset: CGSize = CGSize(width: 14, height: 10)) {
+        let hostingView = tooltipHostingView(for: text)
+        let fittedSize = tooltipSize(for: text)
+        hostingView.frame = NSRect(origin: .zero, size: fittedSize)
         hostingView.layoutSubtreeIfNeeded()
-        let fittedSize = hostingView.fittingSize
 
-        let mouse = mouseLocationInScreenCoordinates()
-        // Position tooltip to the right and slightly below the cursor
-        // Clamp so it stays within screen bounds
-        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main!
-        let sx = min(mouse.x + 14, screen.frame.maxX - fittedSize.width - 4)
-        let sy = max(mouse.y - fittedSize.height - 8, screen.frame.minY + 4)
-        let frame = NSRect(x: sx, y: sy, width: fittedSize.width, height: fittedSize.height)
+        let screenFrame = NSScreen.screens.first { NSMouseInRect(cursorPoint, $0.frame, false) }?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? NSRect(origin: cursorPoint, size: fittedSize)
+        let preferredX = cursorPoint.x + offset.width
+        let preferredY = cursorPoint.y - fittedSize.height - offset.height
+        let x = min(max(preferredX, screenFrame.minX + 4), screenFrame.maxX - fittedSize.width - 4)
+        let y = min(max(preferredY, screenFrame.minY + 4), screenFrame.maxY - fittedSize.height - 4)
+        let frame = NSRect(x: x, y: y, width: fittedSize.width, height: fittedSize.height)
+
+        if let panel {
+            panel.setFrame(frame, display: true)
+            panel.orderFront(nil)
+            return
+        }
 
         let panel = NSPanel(
             contentRect: frame,
@@ -33,6 +44,7 @@ final class TooltipManager {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
+        panel.ignoresMouseEvents = true
         panel.contentView = hostingView
         panel.orderFront(nil)
         self.panel = panel
@@ -41,39 +53,72 @@ final class TooltipManager {
     func hide() {
         panel?.orderOut(nil)
         panel = nil
+        hostingView = nil
+        currentText = nil
     }
 
-    // CGEvent gives the most reliable global mouse position.
-    // Its Y is from top of primary screen; convert to NS (bottom-origin) coordinates.
-    private func mouseLocationInScreenCoordinates() -> NSPoint {
-        if let cgEvent = CGEvent(source: nil) {
-            let loc = cgEvent.location
-            let primaryHeight = NSScreen.screens.first?.frame.height ?? NSScreen.main!.frame.height
-            return NSPoint(x: loc.x, y: primaryHeight - loc.y)
+    private func tooltipHostingView(for text: String) -> NSHostingView<TooltipContent> {
+        if let hostingView {
+            if currentText != text {
+                hostingView.rootView = TooltipContent(text: text)
+                currentText = text
+            }
+            return hostingView
         }
-        return NSEvent.mouseLocation
+
+        let hostingView = NSHostingView(rootView: TooltipContent(text: text))
+        self.hostingView = hostingView
+        currentText = text
+        return hostingView
+    }
+
+    private func tooltipSize(for text: String) -> NSSize {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: TooltipContent.font,
+            .paragraphStyle: paragraphStyle
+        ]
+        let textRect = (text as NSString).boundingRect(
+            with: NSSize(width: TooltipContent.textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        )
+        let height = max(
+            ceil(textRect.height) + TooltipContent.verticalPadding * 2,
+            TooltipContent.minimumHeight
+        )
+        return NSSize(width: TooltipContent.width, height: height)
     }
 }
 
 private struct TooltipContent: View {
+    static let width: CGFloat = 260
+    static let horizontalPadding: CGFloat = 10
+    static let verticalPadding: CGFloat = 7
+    static let minimumHeight: CGFloat = 34
+    static let textWidth = width - horizontalPadding * 2
+    static let font = NSFont.systemFont(ofSize: 11, weight: .regular)
+
     let text: String
 
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .regular))
-            .foregroundStyle(.white.opacity(0.88))
+            .foregroundStyle(.black.opacity(0.88))
             .multilineTextAlignment(.leading)
             .lineLimit(nil)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: 240, alignment: .leading)
+            .frame(width: Self.textWidth, alignment: .leading)
+            .padding(.horizontal, Self.horizontalPadding)
+            .padding(.vertical, Self.verticalPadding)
+            .frame(width: Self.width, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .background(
                 RoundedRectangle(cornerRadius: 7)
-                    .fill(Color(red: 0.13, green: 0.13, blue: 0.13))
+                    .fill(.white)
                     .overlay(
                         RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                            .stroke(Color.black.opacity(0.12), lineWidth: 1)
                     )
             )
     }
