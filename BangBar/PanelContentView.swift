@@ -218,8 +218,8 @@ private struct PanelChromeControls: View {
     var body: some View {
         Button(action: onOpenSettings) {
             Image(systemName: "gearshape")
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 28, height: 28)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 24, height: 24)
         }
         .help("Настройки")
         .buttonStyle(PanelChromeButtonStyle())

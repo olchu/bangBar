@@ -12,7 +12,7 @@ enum PanelLayout {
     static let expandedHorizontalPadding: CGFloat = panelTopEarInset + panelTopRadius + expandedVisibleEdgePadding
     static let expandedWidgetSpacing: CGFloat = 20
     static let expandedDividerWidth: CGFloat = 1
-    static let expandedDividerHeight: CGFloat = 70
+    static let expandedDividerHeight: CGFloat = 60
 
     static let nowPlayingWidgetWidth: CGFloat = 300
     static let nowPlayingWidgetHeight: CGFloat = 110
