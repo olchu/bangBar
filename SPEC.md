@@ -109,8 +109,9 @@ Album artwork should read visually as one continuous element between compact and
   - `ClockWidget`: 190×110
   - `MoonWidget`: 110×110, with an 87.3×87.3 moon image
   - `PomodoroWidget`: 110×110
+  - `CountdownWidget`: 150×110
   - `MirrorWidget`: 94×94
-  - divider: 1×70
+  - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
   - compact width: `min(max(notchWidth + compactNotchSidePadding * 2, 320), 360)`, with `compactNotchSidePadding = 100`
@@ -211,7 +212,8 @@ Album artwork should read visually as one continuous element between compact and
 3. Add `MoonWidget` next as a local, no-permission widget.
 4. Consider adding `RemindersWidget` after the Moon widget.
 5. Fix task hover tooltip positioning: when hovering a task/reminder row, the tooltip must appear near the hovered row inside or immediately adjacent to the panel/widget, not far away on the desktop. Audit coordinate-space conversion between SwiftUI/AppKit/window/screen coordinates and clamp the tooltip to the panel bounds when possible.
-6. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+6. Add `CountdownWidget` as a local, user-configured date countdown widget.
+7. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -324,6 +326,68 @@ Today  Buy milk
 
 ---
 
+### CountdownWidget
+
+**Goal:** Show a user-created countdown to a chosen future date.
+
+**Data source:** Local app state only — no network or system permission required.
+
+**Layout:** Fixed 150×110 widget, implemented in `CountdownWidget.swift` plus a small persistence/service type if needed.
+
+**Empty state:**
+- If no countdown exists, show a quiet empty state with:
+  - title text such as `No countdown`;
+  - secondary text such as `pick a date`;
+  - a small `plus` button.
+- The plus button opens a modal creation window.
+
+**Create/edit flow:**
+- Plus button opens a modal window similar in spirit to the add-reminder window.
+- Modal fields:
+  - countdown title;
+  - target date;
+  - optional target time.
+- Actions:
+  - `Cancel` closes without saving;
+  - `Create` saves the countdown and updates the widget immediately.
+- The create action is disabled until title and target date are valid.
+- Target date should normally be in the future. If a past date is selected, the UI should either reject it or clearly mark it as elapsed.
+
+**Display:**
+```
+[+] 
+Trip to Tokyo
+1y 2m 14d 6h
+```
+- Shows the countdown title on the first line, truncated with `…` if needed.
+- Shows remaining time below the title.
+- Remaining time is calculated from `Date()` to the target date and updates at least once per minute while the panel is expanded.
+- If the target time includes hours/minutes, the countdown should include hours when useful.
+- Suggested compact format:
+  - `2y 3m 4d` for long ranges;
+  - `14d 6h` for ranges under one month;
+  - `6h 20m` for ranges under one day;
+  - `now` or `done` when the target date has arrived.
+- Use `.monospacedDigit()` for the numeric countdown so it does not visually jump.
+- Use the shared accent color for the most important number or small status mark.
+
+**Persistence:**
+- Store countdown data in `UserDefaults` via `BangBarSettings` or a small `CountdownService`.
+- Persist:
+  - title;
+  - target date/time;
+  - creation/update timestamp if useful for future editing.
+- V1 supports one active countdown in the widget. Multiple countdowns can be considered later if there is a clear UI need.
+
+**Interactions:**
+- Clicking the plus button creates a countdown when empty.
+- When a countdown already exists, clicking the widget or a small edit affordance can reopen the modal to edit/replace it.
+- A delete/reset action should be available in the modal or a contextual control so the widget can return to empty state.
+
+**Settings:** Enabled/disabled via a "Countdown" toggle in Settings and included in widget ordering.
+
+---
+
 ## Settings Panel
 
 Implemented as a custom dark macOS settings window (`SettingsView`), opened from the app menu or expanded-panel chrome button.
@@ -361,6 +425,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Clock & Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`
 - Toggle: Pomodoro — show/hide `PomodoroWidget`
+- Toggle: Countdown — show/hide `CountdownWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
 
 **Permissions section:**
@@ -461,13 +526,13 @@ The app quits; the script runs in the background, waits 1.5 s for the process to
 ## Layout Plan (after new widgets)
 
 ```
-[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [MoonWidget] | [PomodoroWidget] | Divider | [MirrorWidget]
+[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [RemindersWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [CountdownWidget] | Divider | [MirrorWidget]
 ```
 
 Panel width may need to increase to accommodate all widgets.
-Each widget separated by `Divider` at 70pt height.
+Each widget separated by `Divider` at 35pt height.
 
-`RemindersWidget` can be added later as another optional widget once the settings panel can enable/disable optional surfaces.
+`RemindersWidget` and `CountdownWidget` can be added as optional widgets once the settings panel can enable/disable optional surfaces.
 
 ---
 
