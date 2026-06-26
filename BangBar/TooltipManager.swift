@@ -6,14 +6,27 @@ final class TooltipManager {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<TooltipContent>?
     private var currentText: String?
+    private var suppressedUntil: Date?
 
     private init() {}
+
+    var canShow: Bool {
+        guard let suppressedUntil else { return true }
+        return Date() >= suppressedUntil
+    }
+
+    func suppressShowing(for interval: TimeInterval) {
+        hide()
+        suppressedUntil = Date().addingTimeInterval(interval)
+    }
 
     func show(text: String, nearCursorOffset offset: CGSize = CGSize(width: 14, height: 10)) {
         show(text: text, near: NSEvent.mouseLocation, offset: offset)
     }
 
     func show(text: String, near cursorPoint: NSPoint, offset: CGSize = CGSize(width: 14, height: 10)) {
+        guard canShow else { return }
+
         let hostingView = tooltipHostingView(for: text)
         let fittedSize = tooltipSize(for: text)
         hostingView.frame = NSRect(origin: .zero, size: fittedSize)

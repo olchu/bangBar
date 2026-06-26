@@ -253,6 +253,7 @@ private struct ReminderTooltipTrackingView: NSViewRepresentable {
 private final class ReminderTooltipTrackingNSView: NSView {
     var text = ""
     private var trackingArea: NSTrackingArea?
+    private var canShowDuringCurrentHover = true
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -276,11 +277,20 @@ private final class ReminderTooltipTrackingNSView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard TooltipManager.shared.canShow else {
+            canShowDuringCurrentHover = false
+            TooltipManager.shared.hide()
+            super.mouseEntered(with: event)
+            return
+        }
+
+        canShowDuringCurrentHover = true
         showTooltip(for: event)
         super.mouseEntered(with: event)
     }
 
     override func mouseExited(with event: NSEvent) {
+        canShowDuringCurrentHover = true
         TooltipManager.shared.hide()
         super.mouseExited(with: event)
     }
@@ -292,8 +302,24 @@ private final class ReminderTooltipTrackingNSView: NSView {
         }
     }
 
+    override func viewDidHide() {
+        TooltipManager.shared.hide()
+        super.viewDidHide()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            TooltipManager.shared.hide()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     private func showTooltip(for event: NSEvent) {
-        guard let window else { return }
+        guard canShowDuringCurrentHover,
+              let window,
+              window.isVisible,
+              !isHiddenOrHasHiddenAncestor
+        else { return }
         let cursorRect = NSRect(origin: event.locationInWindow, size: .zero)
         let cursorPoint = window.convertToScreen(cursorRect).origin
         TooltipManager.shared.show(text: text, near: cursorPoint, offset: CGSize(width: 14, height: 10))

@@ -120,10 +120,16 @@ class HoverPanel: NSPanel {
             .store(in: &cancellables)
     }
 
+    override func orderOut(_ sender: Any?) {
+        TooltipManager.shared.hide()
+        super.orderOut(sender)
+    }
+
     // MARK: - Animation
 
     func slideIn() {
         guard !isAnimatingFrame else { return }
+        TooltipManager.shared.suppressShowing(for: 0.7)
         isHiding = false
         openedAt = Date()
         hideWorkItem?.cancel()
@@ -203,6 +209,7 @@ class HoverPanel: NSPanel {
     func slideOut() {
         guard !isAnimatingFrame else { return }
         guard Date().timeIntervalSince(openedAt) > 0.5 else { return }
+        TooltipManager.shared.hide()
         isHiding = true
 
         if pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
@@ -297,6 +304,7 @@ class HoverPanel: NSPanel {
     }
 
     private func enterCompactMode() {
+        TooltipManager.shared.hide()
         let nextCompactContent: PanelState.CompactContent = pomodoro.isRunning ? .pomodoro : .nowPlaying
 
         if isVisible, state.isCompact, !state.isExpanded, !isHiding {
