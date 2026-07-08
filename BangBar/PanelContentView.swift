@@ -71,9 +71,9 @@ struct PanelContentView: View {
             }
         }
         .clipShape(NotchPanelShape())
-        .scaleEffect(state.isExpanded || state.isCompact ? 1.0 : 0.22, anchor: .top)
+        .scaleEffect(panelScale, anchor: .top)
         .opacity(state.isExpanded || state.isCompact ? 1.0 : 0.0)
-        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: state.isExpanded)
+        .animation(.spring(response: 0.24, dampingFraction: 0.66), value: state.isExpanded)
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(timer) { date in
@@ -108,6 +108,12 @@ struct PanelContentView: View {
                 mirror.stop()
             }
         }
+    }
+
+    private var panelScale: CGFloat {
+        if state.isExpanded { return 0.955 }
+        if state.isCompact { return 1.0 }
+        return 0.22
     }
 
     @ViewBuilder

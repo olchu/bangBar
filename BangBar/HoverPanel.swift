@@ -199,7 +199,7 @@ class HoverPanel: NSPanel {
                 self.state.isCompact = false
                 self.state.isExpanded = true
                 self.setFrame(targetFrame, display: true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     self.state.contentVisible = true
                 }
             }
