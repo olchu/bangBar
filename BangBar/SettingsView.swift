@@ -265,8 +265,13 @@ struct SettingsView: View {
         return SettingsCard {
             HStack(spacing: 10) {
                 ForEach(enabledWidgets) { widget in
-                    WidgetChip(widget: widget)
+                    WidgetChip(
+                        widget: widget,
+                        isActive: draggedWidget == widget,
+                        accentColor: accentColor
+                    )
                         .frame(maxWidth: .infinity)
+                        .animation(.easeInOut(duration: 0.16), value: draggedWidget)
                         .onDrag {
                             draggedWidget = widget
                             return NSItemProvider(object: widget.rawValue as NSString)
@@ -768,11 +773,24 @@ private struct OlchuStudioFooter: View {
 private struct WidgetChip: View {
     let widget: BangBarWidget
     var isDragPreview = false
+    var isActive = false
+    var accentColor: Color = SettingsTheme.primaryText
+
+    private var contentColor: Color {
+        isActive ? accentColor : SettingsTheme.primaryText
+    }
+
+    private var backgroundFill: Color {
+        if isDragPreview { return SettingsTheme.background }
+        return isActive ? accentColor.opacity(0.16) : SettingsTheme.cardBackground
+    }
+
+    private var strokeColor: Color {
+        isActive ? accentColor : SettingsTheme.border
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            dragHandle
-
             Image(systemName: widget.systemImage)
                 .font(.system(size: 16, weight: .medium))
                 .frame(width: 16)
@@ -784,18 +802,24 @@ private struct WidgetChip: View {
                 .layoutPriority(1)
 
             Spacer(minLength: 0)
+
+            dragHandle
         }
-        .foregroundStyle(SettingsTheme.primaryText)
+        .foregroundStyle(contentColor)
         .padding(.horizontal, 10)
         .frame(width: isDragPreview ? widget.settingsChipWidth : nil, height: 54)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isDragPreview ? SettingsTheme.background : SettingsTheme.cardBackground)
+                .fill(backgroundFill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(SettingsTheme.border, lineWidth: 1)
+                        .stroke(strokeColor, lineWidth: isActive ? 1.5 : 1)
                 )
         )
+    }
+
+    private var dotColor: Color {
+        isActive ? accentColor : SettingsTheme.secondaryText.opacity(0.58)
     }
 
     private var dragHandle: some View {
@@ -803,10 +827,10 @@ private struct WidgetChip: View {
             ForEach(0..<3, id: \.self) { _ in
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(SettingsTheme.secondaryText.opacity(0.58))
+                        .fill(dotColor)
                         .frame(width: 2.5, height: 2.5)
                     Circle()
-                        .fill(SettingsTheme.secondaryText.opacity(0.58))
+                        .fill(dotColor)
                         .frame(width: 2.5, height: 2.5)
                 }
             }
