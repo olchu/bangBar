@@ -204,6 +204,30 @@ Album artwork should read visually as one continuous element between compact and
 - Running state shows a mirrored camera preview clipped to a rounded rectangle.
 - The mirror stops when compact mode is entered, when the expanded panel disappears, or when explicitly toggled off.
 
+**Photo capture:**
+
+- While the preview is running, a small circular shutter button sits at the bottom-center of the preview, alongside the existing stop button at the top-trailing corner. It is only visible in the `.running` state.
+- Tapping the shutter captures a single still frame from the live `AVCaptureSession` through an `AVCapturePhotoOutput` (JPEG).
+- The saved image is mirrored horizontally so it matches the on-screen preview (Photo Booth–style selfie). Preferred approach: set the photo connection's `isVideoMirrored = true` (with `automaticallyAdjustsVideoMirroring = false`); fall back to a manual horizontal flip of the captured `CGImage` if mirroring is unsupported.
+- Photos are written to `~/Pictures/BangBar/` (folder created on first use) as `BangBar-yyyy-MM-dd-HHmmss.jpg`. No sandbox or extra entitlement is required (`ENABLE_APP_SANDBOX = NO`).
+- Feedback: on success the widget plays a brief white flash and momentarily shows a checkmark; on failure the shutter shows a short red flash. The capture button is disabled while a capture is in flight.
+- `MirrorCameraService` additions:
+  - `AVCapturePhotoOutput` created and added to the session during configuration (reset together with the session).
+  - `capturePhoto()` method, guarded to `.running`, that builds `AVCapturePhotoSettings` and triggers capture on the session queue.
+  - An `AVCapturePhotoCaptureDelegate` that decodes, mirrors, and writes the file, then publishes results on the main queue.
+  - `@Published` flags for UI feedback: `isCapturing`, `didCapturePhoto` (brief flash), `captureDidFail`, and `lastPhotoURL`.
+- Out of scope for the first version (possible follow-ups): choosing the save folder in Settings, a "Reveal in Finder" action, capturing without the mirror flip, and countdown/burst modes.
+
+**Development plan — Mirror photo capture:**
+
+1. **Session output.** In `MirrorCameraService.configureSessionIfNeeded()`, create a `photoOutput` property and `session.addOutput(photoOutput)` when `canAddOutput` is true (inside the existing `beginConfiguration`/`commitConfiguration` block). Clear it in `resetSession()`.
+2. **Mirroring.** After adding the output, configure its video connection: if `isVideoMirroringSupported`, set `automaticallyAdjustsVideoMirroring = false` and `isVideoMirrored = true` so captures match the preview.
+3. **Capture API.** Add `capturePhoto()`: guard `state == .running` and not already capturing, set `isCapturing = true`, then on `sessionQueue` call `photoOutput.capturePhoto(with: AVCapturePhotoSettings, delegate:)`. Keep the delegate retained for the duration of the capture.
+4. **Delegate + save.** Implement `photoOutput(_:didFinishProcessingPhoto:error:)`: on success take `fileDataRepresentation()`, ensure `~/Pictures/BangBar/` exists, write `BangBar-<timestamp>.jpg`; publish `lastPhotoURL`, pulse `didCapturePhoto`, clear `isCapturing`. On error set `captureDidFail` and clear `isCapturing`. (If step 2's mirroring is unsupported, flip the `CGImage` here before writing.)
+5. **Shutter button.** In `MirrorWidget`, in the `.running` branch add a bottom-center shutter button (white ring, ~26pt) calling `service.capturePhoto()`, disabled while `service.isCapturing`.
+6. **Feedback.** Overlay a white flash whose opacity animates off `didCapturePhoto`, plus a transient checkmark; drive a short red flash off `captureDidFail`.
+7. **Verify.** Build, run, open the panel, start the mirror, capture, and confirm the flash feedback and a new file in `~/Pictures/BangBar/`. Confirm capture is ignored when the camera is off/denied.
+
 ---
 
 ## Planned Widgets
