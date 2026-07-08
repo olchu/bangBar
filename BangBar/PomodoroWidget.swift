@@ -11,9 +11,9 @@ struct PomodoroWidget: View {
 
     private var totalDuration: Int {
         switch service.sessionType {
-        case .work:       return PomodoroService.workDuration
-        case .shortBreak: return PomodoroService.shortBreakDuration
-        case .longBreak:  return PomodoroService.longBreakDuration
+        case .work:       return service.workDuration
+        case .shortBreak: return service.shortBreakDuration
+        case .longBreak:  return service.longBreakDuration
         }
     }
 
@@ -23,11 +23,12 @@ struct PomodoroWidget: View {
     }
 
     private var pomodoroInCycle: Int {
+        let rounds = service.pomodorosBeforeLongBreak
         if service.sessionType == .work {
-            return service.completedPomodoros % 4 + 1
+            return service.completedPomodoros % rounds + 1
         }
-        let mod = service.completedPomodoros % 4
-        return mod == 0 ? 4 : mod
+        let mod = service.completedPomodoros % rounds
+        return mod == 0 ? rounds : mod
     }
 
     var body: some View {
@@ -68,7 +69,7 @@ struct PomodoroWidget: View {
                     .monospacedDigit()
                     .lineLimit(1)
 
-                Text("\(pomodoroInCycle) / 4")
+                Text("\(pomodoroInCycle) / \(service.pomodorosBeforeLongBreak)")
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.5))
                     .padding(.horizontal, 7)
@@ -118,9 +119,9 @@ struct CompactPomodoroWidget: View {
 
     private var totalDuration: Int {
         switch service.sessionType {
-        case .work:       return PomodoroService.workDuration
-        case .shortBreak: return PomodoroService.shortBreakDuration
-        case .longBreak:  return PomodoroService.longBreakDuration
+        case .work:       return service.workDuration
+        case .shortBreak: return service.shortBreakDuration
+        case .longBreak:  return service.longBreakDuration
         }
     }
 

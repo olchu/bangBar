@@ -256,7 +256,7 @@ Last             Jun 30
 
 ### PomodoroWidget
 
-**Goal:** Pomodoro timer — 25 min work / 5 min break cycles.
+**Goal:** Pomodoro timer — configurable work / break cycles (defaults: 25 min work / 5 min break).
 
 **Layout:** Square 110×110, implemented in `PomodoroWidget.swift` + `PomodoroService.swift`.
 
@@ -264,7 +264,7 @@ Last             Jun 30
 - Circular tick ring: 72 evenly-spaced dashes around the perimeter; elapsed ticks colored in accent color, remaining ticks at 18% opacity
 - Center: colored dot + session label (9pt semibold rounded, uppercased); dot and label dim when paused
 - Timer: 26pt bold rounded + `.monospacedDigit()`, white 94% opacity
-- Cycle counter: `"N / 4"` in a capsule outline (9pt, white 50%)
+- Cycle counter: `"N / rounds"` in a capsule outline (9pt, white 50%), where `rounds` is the configured pomodoros-before-long-break
 - Bottom-left: `arrow.counterclockwise` reset button (13pt bold, white 45%)
 - Bottom-right: `play.fill` / `pause.fill` button (13pt bold, white 45%)
 - Tapping anywhere on the widget also toggles play/pause
@@ -275,20 +275,23 @@ Last             Jun 30
 idle → work(running) → work(paused) → break(running) → break(paused) → work...
 ```
 
-**Durations:**
-- Work: 25 min
-- Short break: 5 min
-- Long break after 4 pomodoros: 15 min
+**Durations:** all configurable in Settings → Widgets → POMODORO (persisted in `UserDefaults`, read live by `PomodoroService`):
+- Work / Focus: default 25 min (`pomodoroWorkMinutes`, range 5–90, step 5)
+- Short break: default 5 min (`pomodoroShortBreakMinutes`, range 1–30, step 1)
+- Long break: default 15 min (`pomodoroLongBreakMinutes`, range 5–45, step 5)
+- Rounds before long break: default 4 (`pomodoroRounds`, range 2–8)
 
-**Cycle counter** shows which pomodoro in the current set of 4:
-- During work: `(completedPomodoros % 4) + 1`
-- During break: completed count in cycle (shows 4 after the 4th)
+Changing a setting while the timer is idle updates the displayed time immediately (via `UserDefaults.didChangeNotification`); a running timer is left untouched until its next session.
+
+**Cycle counter** shows which pomodoro in the current set of `rounds`:
+- During work: `(completedPomodoros % rounds) + 1`
+- During break: completed count in cycle (shows `rounds` after the last)
 
 **Service:** `PomodoroService: ObservableObject`
 - `@Published` properties: `sessionType`, `isRunning`, `secondsRemaining`, `completedPomodoros`, `didJustComplete`
 - Uses `Timer` on `.main` run loop
 - `completedPomodoros` persisted in `UserDefaults`
-- `reset()` stops timer and returns to work session at 25:00
+- `reset()` stops timer and returns to work session at the configured focus duration
 - Auto-advances to next session on completion; `didJustComplete` briefly set true for flash feedback
 - Does NOT send notifications (requires entitlement) — panel visual feedback only
 - Enabled/disabled via "Pomodoro" toggle in Settings

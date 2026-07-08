@@ -17,6 +17,10 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
+    @AppStorage(BangBarSettings.Key.pomodoroWorkMinutes) private var pomodoroWorkMinutes = 25
+    @AppStorage(BangBarSettings.Key.pomodoroShortBreakMinutes) private var pomodoroShortBreakMinutes = 5
+    @AppStorage(BangBarSettings.Key.pomodoroLongBreakMinutes) private var pomodoroLongBreakMinutes = 15
+    @AppStorage(BangBarSettings.Key.pomodoroRounds) private var pomodoroRounds = 4
     @State private var selectedSettingsTab = SettingsTab.widgets
     @State private var widgetOrder = BangBarWidget.allCases
     @State private var draggedWidget: BangBarWidget?
@@ -207,6 +211,49 @@ struct SettingsView: View {
                 SettingsSectionLabel("REMINDERS")
                 SettingsCard {
                     RemindersListPickerRow(selectedListId: $reminderListId, accentColor: accentColor)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("POMODORO")
+                SettingsCard {
+                    VStack(spacing: 0) {
+                        SettingsStepperRow(
+                            title: "Focus duration",
+                            value: $pomodoroWorkMinutes,
+                            range: 5...90,
+                            step: 5,
+                            unit: "min",
+                            accentColor: accentColor
+                        )
+                        SettingsDivider()
+                        SettingsStepperRow(
+                            title: "Short break",
+                            value: $pomodoroShortBreakMinutes,
+                            range: 1...30,
+                            step: 1,
+                            unit: "min",
+                            accentColor: accentColor
+                        )
+                        SettingsDivider()
+                        SettingsStepperRow(
+                            title: "Long break",
+                            value: $pomodoroLongBreakMinutes,
+                            range: 5...45,
+                            step: 5,
+                            unit: "min",
+                            accentColor: accentColor
+                        )
+                        SettingsDivider()
+                        SettingsStepperRow(
+                            title: "Rounds before long break",
+                            value: $pomodoroRounds,
+                            range: 2...8,
+                            step: 1,
+                            unit: "",
+                            accentColor: accentColor
+                        )
+                    }
                 }
             }
         }
@@ -879,6 +926,66 @@ private extension BangBarWidget {
         case .mirror:
             return 150
         }
+    }
+}
+
+private struct SettingsStepperRow: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    var step: Int = 1
+    let unit: String
+    let accentColor: Color
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(SettingsTheme.rowFont)
+                .foregroundStyle(SettingsTheme.primaryText)
+
+            Spacer()
+
+            HStack(spacing: 0) {
+                stepButton(systemName: "minus", enabled: value > range.lowerBound) {
+                    value = max(range.lowerBound, value - step)
+                }
+
+                Text(valueLabel)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(SettingsTheme.primaryText)
+                    .frame(minWidth: 68)
+
+                stepButton(systemName: "plus", enabled: value < range.upperBound) {
+                    value = min(range.upperBound, value + step)
+                }
+            }
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(SettingsTheme.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(SettingsTheme.border, lineWidth: 1)
+                    )
+            )
+        }
+        .frame(height: 52)
+    }
+
+    private var valueLabel: String {
+        unit.isEmpty ? "\(value)" : "\(value) \(unit)"
+    }
+
+    private func stepButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(enabled ? accentColor : SettingsTheme.secondaryText.opacity(0.4))
+                .frame(width: 34, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 }
 

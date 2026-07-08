@@ -76,6 +76,10 @@ enum BangBarSettings {
         static let reminderListId = "reminderListId"
         static let selectedCalendarIds = "selectedCalendarIds"
         static let widgetOrder = "widgetOrder"
+        static let pomodoroWorkMinutes = "pomodoroWorkMinutes"
+        static let pomodoroShortBreakMinutes = "pomodoroShortBreakMinutes"
+        static let pomodoroLongBreakMinutes = "pomodoroLongBreakMinutes"
+        static let pomodoroRounds = "pomodoroRounds"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -91,7 +95,11 @@ enum BangBarSettings {
             Key.tintWalkingMan: true,
             Key.showPomodoroWidget: true,
             Key.showRemindersWidget: true,
-            Key.widgetOrder: defaultWidgetOrderRaw
+            Key.widgetOrder: defaultWidgetOrderRaw,
+            Key.pomodoroWorkMinutes: 25,
+            Key.pomodoroShortBreakMinutes: 5,
+            Key.pomodoroLongBreakMinutes: 15,
+            Key.pomodoroRounds: 4
         ])
     }
 

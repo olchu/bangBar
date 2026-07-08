@@ -15,15 +15,56 @@ final class PomodoroService: ObservableObject {
     @Published var didJustComplete = false
 
     private static let completedKey = "pomodoroCompletedCount"
-    static let workDuration = 25 * 60
-    static let shortBreakDuration = 5 * 60
-    static let longBreakDuration = 15 * 60
-    private static let pomodorosBeforeLongBreak = 4
+
+    var workDuration: Int {
+        max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroWorkMinutes), 1) * 60
+    }
+
+    var shortBreakDuration: Int {
+        max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroShortBreakMinutes), 1) * 60
+    }
+
+    var longBreakDuration: Int {
+        max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroLongBreakMinutes), 1) * 60
+    }
+
+    var pomodorosBeforeLongBreak: Int {
+        max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroRounds), 1)
+    }
 
     private var ticker: Timer?
 
     init() {
         completedPomodoros = UserDefaults.standard.integer(forKey: Self.completedKey)
+        secondsRemaining = workDuration
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(settingsChanged),
+            name: UserDefaults.didChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    private func duration(for type: PomodoroSessionType) -> Int {
+        switch type {
+        case .work: return workDuration
+        case .shortBreak: return shortBreakDuration
+        case .longBreak: return longBreakDuration
+        }
+    }
+
+    @objc private func settingsChanged() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.isRunning else { return }
+            let updated = self.duration(for: self.sessionType)
+            if self.secondsRemaining != updated {
+                self.secondsRemaining = updated
+            }
+        }
     }
 
     var timeString: String {
@@ -45,7 +86,7 @@ final class PomodoroService: ObservableObject {
     func reset() {
         pause()
         sessionType = .work
-        secondsRemaining = Self.workDuration
+        secondsRemaining = workDuration
         didJustComplete = false
     }
 
@@ -91,12 +132,12 @@ final class PomodoroService: ObservableObject {
         if sessionType == .work {
             completedPomodoros += 1
             UserDefaults.standard.set(completedPomodoros, forKey: Self.completedKey)
-            let isLong = completedPomodoros % Self.pomodorosBeforeLongBreak == 0
+            let isLong = completedPomodoros % pomodorosBeforeLongBreak == 0
             sessionType = isLong ? .longBreak : .shortBreak
-            secondsRemaining = isLong ? Self.longBreakDuration : Self.shortBreakDuration
+            secondsRemaining = isLong ? longBreakDuration : shortBreakDuration
         } else {
             sessionType = .work
-            secondsRemaining = Self.workDuration
+            secondsRemaining = workDuration
         }
 
         resume()
