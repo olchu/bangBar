@@ -163,7 +163,7 @@ class HoverPanel: NSPanel {
 
                 self.animateFrame(
                     to: targetFrame,
-                    duration: 0.30,
+                    duration: 0.22,
                     progress: { [weak self] progress in
                         self?.state.artworkHeroProgress = progress
                     }
@@ -183,11 +183,11 @@ class HoverPanel: NSPanel {
                         }
                     }
                     self.artworkHeroCleanupWorkItem = cleanupWork
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: cleanupWork)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: cleanupWork)
                 }
             } else if wasCompact {
                 self.state.artworkHeroProgress = nil
-                self.animateFrame(to: targetFrame, duration: 0.30, completion: {
+                self.animateFrame(to: targetFrame, duration: 0.22, completion: {
                     self.state.isCompact = false
                     self.state.isExpanded = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {

@@ -73,7 +73,7 @@ struct PanelContentView: View {
         .clipShape(NotchPanelShape())
         .scaleEffect(panelScale, anchor: .top)
         .opacity(state.isExpanded || state.isCompact ? 1.0 : 0.0)
-        .animation(.spring(response: 0.24, dampingFraction: 0.66), value: state.isExpanded)
+        .animation(.spring(response: 0.35, dampingFraction: 0.66), value: state.isExpanded)
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(timer) { date in
