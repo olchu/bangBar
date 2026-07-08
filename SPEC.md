@@ -418,6 +418,106 @@ Trip to Tokyo
 
 ---
 
+### NotionWidget
+
+**Goal:** Show tasks from a single column of a user's Notion database (board), e.g. all tasks whose Status is `In progress`. Which column is shown is chosen in Settings.
+
+**Data source:** Notion REST API over HTTPS (`api.notion.com`) via `URLSession`. No private frameworks, no entitlements — a plain network request, consistent with the no-Developer-ID constraint.
+
+**Authentication:**
+- Uses a user-provided **internal integration token** (created by the user at notion.so/my-integrations).
+- The token is stored in the macOS **Keychain**, never in `UserDefaults` and never committed to the repo.
+- All requests send headers:
+  - `Authorization: Bearer <token>`
+  - `Notion-Version: 2022-06-28`
+  - `Content-Type: application/json`
+- The user must share the target database with the integration (Notion page `•••` → Connections → add integration), otherwise the API returns 404. Settings surfaces this as a hint on connection failure.
+
+**Concept mapping:**
+- A Board view's columns are the option values of one database property of type `status` (or `select`). BangBar does not model columns separately — showing a column means filtering the database query by that property value.
+
+**Configuration (stored keys):**
+- Keychain: integration token.
+- `UserDefaults` via `BangBarSettings.Key`:
+  - `notionDatabaseId` — 32-char database id.
+  - `notionStatusProperty` — the property name used for grouping/filter (e.g. `Status`).
+  - `notionStatusPropertyType` — `status` or `select`, needed to build the correct filter shape.
+  - `notionSelectedStatus` — the chosen column value (e.g. `In progress`).
+  - `showNotionWidget` — enable/disable toggle.
+
+**Database id parsing:**
+- Settings accepts either a raw id or a full Notion URL. The id is the last 32 hex characters of the URL path (dashes optional, ignore any `?v=` view query). Store the normalized 32-char id.
+
+**Schema fetch (Settings only):**
+- `GET /v1/databases/{id}` retrieves the database.
+- From `properties`, collect every property whose type is `status` or `select`; these are candidate grouping properties. Each candidate exposes its `options[].name` as the selectable columns.
+- Settings uses this to populate the "Status property" and "Show column" dropdowns with the user's real values instead of free text.
+
+**Task query:**
+- `POST /v1/databases/{id}/query` with body:
+  ```json
+  {
+    "filter": { "property": "<notionStatusProperty>", "<type>": { "equals": "<notionSelectedStatus>" } },
+    "page_size": 10
+  }
+  ```
+  where `<type>` is `status` or `select` per `notionStatusPropertyType`.
+- Task title is read from the database's `title`-type property (`properties[titleProp].title[].plain_text`, joined).
+- Each result page carries its `id` and public `url` for opening in Notion.
+
+**Data model:**
+```swift
+struct NotionTask: Identifiable {
+    let id: String        // page id
+    let title: String
+    let url: URL?         // page url, for click-to-open
+}
+```
+
+**Service:** `NotionService: ObservableObject` (mirrors `ReminderService` structure)
+- `@Published private(set) var items: [NotionTask]`
+- `@Published private(set) var state: State` where
+  ```swift
+  enum State { case notConfigured, loading, ready, error(String) }
+  ```
+- `notConfigured` when token or database id is missing.
+- Polls on a background queue on a timer (~60 s while relevant) and publishes on `DispatchQueue.main`; refresh is also triggered when relevant settings change (`UserDefaults.didChangeNotification`).
+- `refresh()` runs the query; network/decoupling failures set `.error` with a short message; non-200 responses (401/404) map to concise text ("Check token", "Share DB with integration").
+- `fetchSchema(completion:)` used only by Settings to load candidate properties and their options.
+- Results capped (e.g. first 10; widget shows first ~4 with a "+N more").
+
+**Display (mirrors RemindersWidget):**
+- Fixed size, proposed 190×110 (same as `ClockWidget`), added to `PanelLayout.expandedWidgetWidths` as `notionWidgetWidth` so the panel grows automatically.
+- Header row: small SF Symbol + selected column name + task count on the left.
+- Up to `maxVisible` (~4) task rows; each row is title (truncated with `…`) with a leading circular marker; overflow shows `+N more`.
+- Clicking a row opens the page `url` in the browser / Notion app.
+- Hover tooltip shows the full title, reusing the tooltip tracking pattern from `RemindersWidget`.
+- States:
+  - `notConfigured`: quiet prompt "Set up in Settings".
+  - `loading`: subtle placeholder on first load only.
+  - `ready` + empty: empty state ("Nothing here").
+  - `error`: concise error text.
+
+**Complete action (phase 2 — checkbox):**
+- Phase 1 is read-only. Phase 2 adds a circular checkbox per row (like `ReminderRow`) that marks a task done.
+- Notion `status` properties have grouped options (typically To-do / In Progress / Complete groups). Completing a task means `PATCH /v1/pages/{id}` setting the status property to the first option in the "Complete" group (resolved from the schema's `status.groups`). For a plain `select` property, Settings must let the user pick which value represents "done".
+- On success, optimistically remove the row and `refresh()`.
+
+**Settings section (NOTION):**
+- Integration token field (secure), stored to Keychain.
+- Database URL / ID field with a `Connect` action that runs `fetchSchema`.
+- After a successful connect:
+  - "Status property" dropdown (shown when more than one candidate exists).
+  - "Show column" dropdown listing that property's option values.
+- Connection errors show concise guidance (invalid token, database not shared).
+
+**Constraints:**
+- Public Notion API only; the only secret is the user's own token, held in Keychain, never committed.
+- No third-party dependencies; `URLSession` + `Codable` only.
+- Enabled/disabled via a "Notion" toggle in Settings and included in widget ordering (`BangBarWidget.notion`).
+
+---
+
 ## Settings Panel
 
 Implemented as a custom dark macOS settings window (`SettingsView`), opened from the app menu or expanded-panel chrome button.
@@ -463,6 +563,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Moon — show/hide `MoonWidget`
 - Toggle: Pomodoro — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
+- Toggle: Notion — show/hide `NotionWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
 
 **Permissions section:**
@@ -563,7 +664,7 @@ The app quits; the script runs in the background, waits 1.5 s for the process to
 ## Layout Plan (after new widgets)
 
 ```
-[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [RemindersWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [CountdownWidget] | Divider | [MirrorWidget]
+[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [RemindersWidget] | Divider | [NotionWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [CountdownWidget] | Divider | [MirrorWidget]
 ```
 
 Panel width may need to increase to accommodate all widgets.
