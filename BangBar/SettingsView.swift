@@ -38,6 +38,11 @@ struct SettingsView: View {
                 SettingsSidebar(selectedTab: $selectedSettingsTab, accentColor: accentColor)
                     .frame(width: 240)
 
+                Rectangle()
+                    .fill(SettingsTheme.border)
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+
                 mainContent(accentColor: accentColor)
             }
         }
@@ -55,17 +60,8 @@ struct SettingsView: View {
     }
 
     private var titleBar: some View {
-        HStack(spacing: 0) {
-            Color.clear
-                .frame(width: 118)
-
-            Text("BangBar Settings")
-                .font(SettingsTheme.titleFont)
-                .foregroundStyle(SettingsTheme.primaryText)
-
-            Spacer()
-        }
-        .frame(height: 48)
+        Color.clear
+            .frame(height: 48)
     }
 
     @ViewBuilder
@@ -83,12 +79,13 @@ struct SettingsView: View {
                         SettingsSectionLabel("LAUNCH")
                         LaunchAtLoginSettingsRow(accentColor: accentColor)
                     }
-                    .frame(width: 520)
 
-                    PrivacySettingsSection()
-                        .frame(width: 360)
-                        .padding(.top, -38)
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("ACCESS")
+                        PrivacySettingsSection()
+                    }
                 }
+                .frame(width: 520)
             }
         case .appearance:
             singleColumnContent(title: "APPEARANCE", accentColor: accentColor) {
@@ -101,17 +98,54 @@ struct SettingsView: View {
         case .about:
             singleColumnContent(title: "ABOUT", accentColor: accentColor) {
                 SettingsCard {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text("BangBar")
                             .font(SettingsTheme.sectionTitleFont)
+                            .foregroundStyle(SettingsTheme.primaryText)
 
-                        Text("Compact widgets and quick controls around the notch.")
-                            .font(SettingsTheme.rowFont)
-                            .foregroundStyle(SettingsTheme.secondaryText)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("The notch takes a strip of your screen and gives nothing back. BangBar puts that space to work.")
+
+                            Text("Move your cursor up to the notch and a small panel drops down: what's playing, your next event, today's reminders, the moon, a focus timer. Take a look, do the thing, get back to work. It hides again the second you move away.")
+
+                            Text("Made by Olchu Studio. It lives in the menu bar and stays out of the way. No dock icon, no account, nothing to sign into.")
+                        }
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .foregroundStyle(SettingsTheme.secondaryText)
+                        .lineSpacing(5)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                        SettingsDivider()
+                            .padding(.vertical, 4)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Run into a bug, or want a widget that isn't here yet? Send it my way:")
+                                .font(.system(size: 14, weight: .regular, design: .monospaced))
+                                .foregroundStyle(SettingsTheme.secondaryText)
+                                .lineSpacing(5)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text(verbatim: "ochurkin@gmail.com")
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(accentColor)
+                                .contentShape(Rectangle())
+                                .onHover { inside in
+                                    if inside {
+                                        NSCursor.pointingHand.push()
+                                    } else {
+                                        NSCursor.pop()
+                                    }
+                                }
+                                .onTapGesture {
+                                    if let url = URL(string: "mailto:ochurkin@gmail.com") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                        }
                     }
-                    .padding(.vertical, 18)
+                    .padding(.vertical, 20)
                 }
-                .frame(width: 520)
+                .frame(width: 884)
             }
         }
     }
@@ -182,30 +216,28 @@ struct SettingsView: View {
         let enabledWidgets = widgetOrder.filter(isWidgetEnabled)
 
         return SettingsCard {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(enabledWidgets) { widget in
-                        WidgetChip(widget: widget)
-                            .onDrag {
-                                draggedWidget = widget
-                                return NSItemProvider(object: widget.rawValue as NSString)
-                            } preview: {
-                                WidgetChip(widget: widget, isDragPreview: true)
-                            }
-                            .onDrop(
-                                of: [UTType.text],
-                                delegate: WidgetOrderDropDelegate(
-                                    targetWidget: widget,
-                                    widgets: $widgetOrder,
-                                    draggedWidget: $draggedWidget,
-                                    persist: persistWidgetOrder
-                                )
+            HStack(spacing: 10) {
+                ForEach(enabledWidgets) { widget in
+                    WidgetChip(widget: widget)
+                        .frame(maxWidth: .infinity)
+                        .onDrag {
+                            draggedWidget = widget
+                            return NSItemProvider(object: widget.rawValue as NSString)
+                        } preview: {
+                            WidgetChip(widget: widget, isDragPreview: true)
+                        }
+                        .onDrop(
+                            of: [UTType.text],
+                            delegate: WidgetOrderDropDelegate(
+                                targetWidget: widget,
+                                widgets: $widgetOrder,
+                                draggedWidget: $draggedWidget,
+                                persist: persistWidgetOrder
                             )
-                    }
-
+                        )
                 }
-                .padding(.vertical, 18)
             }
+            .padding(.vertical, 18)
         }
     }
 
@@ -396,51 +428,42 @@ private struct PrivacySettingsSection: View {
     private let eventStore = EKEventStore()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            Text("PERMISSIONS")
-                .font(SettingsTheme.sectionTitleFont)
-                .foregroundStyle(SettingsTheme.primaryText)
+        SettingsCard {
+            VStack(spacing: 0) {
+                PermissionRow(
+                    title: "Camera",
+                    status: cameraStatusText,
+                    systemImage: "video.fill",
+                    buttonTitle: cameraButtonTitle,
+                    action: handleCameraAccess
+                )
 
-            SettingsCard {
-                VStack(spacing: 0) {
-                    PermissionRow(
-                        title: "Camera",
-                        status: cameraStatusText,
-                        systemImage: "video.fill",
-                        buttonTitle: cameraButtonTitle,
-                        action: handleCameraAccess
-                    )
+                SettingsDivider()
+                    .padding(.vertical, 18)
 
-                    SettingsDivider()
-                        .padding(.vertical, 18)
+                PermissionRow(
+                    title: "Calendar",
+                    status: calendarStatusText,
+                    systemImage: "calendar",
+                    buttonTitle: calendarButtonTitle,
+                    action: handleCalendarAccess
+                )
 
-                    PermissionRow(
-                        title: "Calendar",
-                        status: calendarStatusText,
-                        systemImage: "calendar",
-                        buttonTitle: calendarButtonTitle,
-                        action: handleCalendarAccess
-                    )
+                SettingsDivider()
+                    .padding(.vertical, 18)
 
-                    SettingsDivider()
-                        .padding(.vertical, 18)
-
-                    PermissionRow(
-                        title: "Automation",
-                        status: "Required to control Spotify and Music",
-                        systemImage: "gearshape.2.fill",
-                        buttonTitle: "Open",
-                        action: {
-                            openPrivacySettings(anchor: "Privacy_Automation")
-                        }
-                    )
-                }
-                .padding(.vertical, 22)
+                PermissionRow(
+                    title: "Automation",
+                    status: "Required to control Spotify and Music",
+                    systemImage: "gearshape.2.fill",
+                    buttonTitle: "Open",
+                    action: {
+                        openPrivacySettings(anchor: "Privacy_Automation")
+                    }
+                )
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.vertical, 22)
         }
-        .padding(.top, 38)
-        .padding(.bottom, 40)
         .onAppear {
             refreshStatuses()
         }
@@ -701,24 +724,24 @@ private struct WidgetChip: View {
     var isDragPreview = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             dragHandle
 
             Image(systemName: widget.systemImage)
-                .font(.system(size: 22, weight: .medium))
-                .frame(width: 24)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 16)
 
             Text(widget.settingsTitle)
-                .font(SettingsTheme.chipFont)
+                .font(.system(size: 12, weight: .regular, design: .monospaced))
                 .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                .minimumScaleFactor(0.8)
                 .layoutPriority(1)
 
             Spacer(minLength: 0)
         }
         .foregroundStyle(SettingsTheme.primaryText)
-        .padding(.horizontal, 14)
-        .frame(width: widget.settingsChipWidth, height: 54)
+        .padding(.horizontal, 10)
+        .frame(width: isDragPreview ? widget.settingsChipWidth : nil, height: 54)
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(isDragPreview ? SettingsTheme.background : SettingsTheme.cardBackground)
