@@ -643,9 +643,7 @@ private struct SettingsSidebar: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Spacer(minLength: 46)
-
-            VStack(spacing: 18) {
+            VStack(spacing: 10) {
                 ForEach(SettingsTab.allCases) { tab in
                     SidebarItem(
                         tab: tab,
@@ -657,6 +655,7 @@ private struct SettingsSidebar: View {
                 }
             }
             .frame(maxWidth: .infinity)
+            .padding(.top, 12)
 
             Spacer()
 
