@@ -313,14 +313,26 @@ struct ClockWidget: View {
 
     private func relativeEventStatus(for event: UpcomingCalendarEvent) -> String {
         if date < event.startDate {
-            return "starts in \(minutesBetween(date, event.startDate)) min"
+            return "starts in \(durationString(from: date, to: event.startDate))"
         }
 
-        return "ends in \(minutesBetween(date, event.endDate)) min"
+        return "ends in \(durationString(from: date, to: event.endDate))"
     }
 
-    private func minutesBetween(_ start: Date, _ end: Date) -> Int {
-        max(Int(ceil(end.timeIntervalSince(start) / 60)), 0)
+    private func durationString(from start: Date, to end: Date) -> String {
+        let totalMinutes = max(Int(ceil(end.timeIntervalSince(start) / 60)), 0)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+
+        if hours > 0 && minutes > 0 {
+            return "\(hours)h \(minutes)min"
+        }
+
+        if hours > 0 {
+            return "\(hours)h"
+        }
+
+        return "\(minutes)min"
     }
 
     private func timeString(from date: Date) -> String {

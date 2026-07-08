@@ -151,6 +151,9 @@ Album artwork should read visually as one continuous element between compact and
   - `denied`: show settings prompt;
   - `failed`: show failure prompt and log the failure.
 - The service fetches up to two upcoming events for today:
+  - calendar filtering is controlled by `BangBarSettings.Key.selectedCalendarIds`;
+  - an empty calendar filter setting means all calendars are shown;
+  - an explicit empty selected calendar list means no calendar events are shown;
   - all-day events are ignored;
   - events that already ended are ignored;
   - events are sorted by start date;
@@ -164,7 +167,7 @@ Album artwork should read visually as one continuous element between compact and
   - the end time is not shown;
   - no timeline/progress line is shown;
   - calendar icons are not shown, to preserve title space;
-  - each event shows relative status below the title: `starts in N min` or `ends in N min`.
+  - each event shows relative status below the title using compact duration text, e.g. `starts in 2h 30min`, `starts in 45min`, or `ends in 1h`.
 - Empty authorized state:
   - shown when calendar access is authorized and there are no more non-all-day events today;
   - displays a left-aligned looping `man.mp4` illustration at 55×55;
@@ -398,6 +401,8 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Uses a transparent/full-size titlebar so the Apple window controls sit over the black settings surface.
 - Titlebar separator/material backgrounds are removed or forced black from `AppDelegate`.
 - Window background dragging is disabled so it does not conflict with widget drag/drop inside settings.
+- Settings content uses compact in-window spacing: a shorter titlebar and reduced top/leading/bottom padding compared with the original roomy layout.
+- The settings window does not draw internal divider lines under the titlebar or between the sidebar and main content.
 
 **Sidebar tabs:**
 - `WIDGETS`
@@ -405,6 +410,8 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - `APPEARANCE`
 - `ABOUT`
 - Tabs are centered in the left sidebar and highlight with the current accent color.
+- Sidebar illustration uses the `settingsIllustration` asset from the asset catalog, is bottom-aligned inside its frame, and is grouped near the footer logo without a divider line below it.
+- Sidebar footer is rendered in SwiftUI as a small left-aligned `OLCHU_ STUDIO` text logo with a plain accent dot, not as an image asset; the current app version from `CFBundleShortVersionString` is shown opposite it, right-aligned.
 
 **About section:**
 - Displays the app icon, app name, and current version (`CFBundleShortVersionString`).
@@ -416,13 +423,16 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 
 **Widgets section:**
 - Shows helper text explaining that widgets can be enabled, disabled, and reordered.
-- Top tray shows currently enabled widgets in saved order; top tray chips do not show toggles.
+- Top tray shows currently enabled widgets in saved order; top tray chips do not show toggles and are sized proportionally to their real panel widget widths.
 - Top tray uses native SwiftUI `onDrag`/`onDrop` reordering for enabled widgets, with a solid black drag preview for each chip.
-- Available widgets list shows every widget with icon, title, description, toggle, and drag handle.
+- Available widgets list shows every widget with icon, title, description, and toggle.
+- Calendar selection is shown as a separate Calendar setting with each EventKit calendar name on the left and a right-aligned switch toggle, plus quick All/None actions.
+- Settings toggles use a custom dark-theme switch style: on state is accent-filled, off state has a dark track with a visible light outline.
+- Reminders list selection is shown as a separate Reminders setting, not inline inside the available widgets list.
 - Drag/drop on either the top tray or available list updates `BangBarSettings.Key.widgetOrder`.
 - `PanelContentView` reads the saved widget order and renders enabled widgets in that order.
 - Toggle: Music — show/hide `NowPlayingWidget`
-- Toggle: Clock & Calendar — show/hide `ClockWidget`
+- Toggle: Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`
 - Toggle: Pomodoro — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
@@ -435,7 +445,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Automation: opens System Settings › Privacy › Automation (required for Spotify/Music AppleScript control)
 
 **Appearance section:**
-- Color picker: Accent color — stored as hex string in `UserDefaults`, default `#FF383C`; Reset button disables itself when the current value equals the default.
+- Accent color picker is shown as a wide swatch button with the current hex value; clicking it opens the system color panel, stores the value as a hex string in `UserDefaults`, and defaults to `#FF383C`. Reset button disables itself when the current value equals the default.
 - Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation.
 
 **Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.

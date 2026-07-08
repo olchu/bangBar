@@ -74,6 +74,7 @@ enum BangBarSettings {
         static let showPomodoroWidget = "showPomodoroWidget"
         static let showRemindersWidget = "showRemindersWidget"
         static let reminderListId = "reminderListId"
+        static let selectedCalendarIds = "selectedCalendarIds"
         static let widgetOrder = "widgetOrder"
     }
 
@@ -113,6 +114,28 @@ enum BangBarSettings {
 
     static func widgetOrderRaw(from widgets: [BangBarWidget]) -> String {
         widgets.map(\.rawValue).joined(separator: ",")
+    }
+
+    static func selectedCalendarIds(from rawValue: String) -> [String]? {
+        guard !rawValue.isEmpty else { return nil }
+
+        if let data = rawValue.data(using: .utf8),
+           let ids = try? JSONDecoder().decode([String].self, from: data) {
+            return ids
+        }
+
+        return rawValue
+            .split(separator: ",")
+            .map { String($0) }
+    }
+
+    static func selectedCalendarIdsRaw(from ids: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(ids),
+              let rawValue = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+
+        return rawValue
     }
 
     static var showNowPlayingWidget: Bool {

@@ -35,6 +35,7 @@ final class CalendarEventService: ObservableObject {
 
     private let eventStore = EKEventStore()
     private var lastRefreshDate: Date?
+    private var lastCalendarSelectionRaw: String?
 
     func start() {
         switch EKEventStore.authorizationStatus(for: .event) {
@@ -56,13 +57,17 @@ final class CalendarEventService: ObservableObject {
     func refreshIfNeeded(now: Date) {
         guard !authorizationDenied else { return }
 
+        let calendarSelectionRaw = UserDefaults.standard.string(forKey: BangBarSettings.Key.selectedCalendarIds) ?? ""
+
         if let lastRefreshDate,
            Calendar.current.component(.minute, from: lastRefreshDate) == Calendar.current.component(.minute, from: now),
-           Calendar.current.isDate(lastRefreshDate, inSameDayAs: now) {
+           Calendar.current.isDate(lastRefreshDate, inSameDayAs: now),
+           lastCalendarSelectionRaw == calendarSelectionRaw {
             return
         }
 
         lastRefreshDate = now
+        lastCalendarSelectionRaw = calendarSelectionRaw
         start()
     }
 
@@ -132,10 +137,22 @@ final class CalendarEventService: ObservableObject {
 
         let now = Date()
         let endOfDay = Calendar.current.startOfDay(for: now).addingTimeInterval(24 * 60 * 60)
+        let selectedCalendarIds = BangBarSettings.selectedCalendarIds(
+            from: UserDefaults.standard.string(forKey: BangBarSettings.Key.selectedCalendarIds) ?? ""
+        )
+        let calendars = selectedCalendarIds.map { ids in
+            eventStore.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
+        }
+
+        if calendars?.isEmpty == true {
+            upcomingEvents = []
+            return
+        }
+
         let predicate = eventStore.predicateForEvents(
             withStart: now,
             end: endOfDay,
-            calendars: nil
+            calendars: calendars
         )
 
         upcomingEvents = eventStore.events(matching: predicate)

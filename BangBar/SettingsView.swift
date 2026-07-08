@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
+    @AppStorage(BangBarSettings.Key.selectedCalendarIds) private var selectedCalendarIdsRaw = ""
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
@@ -33,15 +34,9 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             titleBar
 
-            Divider()
-                .background(SettingsTheme.border)
-
             HStack(spacing: 0) {
                 SettingsSidebar(selectedTab: $selectedSettingsTab, accentColor: accentColor)
-                    .frame(width: 300)
-
-                Divider()
-                    .background(SettingsTheme.border)
+                    .frame(width: 240)
 
                 mainContent(accentColor: accentColor)
             }
@@ -70,7 +65,7 @@ struct SettingsView: View {
 
             Spacer()
         }
-        .frame(height: 58)
+        .frame(height: 48)
     }
 
     @ViewBuilder
@@ -79,7 +74,7 @@ struct SettingsView: View {
         case .widgets:
             singleColumnContent(title: "WIDGETS", accentColor: accentColor) {
                 widgetsSection(accentColor: accentColor)
-                    .frame(width: 820)
+                    .frame(width: 884)
             }
         case .permissions:
             singleColumnContent(title: "PERMISSIONS", accentColor: accentColor) {
@@ -131,9 +126,9 @@ struct SettingsView: View {
                 sectionHeader(title, accentColor: accentColor)
                 content()
             }
-            .padding(.top, 38)
-            .padding(.leading, 42)
-            .padding(.bottom, 40)
+            .padding(.top, 26)
+            .padding(.leading, 28)
+            .padding(.bottom, 28)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -167,6 +162,18 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsSectionLabel("AVAILABLE WIDGETS")
                 widgetsCard(accentColor: accentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("CALENDAR")
+                CalendarListPickerCard(selectedCalendarIdsRaw: $selectedCalendarIdsRaw, accentColor: accentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("REMINDERS")
+                SettingsCard {
+                    RemindersListPickerRow(selectedListId: $reminderListId, accentColor: accentColor)
+                }
             }
         }
     }
@@ -225,11 +232,6 @@ struct SettingsView: View {
                         )
                     )
 
-                    if widget == .reminders && showRemindersWidget {
-                        SettingsDivider()
-                        RemindersListPickerRow(selectedListId: $reminderListId, accentColor: accentColor)
-                    }
-
                     if index < widgetOrder.count - 1 {
                         SettingsDivider()
                     }
@@ -280,17 +282,11 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    ColorPicker("", selection: accentColorBinding, supportsOpacity: false)
-                        .labelsHidden()
-                        .frame(width: 86, height: 30)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(accentColor)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(SettingsTheme.border, lineWidth: 1)
-                                )
-                        )
+                    AccentColorPicker(
+                        selection: accentColorBinding,
+                        accentColor: accentColor,
+                        hexValue: accentColorHex
+                    )
 
                     Button("Reset") {
                         accentColorHex = BangBarSettings.defaultAccentColorHex
@@ -577,7 +573,7 @@ private struct SettingsSidebar: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Spacer(minLength: 70)
+            Spacer(minLength: 46)
 
             VStack(spacing: 18) {
                 ForEach(SettingsTab.allCases) { tab in
@@ -594,22 +590,13 @@ private struct SettingsSidebar: View {
 
             Spacer()
 
-            SettingsIllustrationPlaceholder(accentColor: accentColor)
-                .padding(.horizontal, 24)
+            VStack(spacing: 14) {
+                SettingsIllustration()
+                    .frame(height: 190)
 
-            HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(accentColor)
-                    .frame(width: 10, height: 10)
-                    .padding(.top, 4)
-
-                Text("BASED IN DIGITAL SPACE\nWORKING WORLDWIDE")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(SettingsTheme.secondaryText)
-                    .lineSpacing(5)
+                OlchuStudioFooter(accentColor: accentColor)
+                    .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 36)
-            .padding(.bottom, 34)
         }
     }
 }
@@ -622,10 +609,10 @@ private struct SidebarItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 22) {
+            HStack(spacing: 16) {
                 Image(systemName: tab.systemImage)
                     .font(.system(size: 22, weight: .medium))
-                    .frame(width: 30)
+                    .frame(width: 28)
 
                 Text(tab.title)
                     .font(SettingsTheme.sidebarFont)
@@ -635,8 +622,8 @@ private struct SidebarItem: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(isSelected ? accentColor : SettingsTheme.secondaryText)
-            .padding(.horizontal, 28)
-            .frame(width: 260, height: 58)
+            .padding(.horizontal, 20)
+            .frame(width: 208, height: 58)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? accentColor.opacity(0.18) : .clear)
@@ -650,66 +637,62 @@ private struct SidebarItem: View {
     }
 }
 
-private struct SettingsIllustrationPlaceholder: View {
+private struct SettingsIllustration: View {
+    var body: some View {
+        Image("settingsIllustration")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+}
+
+private struct OlchuStudioFooter: View {
     let accentColor: Color
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            dotGrid
+        HStack(alignment: .bottom, spacing: 8) {
+            logo
 
-            Image(systemName: "figure.walk")
-                .font(.system(size: 92, weight: .light))
-                .foregroundStyle(SettingsTheme.primaryText)
-                .offset(x: 22, y: -6)
+            Spacer(minLength: 8)
 
-            Image(systemName: "music.note")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(SettingsTheme.primaryText)
-                .offset(x: 158, y: -150)
-
-            Image(systemName: "music.note")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(SettingsTheme.primaryText)
-                .offset(x: 132, y: -110)
-
-            Circle()
-                .fill(accentColor)
-                .frame(width: 58, height: 58)
-                .overlay(
-                    VStack(spacing: 4) {
-                        ForEach(0..<7, id: \.self) { _ in
-                            Rectangle()
-                                .fill(SettingsTheme.background)
-                                .frame(height: 2)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                )
-                .offset(x: 174, y: -72)
-        }
-        .frame(height: 260)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(SettingsTheme.secondaryText.opacity(0.6))
-                .frame(height: 1)
-        }
-    }
-
-    private var dotGrid: some View {
-        VStack(spacing: 9) {
-            ForEach(0..<13, id: \.self) { _ in
-                HStack(spacing: 9) {
-                    ForEach(0..<13, id: \.self) { _ in
-                        Circle()
-                            .fill(SettingsTheme.secondaryText.opacity(0.35))
-                            .frame(width: 1.5, height: 1.5)
-                    }
-                }
-            }
+            Text(appVersionLabel)
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                .foregroundStyle(SettingsTheme.secondaryText)
+                .lineLimit(1)
+                .padding(.bottom, 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 12)
-        .padding(.bottom, 26)
+    }
+
+    private var logo: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("> OLCHU_")
+                .font(.system(size: 8, weight: .light, design: .monospaced))
+                .foregroundStyle(SettingsTheme.primaryText)
+                .lineLimit(1)
+
+            HStack(alignment: .center, spacing: 3) {
+                Text("STUDI")
+                    .font(.system(size: 12, weight: .black, design: .default))
+                    .foregroundStyle(SettingsTheme.primaryText)
+                    .lineLimit(1)
+                    .fixedSize()
+
+                logoDot
+            }
+        }
+        .fixedSize()
+    }
+
+    private var logoDot: some View {
+        Circle()
+            .fill(accentColor)
+            .frame(width: 17, height: 17)
+    }
+
+    private var appVersionLabel: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        return "v\(version ?? "0.0")"
     }
 }
 
@@ -725,15 +708,17 @@ private struct WidgetChip: View {
                 .font(.system(size: 22, weight: .medium))
                 .frame(width: 24)
 
-            Text(widget.title)
-                .font(SettingsTheme.rowFont)
+            Text(widget.settingsTitle)
+                .font(SettingsTheme.chipFont)
                 .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .layoutPriority(1)
 
             Spacer(minLength: 0)
         }
         .foregroundStyle(SettingsTheme.primaryText)
         .padding(.horizontal, 14)
-        .frame(width: 132, height: 54)
+        .frame(width: widget.settingsChipWidth, height: 54)
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(isDragPreview ? SettingsTheme.background : SettingsTheme.cardBackground)
@@ -773,7 +758,7 @@ private struct WidgetSettingsRow: View {
                 .frame(width: 36)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(widget.title)
+                Text(widget.settingsTitle)
                     .font(SettingsTheme.rowFont)
                     .foregroundStyle(SettingsTheme.primaryText)
 
@@ -786,30 +771,9 @@ private struct WidgetSettingsRow: View {
 
             Toggle("", isOn: $isEnabled)
                 .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(accentColor)
-
-            DragHandle()
+                .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
         }
         .frame(height: 72)
-    }
-}
-
-private struct DragHandle: View {
-    var body: some View {
-        VStack(spacing: 5) {
-            ForEach(0..<3, id: \.self) { _ in
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(SettingsTheme.secondaryText.opacity(0.72))
-                        .frame(width: 3, height: 3)
-                    Circle()
-                        .fill(SettingsTheme.secondaryText.opacity(0.72))
-                        .frame(width: 3, height: 3)
-                }
-            }
-        }
-        .frame(width: 32)
     }
 }
 
@@ -845,6 +809,56 @@ private struct WidgetOrderDropDelegate: DropDelegate {
     }
 }
 
+private extension BangBarWidget {
+    var settingsTitle: String {
+        switch self {
+        case .clock:
+            return "Calendar"
+        default:
+            return title
+        }
+    }
+
+    var settingsChipWidth: CGFloat {
+        let scaledWidth = realPanelWidth * 0.7 + 70
+        return max(scaledWidth, minimumReadableChipWidth)
+    }
+
+    private var realPanelWidth: CGFloat {
+        switch self {
+        case .nowPlaying:
+            return PanelLayout.nowPlayingWidgetWidth
+        case .clock:
+            return PanelLayout.clockWidgetWidth
+        case .moon:
+            return PanelLayout.moonWidgetWidth
+        case .pomodoro:
+            return PanelLayout.pomodoroWidgetWidth
+        case .reminders:
+            return PanelLayout.remindersWidgetWidth
+        case .mirror:
+            return PanelLayout.mirrorWidgetWidth
+        }
+    }
+
+    private var minimumReadableChipWidth: CGFloat {
+        switch self {
+        case .nowPlaying:
+            return 160
+        case .clock:
+            return 170
+        case .moon:
+            return 150
+        case .pomodoro:
+            return 174
+        case .reminders:
+            return 178
+        case .mirror:
+            return 150
+        }
+    }
+}
+
 private struct SettingsToggleRow: View {
     let title: String
     @Binding var isOn: Bool
@@ -860,10 +874,142 @@ private struct SettingsToggleRow: View {
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(accentColor)
+                .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
         }
         .frame(height: 52)
+    }
+}
+
+private struct AccentColorPicker: View {
+    @Binding var selection: Color
+    let accentColor: Color
+    let hexValue: String
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(accentColor)
+                    .frame(width: 66, height: 28)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.white.opacity(0.24), lineWidth: 1)
+                    )
+
+                Text(hexValue.uppercased())
+                    .font(SettingsTheme.labelFont)
+                    .foregroundStyle(SettingsTheme.primaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(SettingsTheme.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(SettingsTheme.border, lineWidth: 1)
+                    )
+            )
+
+            ColorPanelClickOverlay(selection: $selection)
+                .frame(width: 210, height: 40)
+        }
+        .frame(width: 210, height: 40)
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+private struct ColorPanelClickOverlay: NSViewRepresentable {
+    @Binding var selection: Color
+
+    func makeNSView(context: Context) -> ClickView {
+        let view = ClickView()
+        view.onClick = {
+            context.coordinator.openColorPanel()
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: ClickView, context: Context) {
+        context.coordinator.selection = $selection
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selection: $selection)
+    }
+
+    final class ClickView: NSView {
+        var onClick: (() -> Void)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            true
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            onClick?()
+        }
+    }
+
+    final class Coordinator: NSObject {
+        var selection: Binding<Color>
+
+        init(selection: Binding<Color>) {
+            self.selection = selection
+        }
+
+        func openColorPanel() {
+            let panel = NSColorPanel.shared
+            let color = NSColor(selection.wrappedValue).usingColorSpace(.sRGB) ?? NSColor(selection.wrappedValue)
+            panel.showsAlpha = false
+            panel.color = color
+            panel.setTarget(self)
+            panel.setAction(#selector(colorChanged(_:)))
+            panel.makeKeyAndOrderFront(nil)
+        }
+
+        @objc func colorChanged(_ sender: NSColorPanel) {
+            let color = sender.color.usingColorSpace(.sRGB) ?? sender.color
+            selection.wrappedValue = Color(nsColor: color)
+        }
+    }
+}
+
+private struct SettingsSwitchToggleStyle: ToggleStyle {
+    let accentColor: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.14)) {
+                configuration.isOn.toggle()
+            }
+        } label: {
+            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                Capsule()
+                    .fill(configuration.isOn ? accentColor : Color.white.opacity(0.07))
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                configuration.isOn ? accentColor.opacity(0.95) : Color.white.opacity(0.28),
+                                lineWidth: 1.2
+                            )
+                    )
+
+                Circle()
+                    .fill(SettingsTheme.primaryText)
+                    .frame(width: 22, height: 22)
+                    .padding(3)
+            }
+            .frame(width: 54, height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
 
@@ -999,6 +1145,160 @@ private struct RemindersListPickerRow: View {
     }
 }
 
+private struct CalendarListPickerCard: View {
+    @Binding var selectedCalendarIdsRaw: String
+    let accentColor: Color
+
+    @State private var calendars: [(id: String, title: String, color: NSColor)] = []
+    @State private var authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+
+    var body: some View {
+        SettingsCard {
+            VStack(spacing: 0) {
+                if isAuthorized {
+                    if calendars.isEmpty {
+                        CalendarPickerStatusRow(text: "No calendars available")
+                    } else {
+                        calendarActionsRow
+                        SettingsDivider()
+
+                        ForEach(Array(calendars.enumerated()), id: \.element.id) { index, calendar in
+                            calendarRow(calendar)
+
+                            if index < calendars.count - 1 {
+                                SettingsDivider()
+                            }
+                        }
+                    }
+                } else {
+                    CalendarPickerStatusRow(text: "Allow Calendar access to choose calendars")
+                }
+            }
+        }
+        .onAppear { loadCalendars() }
+    }
+
+    private var isAuthorized: Bool {
+        authorizationStatus == .fullAccess
+    }
+
+    private var selectedCalendarIds: [String]? {
+        BangBarSettings.selectedCalendarIds(from: selectedCalendarIdsRaw)
+    }
+
+    private var calendarActionsRow: some View {
+        HStack(spacing: 10) {
+            Text("Shown in widget")
+                .font(SettingsTheme.captionFont)
+                .foregroundStyle(SettingsTheme.secondaryText)
+
+            Spacer()
+
+            Button("All", action: selectAll)
+                .buttonStyle(SettingsOutlineButtonStyle())
+
+            Button("None", action: clearAll)
+                .buttonStyle(SettingsOutlineButtonStyle())
+        }
+        .padding(.horizontal, 18)
+        .frame(height: 48)
+    }
+
+    private func isSelected(_ id: String) -> Bool {
+        selectedCalendarIds?.contains(id) ?? true
+    }
+
+    private func calendarRow(_ calendar: (id: String, title: String, color: NSColor)) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(Color(nsColor: calendar.color))
+                .frame(width: 10, height: 10)
+
+            Text(calendar.title)
+                .font(SettingsTheme.rowFont)
+                .foregroundStyle(SettingsTheme.primaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 16)
+
+            Toggle("", isOn: binding(for: calendar.id))
+                .labelsHidden()
+                .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
+        }
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+    }
+
+    private func binding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { isSelected(id) },
+            set: { isSelected in
+                updateSelection(id: id, isSelected: isSelected)
+            }
+        )
+    }
+
+    private func updateSelection(id: String, isSelected: Bool) {
+        var selectedIds = Set(selectedCalendarIds ?? calendars.map(\.id))
+
+        if isSelected {
+            selectedIds.insert(id)
+        } else {
+            selectedIds.remove(id)
+        }
+
+        let orderedIds = calendars
+            .map(\.id)
+            .filter { selectedIds.contains($0) }
+
+        selectedCalendarIdsRaw = orderedIds.count == calendars.count
+            ? ""
+            : BangBarSettings.selectedCalendarIdsRaw(from: orderedIds)
+    }
+
+    private func selectAll() {
+        selectedCalendarIdsRaw = ""
+    }
+
+    private func clearAll() {
+        selectedCalendarIdsRaw = BangBarSettings.selectedCalendarIdsRaw(from: [])
+    }
+
+    private func loadCalendars() {
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard isAuthorized else {
+            calendars = []
+            return
+        }
+
+        let store = EKEventStore()
+        calendars = store.calendars(for: .event)
+            .sorted { lhs, rhs in
+                lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            .map { calendar in
+                (
+                    id: calendar.calendarIdentifier,
+                    title: calendar.title,
+                    color: NSColor(cgColor: calendar.cgColor) ?? .white
+                )
+            }
+    }
+}
+
+private struct CalendarPickerStatusRow: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(SettingsTheme.captionFont)
+            .foregroundStyle(SettingsTheme.secondaryText)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            .padding(.horizontal, 18)
+    }
+}
+
 private enum SettingsTheme {
     static let background = Color.black
     static let cardBackground = Color.black.opacity(0.35)
@@ -1010,6 +1310,7 @@ private enum SettingsTheme {
     static let sectionTitleFont = Font.system(size: 20, weight: .medium, design: .monospaced)
     static let sidebarFont = Font.system(size: 17, weight: .semibold, design: .monospaced)
     static let labelFont = Font.system(size: 14, weight: .semibold, design: .monospaced)
+    static let chipFont = Font.system(size: 14, weight: .regular, design: .monospaced)
     static let rowFont = Font.system(size: 16, weight: .regular, design: .monospaced)
     static let captionFont = Font.system(size: 13, weight: .regular, design: .monospaced)
 }
