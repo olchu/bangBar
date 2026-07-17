@@ -81,6 +81,13 @@ enum BangBarSettings {
         static let pomodoroLongBreakMinutes = "pomodoroLongBreakMinutes"
         static let pomodoroRounds = "pomodoroRounds"
         static let clipboardStorageLimitMB = "clipboardStorageLimitMB"
+        static let clipboardIgnoreTransientChanges = "clipboardIgnoreTransientChanges"
+        static let clipboardTransientDelayMS = "clipboardTransientDelayMS"
+        static let clipboardIgnoreShortcutEnabled = "clipboardIgnoreShortcutEnabled"
+        static let clipboardIgnoreShortcutKeyCode = "clipboardIgnoreShortcutKeyCode"
+        static let clipboardIgnoreShortcutModifiers = "clipboardIgnoreShortcutModifiers"
+        static let clipboardIgnoreShortcutLabel = "clipboardIgnoreShortcutLabel"
+        static let clipboardIgnoreShortcutGraceMS = "clipboardIgnoreShortcutGraceMS"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -101,7 +108,14 @@ enum BangBarSettings {
             Key.pomodoroShortBreakMinutes: 5,
             Key.pomodoroLongBreakMinutes: 15,
             Key.pomodoroRounds: 4,
-            Key.clipboardStorageLimitMB: 100
+            Key.clipboardStorageLimitMB: 100,
+            Key.clipboardIgnoreTransientChanges: true,
+            Key.clipboardTransientDelayMS: 1000,
+            Key.clipboardIgnoreShortcutEnabled: false,
+            Key.clipboardIgnoreShortcutKeyCode: -1,
+            Key.clipboardIgnoreShortcutModifiers: 0,
+            Key.clipboardIgnoreShortcutLabel: "Not set",
+            Key.clipboardIgnoreShortcutGraceMS: 1500
         ])
     }
 

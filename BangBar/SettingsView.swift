@@ -23,6 +23,13 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.pomodoroLongBreakMinutes) private var pomodoroLongBreakMinutes = 15
     @AppStorage(BangBarSettings.Key.pomodoroRounds) private var pomodoroRounds = 4
     @AppStorage(BangBarSettings.Key.clipboardStorageLimitMB) private var clipboardStorageLimitMB = 100
+    @AppStorage(BangBarSettings.Key.clipboardIgnoreTransientChanges) private var clipboardIgnoreTransientChanges = true
+    @AppStorage(BangBarSettings.Key.clipboardTransientDelayMS) private var clipboardTransientDelayMS = 1000
+    @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutEnabled) private var clipboardIgnoreShortcutEnabled = false
+    @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutKeyCode) private var clipboardIgnoreShortcutKeyCode = -1
+    @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutModifiers) private var clipboardIgnoreShortcutModifiers = 0
+    @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutLabel) private var clipboardIgnoreShortcutLabel = "Not set"
+    @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutGraceMS) private var clipboardIgnoreShortcutGraceMS = 1500
     @State private var selectedSettingsTab = SettingsTab.widgets
     @State private var widgetOrder = BangBarWidget.allCases
     @State private var draggedWidget: BangBarWidget?
@@ -103,11 +110,21 @@ struct SettingsView: View {
             }
         case .clipboard:
             singleColumnContent(title: "CLIPBOARD", accentColor: accentColor) {
-                VStack(alignment: .leading, spacing: 14) {
-                    SettingsSectionLabel("STORAGE")
-                    clipboardSettingsCard(accentColor: accentColor)
+                VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("STORAGE")
+                        clipboardSettingsCard(accentColor: accentColor)
+                    }
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("TEMPORARY CHANGES")
+                        clipboardTemporaryChangesCard(accentColor: accentColor)
+                    }
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("TRANSCRIPTION")
+                        clipboardTranscriptionCard(accentColor: accentColor)
+                    }
                 }
-                .frame(width: 520)
+                .frame(width: 884)
             }
         case .about:
             singleColumnContent(title: "ABOUT", accentColor: accentColor) {
@@ -470,6 +487,107 @@ struct SettingsView: View {
                 .padding(.horizontal, 18)
             }
         }
+    }
+
+    private func clipboardTemporaryChangesCard(accentColor: Color) -> some View {
+        SettingsCard {
+            VStack(spacing: 0) {
+                SettingsToggleRow(
+                    title: "Ignore temporary changes",
+                    subtitle: "Skips content when the previous clipboard is restored shortly afterward.",
+                    isOn: $clipboardIgnoreTransientChanges,
+                    accentColor: accentColor
+                )
+                if clipboardIgnoreTransientChanges {
+                    SettingsDivider()
+                    clipboardPickerRow(
+                        title: "Wait before saving",
+                        subtitle: "One second works well for most transcription apps.",
+                        selection: $clipboardTransientDelayMS,
+                        values: [500, 1000, 1500, 2000],
+                        label: { String(format: "%.1f sec", Double($0) / 1000) },
+                        accentColor: accentColor
+                    )
+                }
+            }
+        }
+    }
+
+    private func clipboardTranscriptionCard(accentColor: Color) -> some View {
+        SettingsCard {
+            VStack(spacing: 0) {
+                SettingsToggleRow(
+                    title: "Ignore transcription shortcut",
+                    subtitle: "Pauses clipboard history while your transcription key is held.",
+                    isOn: $clipboardIgnoreShortcutEnabled,
+                    accentColor: accentColor
+                )
+                if clipboardIgnoreShortcutEnabled {
+                    SettingsDivider()
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Shortcut")
+                                .font(SettingsTheme.rowFont)
+                                .foregroundStyle(SettingsTheme.primaryText)
+                            Text("Click Record, then press your transcription key. Fn is supported.")
+                                .font(SettingsTheme.captionFont)
+                                .foregroundStyle(SettingsTheme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: 290, alignment: .leading)
+                        Spacer(minLength: 12)
+                        ShortcutRecorderField(
+                            keyCode: $clipboardIgnoreShortcutKeyCode,
+                            modifiers: $clipboardIgnoreShortcutModifiers,
+                            label: $clipboardIgnoreShortcutLabel
+                        )
+                        .frame(width: 142, height: 30)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+
+                    SettingsDivider()
+                    clipboardPickerRow(
+                        title: "Protection after release",
+                        subtitle: "Allows time for the transcriber to finish pasting and restore the clipboard.",
+                        selection: $clipboardIgnoreShortcutGraceMS,
+                        values: [500, 1000, 1500, 2000, 3000],
+                        label: { String(format: "%.1f sec", Double($0) / 1000) },
+                        accentColor: accentColor
+                    )
+                }
+            }
+        }
+    }
+
+    private func clipboardPickerRow(
+        title: String,
+        subtitle: String,
+        selection: Binding<Int>,
+        values: [Int],
+        label: @escaping (Int) -> String,
+        accentColor: Color
+    ) -> some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(SettingsTheme.rowFont).foregroundStyle(SettingsTheme.primaryText)
+                Text(subtitle)
+                    .font(SettingsTheme.captionFont)
+                    .foregroundStyle(SettingsTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 330, alignment: .leading)
+            Spacer()
+            Picker("", selection: selection) {
+                ForEach(values, id: \.self) { value in Text(label(value)).tag(value) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 112)
+            .tint(accentColor)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
     }
 }
 
@@ -1103,14 +1221,24 @@ private struct SettingsStepperRow: View {
 
 private struct SettingsToggleRow: View {
     let title: String
+    var subtitle: String? = nil
     @Binding var isOn: Bool
     let accentColor: Color
 
     var body: some View {
         HStack {
-            Text(title)
-                .font(SettingsTheme.rowFont)
-                .foregroundStyle(SettingsTheme.primaryText)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(SettingsTheme.rowFont)
+                    .foregroundStyle(SettingsTheme.primaryText)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(SettingsTheme.captionFont)
+                        .foregroundStyle(SettingsTheme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: 380, alignment: .leading)
 
             Spacer()
 
@@ -1118,7 +1246,8 @@ private struct SettingsToggleRow: View {
                 .labelsHidden()
                 .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
         }
-        .frame(height: 52)
+        .padding(.horizontal, 18)
+        .padding(.vertical, subtitle == nil ? 10 : 14)
     }
 }
 
