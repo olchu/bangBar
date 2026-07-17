@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CryptoKit
+import UniformTypeIdentifiers
 
 enum ClipboardItemKind: String, Codable {
     case text
@@ -301,7 +302,13 @@ final class ClipboardHistoryService: ObservableObject {
         guard fingerprint != lastStableFingerprint else { return }
         lastStableFingerprint = fingerprint
 
-        if let imageData = normalizedImageData(from: pasteboard) {
+        let fileURLs = fileURLs(from: pasteboard)
+        if !fileURLs.isEmpty {
+            for url in fileURLs where isImageFile(url) {
+                guard let imageData = normalizedImageData(from: url) else { continue }
+                insertImage(imageData)
+            }
+        } else if let imageData = normalizedImageData(from: pasteboard) {
             insertImage(imageData)
         } else if let text = pasteboard.string(forType: .string), !text.isEmpty,
                   let data = text.data(using: .utf8) {
@@ -372,6 +379,12 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     private func currentPasteboardFingerprint() -> String? {
+        let fileURLs = fileURLs(from: pasteboard)
+        if !fileURLs.isEmpty {
+            let value = fileURLs.map(\.path).sorted().joined(separator: "\n")
+            guard let data = value.data(using: .utf8) else { return nil }
+            return "files:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        }
         if let imageData = normalizedImageData(from: pasteboard) {
             return "image:" + SHA256.hash(data: imageData).map { String(format: "%02x", $0) }.joined()
         }
@@ -382,18 +395,43 @@ final class ClipboardHistoryService: ObservableObject {
         return nil
     }
 
+    private func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+        let objects = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) ?? []
+        return objects.compactMap { ($0 as? NSURL).map { $0 as URL } }
+    }
+
+    private func isImageFile(_ url: URL) -> Bool {
+        guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+              let type = UTType(filenameExtension: url.pathExtension) else {
+            return false
+        }
+        return type.conforms(to: .image)
+    }
+
+    private func normalizedImageData(from url: URL) -> Data? {
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        return pngData(from: image)
+    }
+
     private func normalizedImageData(from pasteboard: NSPasteboard) -> Data? {
         for type in [NSPasteboard.PasteboardType.png, .tiff] {
             guard let sourceData = pasteboard.data(forType: type),
                   let image = NSImage(data: sourceData),
-                  let tiff = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiff),
-                  let png = bitmap.representation(using: .png, properties: [:]) else {
+                  let png = pngData(from: image) else {
                 continue
             }
             return png
         }
         return nil
+    }
+
+    private func pngData(from image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
     }
 
     private func insertText(_ text: String, data: Data) {
