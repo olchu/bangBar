@@ -7,6 +7,11 @@ struct PanelTopBar: View {
     let isClearDisabled: Bool
     let onClear: () -> Void
     let onOpenSettings: () -> Void
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+
+    private var accentColor: Color {
+        Color(hex: accentColorHex)
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -35,7 +40,7 @@ struct PanelTopBar: View {
                 Button(action: onClear) {
                     Label("Clear", systemImage: "trash")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.red.opacity(0.9))
+                        .foregroundStyle(accentColor.opacity(0.9))
                 }
                 .buttonStyle(.plain)
                 .disabled(isClearDisabled)
@@ -61,11 +66,11 @@ struct PanelTopBar: View {
             VStack(spacing: 0) {
                 Text(itemFilter.rawValue)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(clipboardFilter == itemFilter ? Color.red : Color.white.opacity(0.5))
+                    .foregroundStyle(clipboardFilter == itemFilter ? accentColor : Color.white.opacity(0.5))
                     .frame(height: 18)
 
                 Rectangle()
-                    .fill(clipboardFilter == itemFilter ? Color.red : Color.clear)
+                    .fill(clipboardFilter == itemFilter ? accentColor : Color.clear)
                     .frame(height: 2)
             }
             .fixedSize(horizontal: true, vertical: false)

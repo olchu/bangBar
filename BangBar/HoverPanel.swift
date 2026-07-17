@@ -9,7 +9,7 @@ class HoverPanel: NSPanel {
     private let state = PanelState()
     private let nowPlaying = NowPlayingService()
     private let pomodoro = PomodoroService()
-    private let clipboardHistory = ClipboardHistoryService()
+    let clipboardHistory = ClipboardHistoryService()
     private var cancellables = Set<AnyCancellable>()
     private var hideWorkItem: DispatchWorkItem?
     private var artworkHeroCleanupWorkItem: DispatchWorkItem?

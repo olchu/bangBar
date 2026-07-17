@@ -6,6 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
+    @ObservedObject var clipboardHistory: ClipboardHistoryService
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
@@ -21,6 +22,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.pomodoroShortBreakMinutes) private var pomodoroShortBreakMinutes = 5
     @AppStorage(BangBarSettings.Key.pomodoroLongBreakMinutes) private var pomodoroLongBreakMinutes = 15
     @AppStorage(BangBarSettings.Key.pomodoroRounds) private var pomodoroRounds = 4
+    @AppStorage(BangBarSettings.Key.clipboardStorageLimitMB) private var clipboardStorageLimitMB = 100
     @State private var selectedSettingsTab = SettingsTab.widgets
     @State private var widgetOrder = BangBarWidget.allCases
     @State private var draggedWidget: BangBarWidget?
@@ -96,6 +98,14 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     SettingsSectionLabel("APPEARANCE")
                     appearanceCard(accentColor: accentColor)
+                }
+                .frame(width: 520)
+            }
+        case .clipboard:
+            singleColumnContent(title: "CLIPBOARD", accentColor: accentColor) {
+                VStack(alignment: .leading, spacing: 14) {
+                    SettingsSectionLabel("STORAGE")
+                    clipboardSettingsCard(accentColor: accentColor)
                 }
                 .frame(width: 520)
             }
@@ -385,12 +395,89 @@ struct SettingsView: View {
             }
         }
     }
+
+    private func clipboardSettingsCard(accentColor: Color) -> some View {
+        SettingsCard {
+            VStack(spacing: 0) {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Storage limit")
+                            .font(SettingsTheme.rowFont)
+                            .foregroundStyle(SettingsTheme.primaryText)
+
+                        Text("Oldest items are removed automatically when the limit is reached.")
+                            .font(SettingsTheme.captionFont)
+                            .foregroundStyle(SettingsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Picker("", selection: $clipboardStorageLimitMB) {
+                        ForEach([50, 100, 250, 500], id: \.self) { limit in
+                            Text("\(limit) MB").tag(limit)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 112)
+                    .tint(accentColor)
+                }
+                .frame(minHeight: 72)
+                .padding(.horizontal, 18)
+
+                SettingsDivider()
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Current usage")
+                            .font(SettingsTheme.rowFont)
+                            .foregroundStyle(SettingsTheme.primaryText)
+
+                        Text("Up to 200 items, with a 20 MB limit per item.")
+                            .font(SettingsTheme.captionFont)
+                            .foregroundStyle(SettingsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Text(clipboardHistory.formattedUsage)
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(accentColor)
+                }
+                .frame(minHeight: 72)
+                .padding(.horizontal, 18)
+
+                SettingsDivider()
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Clear clipboard history")
+                            .font(SettingsTheme.rowFont)
+                            .foregroundStyle(SettingsTheme.primaryText)
+
+                        Text("Permanently removes saved text and images.")
+                            .font(SettingsTheme.captionFont)
+                            .foregroundStyle(SettingsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Button("Clear History", action: clipboardHistory.clear)
+                        .buttonStyle(SettingsOutlineButtonStyle())
+                        .disabled(clipboardHistory.items.isEmpty)
+                }
+                .frame(minHeight: 72)
+                .padding(.horizontal, 18)
+            }
+        }
+    }
 }
 
 private enum SettingsTab: CaseIterable, Identifiable {
     case widgets
     case permissions
     case appearance
+    case clipboard
     case about
 
     var id: Self { self }
@@ -403,6 +490,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "PERMISSIONS"
         case .appearance:
             return "APPEARANCE"
+        case .clipboard:
+            return "CLIPBOARD"
         case .about:
             return "ABOUT"
         }
@@ -416,6 +505,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "checkmark.shield"
         case .appearance:
             return "paintbrush.pointed"
+        case .clipboard:
+            return "clipboard"
         case .about:
             return "info.circle"
         }
@@ -668,7 +759,7 @@ private struct SettingsSidebar: View {
                 SettingsIllustration()
                     .frame(height: 190)
 
-                OlchuStudioFooter(accentColor: accentColor)
+                OlchuStudioFooter()
                     .padding(.horizontal, 24)
             }
         }
@@ -721,8 +812,6 @@ private struct SettingsIllustration: View {
 }
 
 private struct OlchuStudioFooter: View {
-    let accentColor: Color
-
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             logo
@@ -760,7 +849,7 @@ private struct OlchuStudioFooter: View {
 
     private var logoDot: some View {
         Circle()
-            .fill(accentColor)
+            .fill(Color(hex: BangBarSettings.defaultAccentColorHex))
             .frame(width: 17, height: 17)
     }
 

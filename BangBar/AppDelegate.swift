@@ -157,7 +157,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.isMovableByWindowBackground = false
             window.animationBehavior = .none
             window.minSize = NSSize(width: 960, height: 600)
-            let hostingController = NSHostingController(rootView: SettingsView())
+            let clipboardHistory = hoverPanel?.clipboardHistory ?? ClipboardHistoryService()
+            let hostingController = NSHostingController(
+                rootView: SettingsView(clipboardHistory: clipboardHistory)
+            )
             hostingController.view.wantsLayer = true
             hostingController.view.layer?.backgroundColor = NSColor.black.cgColor
             window.contentViewController = hostingController

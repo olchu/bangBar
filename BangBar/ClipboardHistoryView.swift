@@ -34,6 +34,7 @@ struct ClipboardHistoryView: View {
                         ForEach(filteredItems) { item in
                             ClipboardHistoryCard(
                                 item: item,
+                                image: service.image(for: item),
                                 onCopy: { service.copy(item) },
                                 onRemove: { service.remove(item) }
                             )
@@ -62,9 +63,15 @@ struct ClipboardHistoryView: View {
 
 private struct ClipboardHistoryCard: View {
     let item: ClipboardHistoryItem
+    let image: NSImage?
     let onCopy: () -> Void
     let onRemove: () -> Void
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var isHovering = false
+
+    private var accentColor: Color {
+        Color(hex: accentColorHex)
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -90,7 +97,10 @@ private struct ClipboardHistoryCard: View {
                 .clipShape(.rect(cornerRadius: 10))
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                        .stroke(
+                            isHovering ? accentColor.opacity(0.9) : Color.white.opacity(0.13),
+                            lineWidth: isHovering ? 1.5 : 1
+                        )
                 }
                 .contentShape(.rect)
             }
@@ -100,7 +110,7 @@ private struct ClipboardHistoryCard: View {
                 Button(action: onRemove) {
                     Image(systemName: "trash")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.red.opacity(0.95))
+                        .foregroundStyle(accentColor.opacity(0.95))
                         .frame(width: 24, height: 24)
                         .background(Color.black.opacity(0.78))
                         .clipShape(.rect(cornerRadius: 7))
@@ -138,7 +148,7 @@ private struct ClipboardHistoryCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(9)
                 .padding(.bottom, 17)
-        } else if let image = item.image {
+        } else if let image {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFill()

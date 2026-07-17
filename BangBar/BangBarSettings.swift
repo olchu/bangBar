@@ -80,6 +80,7 @@ enum BangBarSettings {
         static let pomodoroShortBreakMinutes = "pomodoroShortBreakMinutes"
         static let pomodoroLongBreakMinutes = "pomodoroLongBreakMinutes"
         static let pomodoroRounds = "pomodoroRounds"
+        static let clipboardStorageLimitMB = "clipboardStorageLimitMB"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -99,7 +100,8 @@ enum BangBarSettings {
             Key.pomodoroWorkMinutes: 25,
             Key.pomodoroShortBreakMinutes: 5,
             Key.pomodoroLongBreakMinutes: 15,
-            Key.pomodoroRounds: 4
+            Key.pomodoroRounds: 4,
+            Key.clipboardStorageLimitMB: 100
         ])
     }
 
@@ -168,6 +170,10 @@ enum BangBarSettings {
 
     static var showRemindersWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showRemindersWidget) as? Bool ?? true
+    }
+
+    static var clipboardStorageLimitMB: Int {
+        UserDefaults.standard.object(forKey: Key.clipboardStorageLimitMB) as? Int ?? 100
     }
 }
 
