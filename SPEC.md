@@ -95,6 +95,9 @@ Album artwork should read visually as one continuous element between compact and
   - `NowPlayingWidgets.swift`: expanded now-playing widget, compact now-playing widget, artwork placeholder, artwork hero transition, and playing indicator;
   - `ClockWidget.swift`: clock header, calendar event rendering, empty calendar state, and looping no-plans MP4 view;
   - `MirrorWidget.swift`: mirror button, camera preview SwiftUI wrapper, and AppKit preview container;
+  - `ClipboardHistoryView.swift`: clipboard history surface, item cards, image-group cards, and group detail view;
+  - `CompactClipboardGroupWidget.swift`: compact image-collection status shown while a group is active;
+  - `PanelTopBar.swift`: panel navigation, clipboard filters and image-group collection controls;
   - `NotchPanelShape.swift`: custom panel clipping shape.
 - Legacy/standalone widgets live outside `PanelContentView`:
   - `CalendarWidget.swift`;
@@ -120,6 +123,43 @@ Album artwork should read visually as one continuous element between compact and
 - Current expanded width formula:
   - `padding * 2 + sum(widget widths) + spacing * (widget count - 1)`
 - Future widgets should add their fixed width to `PanelLayout.expandedWidgetWidths` so the panel grows automatically.
+
+### Clipboard History
+
+- Clipboard history is a panel-level surface, not an item in the reorderable widget row.
+- The clipboard button in `PanelTopBar` switches the expanded panel between widgets and history.
+- History has `All`, `Text`, and `Images` filters. Image groups appear in `All` and `Images`, but not in `Text`.
+- The top bar retains the Settings button and, while history is open, also provides Clear History and image-group collection controls.
+- Text and image cards are shown in a horizontally scrolling row. Clicking a card writes it back to the system pasteboard; hover and context-menu actions allow individual deletion.
+- Image-group cards show a stacked preview and item count, open into a group detail view, and support copy, rename, and delete actions.
+- Copying a group writes its persisted image file URLs as separate pasteboard items so Finder and destination editors receive a real multi-file paste.
+
+**Capture and persistence:**
+
+- `ClipboardHistoryService` polls `NSPasteboard.general` every 0.6 seconds and captures non-empty text, PNG/TIFF images, and image file URLs.
+- Image file URLs are read and normalized to PNG before storage. Re-copying a stored single image writes the image back to the pasteboard; copying a group uses file URLs.
+- Content is fingerprinted with SHA-256. An identical text or image payload is deduplicated and moved to the newest position instead of retaining duplicate history entries.
+- History is stored under Application Support in `BangBar/ClipboardHistory/`:
+  - `index.json` stores item metadata and text payloads;
+  - `groups.json` stores image-group metadata;
+  - `Images/` stores normalized PNG payloads.
+- The legacy `clipboard-history.json` format is migrated on load.
+- History is limited to 200 items and 20 MB per item. A user-selectable total storage limit of 50, 100, 250, or 500 MB defaults to 100 MB; oldest entries and their image files are removed when a limit is exceeded.
+- Current storage usage is published for Settings. Clear History removes saved items, image files, and groups.
+
+**Temporary clipboard protection:**
+
+- Optional transient-change filtering waits 0.5–2.0 seconds before accepting a changed pasteboard, defaulting to 1 second. If the pasteboard returns to the previous stable content during that window, the temporary value is not saved.
+- An optional recorded transcription shortcut suppresses capture while the shortcut is held and for a configurable 0.5–3.0 second grace period after release, defaulting to 1.5 seconds.
+- Shortcut recording supports normal modifier/key combinations and a standalone `fn` key. `Esc` clears the recorded shortcut.
+
+**Image groups:**
+
+- `New Image Group` starts a collection session and assigns subsequently captured images to that group; text remains outside the group.
+- Collection stops manually or automatically after 2 minutes without a new image, 15 minutes total, or 30 collected images.
+- While collection is active, clipboard content takes priority over Pomodoro and Now Playing in compact mode. The compact surface shows previews, group name, image count, and the remaining inactivity time.
+- Expanding the panel during collection opens Clipboard History with the Images filter selected.
+- An active collection keeps the panel available in compact mode even when music and Pomodoro are inactive. Compact width receives additional room for the collection status.
 
 ### ClockWidget
 
@@ -535,6 +575,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - `WIDGETS`
 - `PERMISSIONS`
 - `APPEARANCE`
+- `CLIPBOARD`
 - `ABOUT`
 - Tabs are centered in the left sidebar and highlight with the current accent color.
 - Sidebar illustration uses the `settingsIllustration` asset from the asset catalog, is bottom-aligned inside its frame, and is grouped near the footer logo without a divider line below it.
@@ -575,6 +616,11 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 **Appearance section:**
 - Accent color picker is shown as a wide swatch button with the current hex value; clicking it opens the system color panel, stores the value as a hex string in `UserDefaults`, and defaults to `#FF383C`. Reset button disables itself when the current value equals the default.
 - Toggle: Tint walking figure — applies accent color to the no-plans MP4 animation.
+
+**Clipboard section:**
+- Storage card selects the total history limit, shows current disk usage and the fixed item limits, and provides Clear History.
+- Temporary Changes card enables delayed stable-content capture and selects the wait duration.
+- Transcription card enables shortcut-based suppression, records the shortcut (including `fn`), and selects the post-release protection duration.
 
 **Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 
@@ -701,12 +747,6 @@ These are not immediate commitments, but useful directions to consider after `Po
 - Provides 2-4 icon buttons for frequent actions or apps.
 - Candidate actions: open Calendar, Reminders, Music, app settings.
 - Should use SF Symbols / familiar icons and avoid text-heavy buttons.
-
-### ClipboardWidget
-
-- Shows a short preview of the latest clipboard content.
-- Could offer quick clear/open actions.
-- Must be privacy-conscious and should probably be opt-in from settings.
 
 ### NetworkWidget
 
