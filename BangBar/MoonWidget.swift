@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MoonWidget: View {
     private static let infoOverlayVerticalOutset: CGFloat = 0
+    private static let moonDiskSize: CGFloat = 78
 
     let date: Date
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
@@ -147,14 +148,14 @@ struct MoonWidget: View {
             Image("MoonTexture")
                 .resizable()
                 .scaledToFill()
-                .frame(width: 87.3, height: 87.3)
+                .frame(width: Self.moonDiskSize, height: Self.moonDiskSize)
                 .saturation(0.48)
                 .brightness(-0.65)
 
             Image("MoonTexture")
                 .resizable()
                 .scaledToFill()
-                .frame(width: 87.3, height: 87.3)
+                .frame(width: Self.moonDiskSize, height: Self.moonDiskSize)
                 .saturation(0.42)
                 .contrast(0.86)
                 .brightness(-0.12)
@@ -166,7 +167,7 @@ struct MoonWidget: View {
                     )
                 }
         }
-        .frame(width: 87.3, height: 87.3)
+        .frame(width: Self.moonDiskSize, height: Self.moonDiskSize)
         .clipShape(Circle())
         .offset(y: 3)
         .shadow(color: .black.opacity(0.30), radius: 7, y: 2)

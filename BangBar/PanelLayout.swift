@@ -5,7 +5,7 @@ import AppKit
 enum PanelLayout {
     // Меняйте это значение, чтобы регулировать высоту закреплённого верхнего бара.
     static let topBarHeight: CGFloat = 24
-    static let topBarHorizontalPadding: CGFloat = 48
+    static let topBarHorizontalPadding: CGFloat = 52
     static let notchContentClearance: CGFloat = 4
     static var expandedContentHeight: CGFloat {
         nowPlayingWidgetHeight + expandedVisibleEdgePadding
