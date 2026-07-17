@@ -101,7 +101,8 @@ class HoverPanel: NSPanel {
             .sink { [weak self] info, isAvailable in
                 self?.syncCompactVisibility(
                     isMusicPlaying: isAvailable && info.isPlaying,
-                    isPomodoroRunning: self?.pomodoro.isRunning == true
+                    isPomodoroRunning: self?.pomodoro.isRunning == true,
+                    isCollectingImages: self?.clipboardHistory.isCollectingImages == true
                 )
             }
             .store(in: &cancellables)
@@ -112,7 +113,20 @@ class HoverPanel: NSPanel {
             .sink { [weak self] isRunning in
                 self?.syncCompactVisibility(
                     isMusicPlaying: self?.nowPlaying.isCurrentlyPlaying == true,
-                    isPomodoroRunning: isRunning
+                    isPomodoroRunning: isRunning,
+                    isCollectingImages: self?.clipboardHistory.isCollectingImages == true
+                )
+            }
+            .store(in: &cancellables)
+
+        clipboardHistory.$activeGroupID
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] activeGroupID in
+                self?.syncCompactVisibility(
+                    isMusicPlaying: self?.nowPlaying.isCurrentlyPlaying == true,
+                    isPomodoroRunning: self?.pomodoro.isRunning == true,
+                    isCollectingImages: activeGroupID != nil
                 )
             }
             .store(in: &cancellables)
@@ -147,6 +161,10 @@ class HoverPanel: NSPanel {
 
         guard let screen = NSScreen.main else { return }
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
+        if clipboardHistory.isCollectingImages {
+            state.showsClipboardHistory = true
+            state.clipboardFilter = .images
+        }
         let wasCompact = state.isCompact
         let wasNowPlayingCompact = state.compactContent == .nowPlaying
         let targetFrame = expandedFrame(on: screen)
@@ -220,7 +238,7 @@ class HoverPanel: NSPanel {
         state.contentVisible = false
         state.showsClipboardHistory = false
 
-        if pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
+        if clipboardHistory.isCollectingImages || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
             enterCompactMode()
             return
         }
@@ -292,13 +310,15 @@ class HoverPanel: NSPanel {
     }
 
     private func compactWidth(on screen: NSScreen) -> CGFloat {
-        guard let leftArea = screen.auxiliaryTopLeftArea,
-              let rightArea = screen.auxiliaryTopRightArea else {
-            return PanelLayout.compactMinimumWidth
+        let baseWidth: CGFloat
+        if let leftArea = screen.auxiliaryTopLeftArea,
+           let rightArea = screen.auxiliaryTopRightArea {
+            let notchWidth = rightArea.minX - leftArea.maxX
+            baseWidth = PanelLayout.compactWidth(for: notchWidth)
+        } else {
+            baseWidth = PanelLayout.compactMinimumWidth
         }
-
-        let notchWidth = rightArea.minX - leftArea.maxX
-        return PanelLayout.compactWidth(for: notchWidth)
+        return clipboardHistory.isCollectingImages ? baseWidth + 110 : baseWidth
     }
 
     private func concealedCompactWidth(on screen: NSScreen) -> CGFloat {
@@ -313,7 +333,13 @@ class HoverPanel: NSPanel {
 
     private func enterCompactMode() {
         TooltipManager.shared.hide()
-        let nextCompactContent: PanelState.CompactContent = pomodoro.isRunning ? .pomodoro : .nowPlaying
+        let nextCompactContent: PanelState.CompactContent = if clipboardHistory.isCollectingImages {
+            .clipboardGroup
+        } else if pomodoro.isRunning {
+            .pomodoro
+        } else {
+            .nowPlaying
+        }
 
         if isVisible, state.isCompact, !state.isExpanded, !isHiding {
             state.compactContent = nextCompactContent
@@ -359,9 +385,10 @@ class HoverPanel: NSPanel {
                 })
             }
         } else {
+            let usesArtworkHero = nextCompactContent == .nowPlaying && nowPlaying.isAvailable
             state.contentVisible = false
             state.isExpanded = false
-            state.artworkHeroProgress = 1
+            state.artworkHeroProgress = usesArtworkHero ? 1 : nil
             state.compactContent = nextCompactContent
             state.compactArtworkRevealAnimated = false
             state.compactArtworkRevealAllowed = false
@@ -371,6 +398,7 @@ class HoverPanel: NSPanel {
                 to: targetFrame,
                 duration: 0.24,
                 progress: { [weak self] progress in
+                    guard usesArtworkHero else { return }
                     self?.state.artworkHeroProgress = 1 - progress
                 },
                 completion: { [weak self] in
@@ -387,11 +415,23 @@ class HoverPanel: NSPanel {
         }
     }
 
-    private func syncCompactVisibility(isMusicPlaying: Bool, isPomodoroRunning: Bool) {
-        if isPomodoroRunning || isMusicPlaying {
-            state.compactContent = isPomodoroRunning ? .pomodoro : .nowPlaying
+    private func syncCompactVisibility(
+        isMusicPlaying: Bool,
+        isPomodoroRunning: Bool,
+        isCollectingImages: Bool
+    ) {
+        if isCollectingImages || isPomodoroRunning || isMusicPlaying {
+            state.compactContent = if isCollectingImages {
+                .clipboardGroup
+            } else if isPomodoroRunning {
+                .pomodoro
+            } else {
+                .nowPlaying
+            }
             if !isVisible || isHiding {
                 enterCompactMode()
+            } else if state.isCompact, let screen = NSScreen.main, !isAnimatingFrame {
+                animateFrame(to: compactFrame(on: screen), duration: 0.18)
             }
         } else if state.isCompact {
             exitCompactMode()
@@ -427,11 +467,17 @@ class HoverPanel: NSPanel {
         let compactFrame = compactFrame(on: screen)
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            guard self.isHiding, !self.nowPlaying.isCurrentlyPlaying, !self.pomodoro.isRunning else { return }
+            guard self.isHiding,
+                  !self.clipboardHistory.isCollectingImages,
+                  !self.nowPlaying.isCurrentlyPlaying,
+                  !self.pomodoro.isRunning else { return }
 
             self.animateFrame(to: self.concealedCompactFrame(on: screen), duration: 0.24, completion: { [weak self] in
                 guard let self else { return }
-                if self.isHiding, !self.nowPlaying.isCurrentlyPlaying, !self.pomodoro.isRunning {
+                if self.isHiding,
+                   !self.clipboardHistory.isCollectingImages,
+                   !self.nowPlaying.isCurrentlyPlaying,
+                   !self.pomodoro.isRunning {
                     self.orderOut(nil)
                     self.isHiding = false
                     self.updateStateWithoutAnimation {

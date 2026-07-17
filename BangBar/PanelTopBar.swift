@@ -5,6 +5,10 @@ struct PanelTopBar: View {
     @Binding var clipboardFilter: ClipboardHistoryFilter
     let height: CGFloat
     let isClearDisabled: Bool
+    let activeGroupName: String?
+    let activeGroupItemCount: Int
+    let onNewGroup: () -> Void
+    let onStopGroup: () -> Void
     let onClear: () -> Void
     let onOpenSettings: () -> Void
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
@@ -32,6 +36,31 @@ struct PanelTopBar: View {
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .leading)))
+
+                if let activeGroupName {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(accentColor)
+                            .frame(width: 5, height: 5)
+
+                        Text("\(activeGroupName) · \(activeGroupItemCount)")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+
+                        Button("Stop", action: onStopGroup)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(accentColor)
+                            .buttonStyle(.plain)
+                    }
+                } else {
+                    Button(action: onNewGroup) {
+                        Label("New Image Group", systemImage: "photo.badge.plus")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.58))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Spacer()

@@ -74,6 +74,13 @@ struct PanelContentView: View {
                         clipboardFilter: $state.clipboardFilter,
                         height: state.topSafeInset,
                         isClearDisabled: clipboardHistory.items.isEmpty,
+                        activeGroupName: clipboardHistory.activeGroup?.name,
+                        activeGroupItemCount: clipboardHistory.activeGroupItemCount,
+                        onNewGroup: {
+                            state.clipboardFilter = .images
+                            clipboardHistory.startNewGroup()
+                        },
+                        onStopGroup: clipboardHistory.stopCollecting,
                         onClear: clipboardHistory.clear,
                         onOpenSettings: onOpenSettings
                     )
@@ -133,6 +140,8 @@ struct PanelContentView: View {
     @ViewBuilder
     private var compactWidget: some View {
         switch state.compactContent {
+        case .clipboardGroup:
+            CompactClipboardGroupWidget(service: clipboardHistory)
         case .pomodoro:
             CompactPomodoroWidget(service: pomodoro)
         case .nowPlaying:

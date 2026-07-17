@@ -12,25 +12,52 @@ struct ClipboardHistoryView: View {
     @ObservedObject var service: ClipboardHistoryService
     let filter: ClipboardHistoryFilter
     let topSafeInset: CGFloat
+    @State private var selectedGroupID: UUID?
+
+    private var selectedGroup: ClipboardImageGroup? {
+        guard let selectedGroupID else { return nil }
+        return service.groups.first { $0.id == selectedGroupID }
+    }
 
     private var filteredItems: [ClipboardHistoryItem] {
         switch filter {
         case .all:
-            return service.items
+            return service.items.filter { $0.groupID == nil }
         case .text:
             return service.items.filter { $0.kind == .text }
         case .images:
-            return service.items.filter { $0.kind == .image }
+            return service.items.filter { $0.kind == .image && $0.groupID == nil }
         }
+    }
+
+    private var visibleGroups: [ClipboardImageGroup] {
+        filter == .text ? [] : service.groups.filter { !service.items(in: $0).isEmpty }
     }
 
     var body: some View {
         Group {
-            if filteredItems.isEmpty {
+            if let selectedGroup {
+                groupDetail(selectedGroup)
+            } else if filteredItems.isEmpty && visibleGroups.isEmpty {
                 emptyState
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 12) {
+                        ForEach(visibleGroups) { group in
+                            ClipboardGroupCard(
+                                group: group,
+                                images: Array(service.items(in: group).prefix(3)).compactMap {
+                                    service.image(for: $0)
+                                },
+                                itemCount: service.items(in: group).count,
+                                isCollecting: service.activeGroupID == group.id,
+                                onOpen: { selectedGroupID = group.id },
+                                onCopy: { service.copy(group) },
+                                onRename: { service.rename(group, to: $0) },
+                                onDelete: { service.delete(group) }
+                            )
+                        }
+
                         ForEach(filteredItems) { item in
                             ClipboardHistoryCard(
                                 item: item,
@@ -47,6 +74,52 @@ struct ClipboardHistoryView: View {
         .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
         .padding(.top, topSafeInset)
         .padding(.bottom, PanelLayout.expandedVisibleEdgePadding)
+        .onChange(of: filter) { _, newFilter in
+            if newFilter == .text {
+                selectedGroupID = nil
+            }
+        }
+        .onChange(of: service.groups) { _, groups in
+            if let selectedGroupID, !groups.contains(where: { $0.id == selectedGroupID }) {
+                self.selectedGroupID = nil
+            }
+        }
+    }
+
+    private func groupDetail(_ group: ClipboardImageGroup) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 12) {
+                Button {
+                    selectedGroupID = nil
+                } label: {
+                    VStack(spacing: 7) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Back")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(width: 54, height: PanelLayout.nowPlayingWidgetHeight)
+                    .background(Color.white.opacity(0.035))
+                    .clipShape(.rect(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.white.opacity(0.13))
+                    }
+                }
+                .buttonStyle(ClipboardCardButtonStyle())
+                .help("Back to clipboard history")
+
+                ForEach(service.items(in: group)) { item in
+                    ClipboardHistoryCard(
+                        item: item,
+                        image: service.image(for: item),
+                        onCopy: { service.copy(item) },
+                        onRemove: { service.remove(item) }
+                    )
+                }
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -58,6 +131,127 @@ struct ClipboardHistoryView: View {
         }
         .foregroundStyle(.white.opacity(0.4))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ClipboardGroupCard: View {
+    let group: ClipboardImageGroup
+    let images: [NSImage]
+    let itemCount: Int
+    let isCollecting: Bool
+    let onOpen: () -> Void
+    let onCopy: () -> Void
+    let onRename: (String) -> Void
+    let onDelete: () -> Void
+
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+    @State private var isHovering = false
+    @State private var isRenaming = false
+    @State private var editedName = ""
+
+    private var accentColor: Color { Color(hex: accentColorHex) }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            HStack(spacing: 12) {
+                thumbnailStack
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 5) {
+                        if isCollecting {
+                            Circle()
+                                .fill(accentColor)
+                                .frame(width: 5, height: 5)
+                        }
+                        Text(group.name)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .lineLimit(1)
+                    }
+
+                    Text("\(itemCount) images")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.48))
+
+                    Spacer()
+
+                    Button(action: onCopy) {
+                        Label("Copy all", systemImage: "doc.on.doc")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(accentColor.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy all images as files")
+                }
+                .padding(.vertical, 11)
+            }
+            .padding(.horizontal, 11)
+            .frame(width: 205, height: PanelLayout.nowPlayingWidgetHeight, alignment: .leading)
+            .background(Color.white.opacity(0.035))
+            .clipShape(.rect(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        isHovering ? accentColor.opacity(0.9) : Color.white.opacity(0.13),
+                        lineWidth: isHovering ? 1.5 : 1
+                    )
+            }
+            .contentShape(.rect)
+            .onTapGesture(perform: onOpen)
+
+            if isHovering {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(accentColor.opacity(0.95))
+                        .frame(width: 24, height: 24)
+                        .background(Color.black.opacity(0.78))
+                        .clipShape(.rect(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .padding(7)
+                .help("Delete group")
+                .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovering = hovering
+            }
+        }
+        .contextMenu {
+            Button("Copy All", action: onCopy)
+            Button("Rename") {
+                editedName = group.name
+                isRenaming = true
+            }
+            Button("Delete Group", role: .destructive, action: onDelete)
+        }
+        .alert("Rename Group", isPresented: $isRenaming) {
+            TextField("Group name", text: $editedName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") { onRename(editedName) }
+        }
+        .help("Open group")
+    }
+
+    private var thumbnailStack: some View {
+        ZStack {
+            ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 60, height: 76)
+                    .clipShape(.rect(cornerRadius: 7))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Color.white.opacity(0.16))
+                    }
+                    .rotationEffect(.degrees(Double(index - 1) * 4))
+                    .offset(x: CGFloat(index - 1) * 4)
+            }
+        }
+        .frame(width: 72, height: 86)
     }
 }
 

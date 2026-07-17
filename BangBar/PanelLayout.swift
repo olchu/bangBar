@@ -126,6 +126,7 @@ final class PanelState: ObservableObject {
     enum CompactContent {
         case nowPlaying
         case pomodoro
+        case clipboardGroup
     }
 
     @Published var isExpanded = false

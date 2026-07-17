@@ -14,6 +14,7 @@ struct ClipboardHistoryItem: Identifiable, Codable, Equatable {
     let contentHash: String
     let byteCount: Int
     let createdAt: Date
+    let groupID: UUID?
 
     var text: String? {
         kind == .text ? payload : nil
@@ -22,6 +23,12 @@ struct ClipboardHistoryItem: Identifiable, Codable, Equatable {
     var imageFileName: String? {
         kind == .image ? payload : nil
     }
+}
+
+struct ClipboardImageGroup: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    let createdAt: Date
 }
 
 private struct LegacyClipboardHistoryItem: Codable {
@@ -37,17 +44,27 @@ final class ClipboardHistoryService: ObservableObject {
     static let maximumItemBytes = 20 * 1_024 * 1_024
 
     @Published private(set) var items: [ClipboardHistoryItem] = []
+    @Published private(set) var groups: [ClipboardImageGroup] = []
     @Published private(set) var totalBytes = 0
+    @Published private(set) var activeGroupID: UUID?
+    @Published private(set) var collectionSecondsRemaining = 0
 
     private let pasteboard: NSPasteboard
     private let rootDirectory: URL
     private let imagesDirectory: URL
     private let indexURL: URL
     private let legacyIndexURL: URL
+    private let groupsURL: URL
     private let imageCache = NSCache<NSString, NSImage>()
     private var timer: Timer?
     private var settingsObserver: AnyCancellable?
     private var lastChangeCount: Int
+    private var collectionStartedAt: Date?
+    private var lastGroupCaptureAt: Date?
+
+    private let collectionInactivityTimeout: TimeInterval = 2 * 60
+    private let collectionMaximumDuration: TimeInterval = 15 * 60
+    private let collectionMaximumItems = 30
 
     var storageLimitBytes: Int {
         max(BangBarSettings.clipboardStorageLimitMB, 1) * 1_024 * 1_024
@@ -55,6 +72,20 @@ final class ClipboardHistoryService: ObservableObject {
 
     var formattedUsage: String {
         ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file)
+    }
+
+    var activeGroup: ClipboardImageGroup? {
+        guard let activeGroupID else { return nil }
+        return groups.first { $0.id == activeGroupID }
+    }
+
+    var isCollectingImages: Bool {
+        activeGroupID != nil
+    }
+
+    var activeGroupItemCount: Int {
+        guard let activeGroupID else { return 0 }
+        return items.count { $0.groupID == activeGroupID }
     }
 
     init(pasteboard: NSPasteboard = .general) {
@@ -70,6 +101,7 @@ final class ClipboardHistoryService: ObservableObject {
         imagesDirectory = rootDirectory.appendingPathComponent("Images", isDirectory: true)
         indexURL = rootDirectory.appendingPathComponent("index.json")
         legacyIndexURL = bangBarDirectory.appendingPathComponent("clipboard-history.json")
+        groupsURL = rootDirectory.appendingPathComponent("groups.json")
 
         prepareDirectories()
         load()
@@ -110,11 +142,82 @@ final class ClipboardHistoryService: ObservableObject {
         lastChangeCount = pasteboard.changeCount
     }
 
+    func startNewGroup() {
+        stopCollecting()
+        let group = ClipboardImageGroup(
+            id: UUID(),
+            name: "Group \(groups.count + 1)",
+            createdAt: Date()
+        )
+        groups.insert(group, at: 0)
+        activeGroupID = group.id
+        collectionStartedAt = Date()
+        lastGroupCaptureAt = Date()
+        collectionSecondsRemaining = Int(collectionInactivityTimeout)
+        saveGroups()
+    }
+
+    func stopCollecting() {
+        activeGroupID = nil
+        collectionStartedAt = nil
+        lastGroupCaptureAt = nil
+        collectionSecondsRemaining = 0
+        removeEmptyGroups()
+        saveGroups()
+    }
+
+    func items(in group: ClipboardImageGroup) -> [ClipboardHistoryItem] {
+        items.filter { $0.groupID == group.id && $0.kind == .image }
+    }
+
+    func copy(_ group: ClipboardImageGroup) {
+        // Multiple NSImage objects are exposed as independent pasteboard items.
+        // Many destination apps only consume one of those items. File URLs make
+        // the group an explicit multi-file paste that Finder and editors can read.
+        let fileURLs = items(in: group)
+            .reversed()
+            .compactMap { item -> NSURL? in
+                guard let fileName = item.imageFileName else { return nil }
+                let url = imagesDirectory.appendingPathComponent(fileName)
+                guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+                return url as NSURL
+            }
+        guard !fileURLs.isEmpty else { return }
+        pasteboard.clearContents()
+        pasteboard.writeObjects(fileURLs)
+        lastChangeCount = pasteboard.changeCount
+    }
+
+    func rename(_ group: ClipboardImageGroup, to newName: String) {
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].name = trimmedName
+        saveGroups()
+    }
+
+    func delete(_ group: ClipboardImageGroup) {
+        if activeGroupID == group.id {
+            stopCollecting()
+        }
+        let groupItems = items(in: group)
+        for item in groupItems {
+            deletePayload(for: item)
+        }
+        items.removeAll { $0.groupID == group.id }
+        groups.removeAll { $0.id == group.id }
+        refreshUsage()
+        saveIndex()
+        saveGroups()
+    }
+
     func remove(_ item: ClipboardHistoryItem) {
         deletePayload(for: item)
         items.removeAll { $0.id == item.id }
         refreshUsage()
         saveIndex()
+        removeEmptyGroups()
+        saveGroups()
     }
 
     func clear() {
@@ -123,6 +226,8 @@ final class ClipboardHistoryService: ObservableObject {
         }
         imageCache.removeAllObjects()
         items.removeAll()
+        groups.removeAll()
+        stopCollecting()
         refreshUsage()
         saveIndex()
     }
@@ -146,6 +251,7 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     private func capturePasteboardIfNeeded() {
+        updateCollectionSession()
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
@@ -181,13 +287,22 @@ final class ClipboardHistoryService: ObservableObject {
         let fileName = "\(UUID().uuidString).png"
         do {
             try data.write(to: imagesDirectory.appendingPathComponent(fileName), options: .atomic)
-            insert(kind: .image, payload: fileName, data: data)
+            insert(kind: .image, payload: fileName, data: data, groupID: activeGroupID)
+            if activeGroupID != nil {
+                lastGroupCaptureAt = Date()
+                updateCollectionSession()
+            }
         } catch {
             NSLog("BangBar clipboard image save failed: %@", error.localizedDescription)
         }
     }
 
-    private func insert(kind: ClipboardItemKind, payload: String, data: Data) {
+    private func insert(
+        kind: ClipboardItemKind,
+        payload: String,
+        data: Data,
+        groupID: UUID? = nil
+    ) {
         let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         if let existing = items.first(where: { $0.kind == kind && $0.contentHash == hash }) {
             deletePayload(for: existing)
@@ -201,7 +316,8 @@ final class ClipboardHistoryService: ObservableObject {
                 payload: payload,
                 contentHash: hash,
                 byteCount: data.count,
-                createdAt: Date()
+                createdAt: Date(),
+                groupID: groupID
             ),
             at: 0
         )
@@ -218,6 +334,8 @@ final class ClipboardHistoryService: ObservableObject {
         }
         refreshUsage()
         saveIndex()
+        removeEmptyGroups()
+        saveGroups()
     }
 
     private func load() {
@@ -229,6 +347,11 @@ final class ClipboardHistoryService: ObservableObject {
         } else {
             migrateLegacyHistory()
         }
+        if let data = try? Data(contentsOf: groupsURL),
+           let decodedGroups = try? JSONDecoder().decode([ClipboardImageGroup].self, from: data) {
+            groups = decodedGroups
+        }
+        removeEmptyGroups()
         enforceLimitsAndSave()
     }
 
@@ -260,7 +383,7 @@ final class ClipboardHistoryService: ObservableObject {
         items.insert(
             ClipboardHistoryItem(
                 id: UUID(), kind: kind, payload: payload, contentHash: hash,
-                byteCount: data.count, createdAt: createdAt
+                byteCount: data.count, createdAt: createdAt, groupID: nil
             ),
             at: 0
         )
@@ -281,6 +404,28 @@ final class ClipboardHistoryService: ObservableObject {
         totalBytes = items.reduce(0) { $0 + $1.byteCount }
     }
 
+    private func updateCollectionSession(now: Date = Date()) {
+        guard activeGroupID != nil,
+              let collectionStartedAt,
+              let lastGroupCaptureAt else {
+            collectionSecondsRemaining = 0
+            return
+        }
+
+        let inactivityRemaining = collectionInactivityTimeout - now.timeIntervalSince(lastGroupCaptureAt)
+        let durationRemaining = collectionMaximumDuration - now.timeIntervalSince(collectionStartedAt)
+        collectionSecondsRemaining = max(0, Int(ceil(min(inactivityRemaining, durationRemaining))))
+
+        if inactivityRemaining <= 0 || durationRemaining <= 0 || activeGroupItemCount >= collectionMaximumItems {
+            stopCollecting()
+        }
+    }
+
+    private func removeEmptyGroups() {
+        let populatedGroupIDs = Set(items.compactMap(\.groupID))
+        groups.removeAll { !populatedGroupIDs.contains($0.id) && $0.id != activeGroupID }
+    }
+
     private func prepareDirectories() {
         do {
             try FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
@@ -295,6 +440,15 @@ final class ClipboardHistoryService: ObservableObject {
             try data.write(to: indexURL, options: .atomic)
         } catch {
             NSLog("BangBar clipboard history save failed: %@", error.localizedDescription)
+        }
+    }
+
+    private func saveGroups() {
+        do {
+            let data = try JSONEncoder().encode(groups)
+            try data.write(to: groupsURL, options: .atomic)
+        } catch {
+            NSLog("BangBar clipboard groups save failed: %@", error.localizedDescription)
         }
     }
 }
