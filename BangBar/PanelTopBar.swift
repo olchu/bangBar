@@ -1,0 +1,104 @@
+import SwiftUI
+
+struct PanelTopBar: View {
+    @Binding var showsClipboardHistory: Bool
+    @Binding var clipboardFilter: ClipboardHistoryFilter
+    let height: CGFloat
+    let isClearDisabled: Bool
+    let onClear: () -> Void
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            topBarButton(
+                systemImage: showsClipboardHistory ? "square.grid.2x2" : "clipboard",
+                help: showsClipboardHistory ? "Show widgets" : "Clipboard history",
+                isActive: showsClipboardHistory
+            ) {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    showsClipboardHistory.toggle()
+                }
+            }
+
+            if showsClipboardHistory {
+                HStack(spacing: 2) {
+                    ForEach(ClipboardHistoryFilter.allCases) { itemFilter in
+                        filterTab(itemFilter)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .leading)))
+            }
+
+            Spacer()
+
+            if showsClipboardHistory {
+                Button(action: onClear) {
+                    Label("Clear", systemImage: "trash")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.red.opacity(0.9))
+                }
+                .buttonStyle(.plain)
+                .disabled(isClearDisabled)
+                .opacity(isClearDisabled ? 0.35 : 1)
+                .transition(.opacity)
+            }
+
+            topBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
+        }
+        .padding(.horizontal, PanelLayout.topBarHorizontalPadding)
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .background(Color.black)
+        .contentShape(.rect)
+    }
+
+    private func filterTab(_ itemFilter: ClipboardHistoryFilter) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                clipboardFilter = itemFilter
+            }
+        } label: {
+            VStack(spacing: 0) {
+                Text(itemFilter.rawValue)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(clipboardFilter == itemFilter ? Color.red : Color.white.opacity(0.5))
+                    .frame(height: 18)
+
+                Rectangle()
+                    .fill(clipboardFilter == itemFilter ? Color.red : Color.clear)
+                    .frame(height: 2)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 6)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func topBarButton(
+        systemImage: String,
+        help: String,
+        isActive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.56))
+                .frame(width: 20, height: 20)
+                .background(isActive ? Color.white.opacity(0.08) : Color.clear)
+                .clipShape(.rect(cornerRadius: 6))
+        }
+        .help(help)
+        .buttonStyle(PanelTopBarButtonStyle())
+    }
+}
+
+private struct PanelTopBarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .opacity(configuration.isPressed ? 0.58 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}

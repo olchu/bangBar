@@ -5,6 +5,7 @@ struct PanelContentView: View {
     @ObservedObject var state: PanelState
     @ObservedObject var nowPlaying: NowPlayingService
     @ObservedObject var pomodoro: PomodoroService
+    @ObservedObject var clipboardHistory: ClipboardHistoryService
     let onOpenSettings: () -> Void
 
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
@@ -37,12 +38,22 @@ struct PanelContentView: View {
                     compactWidget
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
-                    HStack(spacing: PanelLayout.expandedWidgetSpacing) {
-                        expandedWidgets(hideExpandedArtwork: hideExpandedArtwork)
+                    Group {
+                        if state.showsClipboardHistory {
+                            ClipboardHistoryView(
+                                service: clipboardHistory,
+                                filter: state.clipboardFilter,
+                                topSafeInset: state.topSafeInset
+                            )
+                        } else {
+                            HStack(spacing: PanelLayout.expandedWidgetSpacing) {
+                                expandedWidgets(hideExpandedArtwork: hideExpandedArtwork)
+                            }
+                            .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
+                            .padding(.top, state.topSafeInset)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        }
                     }
-                    .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
-                    .padding(.bottom, PanelLayout.expandedVisibleEdgePadding)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.18), value: state.contentVisible)
                 }
@@ -58,14 +69,17 @@ struct PanelContentView: View {
                 }
 
                 if state.isExpanded {
-                    PanelChromeControls(
+                    PanelTopBar(
+                        showsClipboardHistory: $state.showsClipboardHistory,
+                        clipboardFilter: $state.clipboardFilter,
+                        height: state.topSafeInset,
+                        isClearDisabled: clipboardHistory.items.isEmpty,
+                        onClear: clipboardHistory.clear,
                         onOpenSettings: onOpenSettings
                     )
-                    .padding(.top, 0)
-                    .padding(.trailing, 52)
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.16), value: state.contentVisible)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .zIndex(20)
                 }
             }
@@ -218,29 +232,6 @@ struct PanelContentView: View {
     }
 }
 
-private struct PanelChromeControls: View {
-    let onOpenSettings: () -> Void
-
-    var body: some View {
-        Button(action: onOpenSettings) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 24, height: 24)
-        }
-        .help("Настройки")
-        .buttonStyle(PanelChromeButtonStyle())
-    }
-}
-
-private struct PanelChromeButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.42 : 0.56))
-            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
-}
-
 private struct EmptyWidgetsView: View {
     var body: some View {
         VStack(spacing: 9) {
@@ -248,7 +239,7 @@ private struct EmptyWidgetsView: View {
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.42))
 
-            Text("Виджеты выключены")
+            Text("Widgets are disabled")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.62))
         }

@@ -1,8 +1,28 @@
 import SwiftUI
 import Combine
+import AppKit
 
 enum PanelLayout {
-    static let expandedHeight: CGFloat = 155
+    // Меняйте это значение, чтобы регулировать высоту закреплённого верхнего бара.
+    static let topBarHeight: CGFloat = 24
+    static let topBarHorizontalPadding: CGFloat = 48
+    static let notchContentClearance: CGFloat = 4
+    static var expandedContentHeight: CGFloat {
+        nowPlayingWidgetHeight + expandedVisibleEdgePadding
+    }
+    static func topSafeInset(on screen: NSScreen) -> CGFloat {
+        guard screen.auxiliaryTopLeftArea != nil,
+              screen.auxiliaryTopRightArea != nil else {
+            return topBarHeight
+        }
+
+        let notchHeight = screen.auxiliaryTopLeftArea?.height ?? topBarHeight
+        return max(topBarHeight, notchHeight + notchContentClearance)
+    }
+
+    static func expandedHeight(on screen: NSScreen) -> CGFloat {
+        topSafeInset(on: screen) + expandedContentHeight
+    }
     static let panelTopRadius: CGFloat = 22
     static let panelTopEarInset: CGFloat = 22
     static let compactMinimumWidth: CGFloat = 320
@@ -116,4 +136,7 @@ final class PanelState: ObservableObject {
     @Published var compactIndicatorRevealAllowed = true
     @Published var compactArtworkRevealAnimated = true
     @Published var artworkHeroProgress: CGFloat?
+    @Published var showsClipboardHistory = false
+    @Published var clipboardFilter: ClipboardHistoryFilter = .all
+    @Published var topSafeInset = PanelLayout.topBarHeight
 }

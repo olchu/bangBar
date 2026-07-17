@@ -9,6 +9,7 @@ class HoverPanel: NSPanel {
     private let state = PanelState()
     private let nowPlaying = NowPlayingService()
     private let pomodoro = PomodoroService()
+    private let clipboardHistory = ClipboardHistoryService()
     private var cancellables = Set<AnyCancellable>()
     private var hideWorkItem: DispatchWorkItem?
     private var artworkHeroCleanupWorkItem: DispatchWorkItem?
@@ -52,9 +53,9 @@ class HoverPanel: NSPanel {
         let screen = NSScreen.main!
         let initialRect = NSRect(
             x: screen.frame.midX - PanelLayout.expandedWidth / 2,
-            y: screen.frame.maxY - PanelLayout.expandedHeight,
+            y: screen.frame.maxY - PanelLayout.expandedHeight(on: screen),
             width: PanelLayout.expandedWidth,
-            height: PanelLayout.expandedHeight
+            height: PanelLayout.expandedHeight(on: screen)
         )
         self.init(
             contentRect: initialRect,
@@ -65,6 +66,9 @@ class HoverPanel: NSPanel {
     }
 
     private func setupPanel() {
+        if let screen = NSScreen.main {
+            state.topSafeInset = PanelLayout.topSafeInset(on: screen)
+        }
         isFloatingPanel = true
         level = .statusBar
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -80,6 +84,7 @@ class HoverPanel: NSPanel {
             state: state,
             nowPlaying: nowPlaying,
             pomodoro: pomodoro,
+            clipboardHistory: clipboardHistory,
             onOpenSettings: { [weak self] in
                 self?.onOpenSettings?()
             }
@@ -141,6 +146,7 @@ class HoverPanel: NSPanel {
         state.compactArtworkRevealAnimated = true
 
         guard let screen = NSScreen.main else { return }
+        state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         let wasCompact = state.isCompact
         let wasNowPlayingCompact = state.compactContent == .nowPlaying
         let targetFrame = expandedFrame(on: screen)
@@ -211,6 +217,8 @@ class HoverPanel: NSPanel {
         guard Date().timeIntervalSince(openedAt) > 0.5 else { return }
         TooltipManager.shared.hide()
         isHiding = true
+        state.contentVisible = false
+        state.showsClipboardHistory = false
 
         if pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
             enterCompactMode()
@@ -219,7 +227,6 @@ class HoverPanel: NSPanel {
 
         state.isExpanded = false
         state.isCompact = false
-        state.contentVisible = false
         state.artworkHeroProgress = nil
         if let screen = NSScreen.main {
             animateFrame(to: compactFrame(on: screen), duration: 0.24)
@@ -238,7 +245,7 @@ class HoverPanel: NSPanel {
 
     private func expandedFrame(on screen: NSScreen) -> NSRect {
         let width = PanelLayout.expandedWidth
-        let height = PanelLayout.expandedHeight
+        let height = PanelLayout.expandedHeight(on: screen)
 
         return NSRect(
             x: screen.frame.midX - width / 2,
@@ -250,6 +257,7 @@ class HoverPanel: NSPanel {
 
     private func resizeExpandedPanelForCurrentSettings() {
         guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = NSScreen.main else { return }
+        state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         setFrame(expandedFrame(on: screen), display: true)
     }
 

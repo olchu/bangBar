@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 struct MoonWidget: View {
-    private static let infoOverlayVerticalOutset: CGFloat = 4
+    private static let infoOverlayVerticalOutset: CGFloat = 0
 
     let date: Date
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
