@@ -111,7 +111,7 @@ Album artwork should read visually as one continuous element between compact and
   - `NowPlayingWidget`: 300×110
   - `ClockWidget`: 190×110
   - `MoonWidget`: 110×110, with an 87.3×87.3 moon image
-  - `PomodoroWidget`: 110×110
+  - `PomodoroWidget` (displayed as **Focus Timer**): 110×110
   - `CountdownWidget`: 150×110
   - `MirrorWidget`: 94×94
   - divider: 1×60
@@ -124,7 +124,9 @@ Album artwork should read visually as one continuous element between compact and
   - `padding * 2 + sum(widget widths) + spacing * (widget count - 1)`
 - Future widgets should add their fixed width to `PanelLayout.expandedWidgetWidths` so the panel grows automatically.
 
-### Clipboard History
+### Clipboard History — Implemented
+
+**Status:** ✅ Implemented, including separate `All`, `Text`, and `Images` views and image grouping.
 
 - Clipboard history is a panel-level surface, not an item in the reorderable widget row.
 - The clipboard button in `PanelTopBar` switches the expanded panel between widgets and history.
@@ -157,9 +159,9 @@ Album artwork should read visually as one continuous element between compact and
 
 - `New Image Group` starts a collection session and assigns subsequently captured images to that group; text remains outside the group.
 - Collection stops manually or automatically after 2 minutes without a new image, 15 minutes total, or 30 collected images.
-- While collection is active, clipboard content takes priority over Pomodoro and Now Playing in compact mode. The compact surface shows previews, group name, image count, and the remaining inactivity time.
+- While collection is active, clipboard content takes priority over Focus Timer and Now Playing in compact mode. The compact surface shows previews, group name, image count, and the remaining inactivity time.
 - Expanding the panel during collection opens Clipboard History with the Images filter selected.
-- An active collection keeps the panel available in compact mode even when music and Pomodoro are inactive. Compact width receives additional room for the collection status.
+- An active collection keeps the panel available in compact mode even when music and Focus Timer are inactive. Compact width receives additional room for the collection status.
 
 ### ClockWidget
 
@@ -274,13 +276,16 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Near-Term Plan
 
-1. `PomodoroWidget` is implemented and wired into the expanded panel, compact mode, and Settings.
-2. Settings entry points are implemented through the app menu and expanded-panel chrome button.
-3. Add `MoonWidget` next as a local, no-permission widget.
-4. Consider adding `RemindersWidget` after the Moon widget.
-5. Fix task hover tooltip positioning: when hovering a task/reminder row, the tooltip must appear near the hovered row inside or immediately adjacent to the panel/widget, not far away on the desktop. Audit coordinate-space conversion between SwiftUI/AppKit/window/screen coordinates and clamp the tooltip to the panel bounds when possible.
-6. Add `CountdownWidget` as a local, user-configured date countdown widget.
-7. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+1. ✅ Focus Timer (`PomodoroWidget` internally) is implemented and wired into the expanded panel, compact mode, and Settings.
+2. ✅ Settings entry points are implemented through the app menu and expanded-panel chrome button.
+3. ✅ `MoonWidget` is implemented as a local, no-permission widget and wired into Settings and widget ordering.
+4. ✅ `RemindersWidget` and `ReminderService` are implemented and wired into Settings and widget ordering.
+5. ✅ Clipboard History is implemented as a panel-level surface with `All`, `Text`, and `Images` filters, persistent text/image items, and image-group collection and management.
+6. ⬜ Implement Mirror photo capture according to the development plan above.
+7. ⬜ Fix task hover tooltip positioning: when hovering a task/reminder row, the tooltip must appear near the hovered row inside or immediately adjacent to the panel/widget, not far away on the desktop. Audit coordinate-space conversion between SwiftUI/AppKit/window/screen coordinates and clamp the tooltip to the panel bounds when possible.
+8. ⬜ Add `CountdownWidget` as a local, user-configured date countdown widget.
+9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
+10. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -318,9 +323,11 @@ Last             Jun 30
 
 ---
 
-### PomodoroWidget
+### Focus Timer (`PomodoroWidget`)
 
-**Goal:** Pomodoro timer — configurable work / break cycles (defaults: 25 min work / 5 min break).
+**Goal:** Focus timer with configurable work / break cycles (defaults: 25 min work / 5 min break).
+
+**Naming:** The product-facing name is **Focus Timer**. Existing `Pomodoro…` Swift types and `UserDefaults` keys remain unchanged for source and saved-settings compatibility.
 
 **Layout:** Square 110×110, implemented in `PomodoroWidget.swift` + `PomodoroService.swift`.
 
@@ -328,7 +335,7 @@ Last             Jun 30
 - Circular tick ring: 72 evenly-spaced dashes around the perimeter; elapsed ticks colored in accent color, remaining ticks at 18% opacity
 - Center: colored dot + session label (9pt semibold rounded, uppercased); dot and label dim when paused
 - Timer: 26pt bold rounded + `.monospacedDigit()`, white 94% opacity
-- Cycle counter: `"N / rounds"` in a capsule outline (9pt, white 50%), where `rounds` is the configured pomodoros-before-long-break
+- Cycle counter: `"N / rounds"` in a capsule outline (9pt, white 50%), where `rounds` is the configured focus sessions before a long break
 - Bottom-left: `arrow.counterclockwise` reset button (13pt bold, white 45%)
 - Bottom-right: `play.fill` / `pause.fill` button (13pt bold, white 45%)
 - Tapping anywhere on the widget also toggles play/pause
@@ -339,7 +346,7 @@ Last             Jun 30
 idle → work(running) → work(paused) → break(running) → break(paused) → work...
 ```
 
-**Durations:** all configurable in Settings → Widgets → POMODORO (persisted in `UserDefaults`, read live by `PomodoroService`):
+**Durations:** all configurable in Settings → Widgets → FOCUS TIMER (persisted in `UserDefaults`, read live by `PomodoroService`):
 - Work / Focus: default 25 min (`pomodoroWorkMinutes`, range 5–90, step 5)
 - Short break: default 5 min (`pomodoroShortBreakMinutes`, range 1–30, step 1)
 - Long break: default 15 min (`pomodoroLongBreakMinutes`, range 5–45, step 5)
@@ -347,7 +354,7 @@ idle → work(running) → work(paused) → break(running) → break(paused) →
 
 Changing a setting while the timer is idle updates the displayed time immediately (via `UserDefaults.didChangeNotification`); a running timer is left untouched until its next session.
 
-**Cycle counter** shows which pomodoro in the current set of `rounds`:
+**Cycle counter** shows which focus session is active in the current set of `rounds`:
 - During work: `(completedPomodoros % rounds) + 1`
 - During break: completed count in cycle (shows `rounds` after the last)
 
@@ -358,7 +365,7 @@ Changing a setting while the timer is idle updates the displayed time immediatel
 - `reset()` stops timer and returns to work session at the configured focus duration
 - Auto-advances to next session on completion; `didJustComplete` briefly set true for flash feedback
 - Does NOT send notifications (requires entitlement) — panel visual feedback only
-- Enabled/disabled via "Pomodoro" toggle in Settings
+- Enabled/disabled via "Focus Timer" toggle in Settings
 
 ---
 
@@ -602,7 +609,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Music — show/hide `NowPlayingWidget`
 - Toggle: Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`
-- Toggle: Pomodoro — show/hide `PomodoroWidget`
+- Toggle: Focus Timer — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
 - Toggle: Notion — show/hide `NotionWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
@@ -722,7 +729,7 @@ Each widget separated by `Divider` at 35pt height.
 
 ## Potential Widget Backlog
 
-These are not immediate commitments, but useful directions to consider after `PomodoroWidget`, settings, and `RemindersWidget`.
+These are not immediate commitments, but useful directions to consider after Focus Timer (`PomodoroWidget`), settings, and `RemindersWidget`.
 
 ### FocusWidget
 

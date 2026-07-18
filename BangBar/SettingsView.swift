@@ -242,7 +242,7 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 14) {
-                SettingsSectionLabel("POMODORO")
+                SettingsSectionLabel("FOCUS TIMER")
                 SettingsCard {
                     VStack(spacing: 0) {
                         SettingsStepperRow(

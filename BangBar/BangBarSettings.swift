@@ -20,7 +20,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         case .moon:
             return "Moon"
         case .pomodoro:
-            return "Pomodoro"
+            return "Focus Timer"
         case .reminders:
             return "Reminders"
         case .mirror:
