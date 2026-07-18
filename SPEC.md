@@ -147,7 +147,7 @@ Album artwork should read visually as one continuous element between compact and
   - `Images/` stores normalized PNG payloads.
 - The legacy `clipboard-history.json` format is migrated on load.
 - History is limited to 200 items and 20 MB per item. A user-selectable total storage limit of 50, 100, 250, or 500 MB defaults to 100 MB; oldest entries and their image files are removed when a limit is exceeded.
-- Current storage usage is published for Settings. Clear History removes saved items, image files, and groups.
+- Current storage usage is published for Settings. Clear History removes unpinned items, image files, and groups while preserving pinned cards.
 
 **Temporary clipboard protection:**
 
@@ -162,6 +162,17 @@ Album artwork should read visually as one continuous element between compact and
 - While collection is active, clipboard content takes priority over Focus Timer and Now Playing in compact mode. The compact surface shows previews, group name, image count, and the remaining inactivity time.
 - Expanding the panel during collection opens Clipboard History with the Images filter selected.
 - An active collection keeps the panel available in compact mode even when music and Focus Timer are inactive. Compact width receives additional room for the collection status.
+
+**Pinned cards — Implemented:**
+
+- ✅ Text cards, image cards, and image-group cards can be pinned and unpinned from their context menu or card action.
+- Pin actions use a warm orange `#FF9F0A` pin icon that complements the default red accent while remaining visually distinct.
+- Pinned cards always appear before unpinned cards in the history row. Within each section, newest items remain first.
+- Pin state is persisted with the card metadata and restored after relaunch.
+- `Clear All` / Clear History removes only unpinned cards. Pinned cards and their persisted image files remain intact.
+- A pinned card can still be removed explicitly with its individual Delete action; pinning protects it only from bulk clearing and automatic storage eviction.
+- When a pinned card is copied again, it remains pinned and moves to the newest position within the pinned section.
+- Filters continue to apply normally: pinned text appears in `All` and `Text`; pinned images and image groups appear in `All` and `Images`.
 
 ### ClockWidget
 
@@ -285,7 +296,8 @@ Album artwork should read visually as one continuous element between compact and
 7. ⬜ Fix task hover tooltip positioning: when hovering a task/reminder row, the tooltip must appear near the hovered row inside or immediately adjacent to the panel/widget, not far away on the desktop. Audit coordinate-space conversion between SwiftUI/AppKit/window/screen coordinates and clamp the tooltip to the panel bounds when possible.
 8. ⬜ Add `CountdownWidget` as a local, user-configured date countdown widget.
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
-10. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
+11. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 

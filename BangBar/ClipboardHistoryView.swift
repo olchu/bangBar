@@ -1,11 +1,39 @@
 import SwiftUI
 
+private let clipboardPinColor = Color(hex: "#FF9F0A")
+
 enum ClipboardHistoryFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case text = "Text"
     case images = "Images"
 
     var id: Self { self }
+}
+
+private enum ClipboardHistoryEntry: Identifiable {
+    case group(ClipboardImageGroup)
+    case item(ClipboardHistoryItem)
+
+    var id: String {
+        switch self {
+        case .group(let group): "group-\(group.id)"
+        case .item(let item): "item-\(item.id)"
+        }
+    }
+
+    var isPinned: Bool {
+        switch self {
+        case .group(let group): group.isPinned
+        case .item(let item): item.isPinned
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .group(let group): group.createdAt
+        case .item(let item): item.createdAt
+        }
+    }
 }
 
 struct ClipboardHistoryView: View {
@@ -20,18 +48,27 @@ struct ClipboardHistoryView: View {
     }
 
     private var filteredItems: [ClipboardHistoryItem] {
-        switch filter {
+        let items = switch filter {
         case .all:
-            return service.items.filter { $0.groupID == nil }
+            service.items.filter { $0.groupID == nil }
         case .text:
-            return service.items.filter { $0.kind == .text }
+            service.items.filter { $0.kind == .text }
         case .images:
-            return service.items.filter { $0.kind == .image && $0.groupID == nil }
+            service.items.filter { $0.kind == .image && $0.groupID == nil }
         }
+        return service.pinnedFirst(items)
     }
 
     private var visibleGroups: [ClipboardImageGroup] {
-        filter == .text ? [] : service.groups.filter { !service.items(in: $0).isEmpty }
+        filter == .text ? [] : service.pinnedFirstGroups.filter { !service.items(in: $0).isEmpty }
+    }
+
+    private var historyEntries: [ClipboardHistoryEntry] {
+        (visibleGroups.map(ClipboardHistoryEntry.group) + filteredItems.map(ClipboardHistoryEntry.item))
+            .sorted {
+                if $0.isPinned != $1.isPinned { return $0.isPinned }
+                return $0.createdAt > $1.createdAt
+            }
     }
 
     var body: some View {
@@ -43,28 +80,31 @@ struct ClipboardHistoryView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 12) {
-                        ForEach(visibleGroups) { group in
-                            ClipboardGroupCard(
-                                group: group,
-                                images: Array(service.items(in: group).prefix(3)).compactMap {
-                                    service.image(for: $0)
-                                },
-                                itemCount: service.items(in: group).count,
-                                isCollecting: service.activeGroupID == group.id,
-                                onOpen: { selectedGroupID = group.id },
-                                onCopy: { service.copy(group) },
-                                onRename: { service.rename(group, to: $0) },
-                                onDelete: { service.delete(group) }
-                            )
-                        }
-
-                        ForEach(filteredItems) { item in
-                            ClipboardHistoryCard(
-                                item: item,
-                                image: service.image(for: item),
-                                onCopy: { service.copy(item) },
-                                onRemove: { service.remove(item) }
-                            )
+                        ForEach(historyEntries) { entry in
+                            switch entry {
+                            case .group(let group):
+                                ClipboardGroupCard(
+                                    group: group,
+                                    images: Array(service.items(in: group).prefix(3)).compactMap {
+                                        service.image(for: $0)
+                                    },
+                                    itemCount: service.items(in: group).count,
+                                    isCollecting: service.activeGroupID == group.id,
+                                    onOpen: { selectedGroupID = group.id },
+                                    onCopy: { service.copy(group) },
+                                    onTogglePin: { service.togglePin(group) },
+                                    onRename: { service.rename(group, to: $0) },
+                                    onDelete: { service.delete(group) }
+                                )
+                            case .item(let item):
+                                ClipboardHistoryCard(
+                                    item: item,
+                                    image: service.image(for: item),
+                                    onCopy: { service.copy(item) },
+                                    onTogglePin: { service.togglePin(item) },
+                                    onRemove: { service.remove(item) }
+                                )
+                            }
                         }
                     }
                 }
@@ -115,6 +155,7 @@ struct ClipboardHistoryView: View {
                         item: item,
                         image: service.image(for: item),
                         onCopy: { service.copy(item) },
+                        onTogglePin: { service.togglePin(item) },
                         onRemove: { service.remove(item) }
                     )
                 }
@@ -141,6 +182,7 @@ private struct ClipboardGroupCard: View {
     let isCollecting: Bool
     let onOpen: () -> Void
     let onCopy: () -> Void
+    let onTogglePin: () -> Void
     let onRename: (String) -> Void
     let onDelete: () -> Void
 
@@ -199,18 +241,33 @@ private struct ClipboardGroupCard: View {
             .contentShape(.rect)
             .onTapGesture(perform: onOpen)
 
-            if isHovering {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(accentColor.opacity(0.95))
-                        .frame(width: 24, height: 24)
-                        .background(Color.black.opacity(0.78))
-                        .clipShape(.rect(cornerRadius: 7))
+            if group.isPinned || isHovering {
+                HStack(spacing: 5) {
+                    Button(action: onTogglePin) {
+                        Image(systemName: group.isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(clipboardPinColor.opacity(group.isPinned ? 1 : 0.78))
+                            .frame(width: 24, height: 24)
+                            .background(Color.black.opacity(0.78))
+                            .clipShape(.rect(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    .help(group.isPinned ? "Unpin group" : "Pin group")
+
+                    if isHovering {
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(accentColor.opacity(0.95))
+                                .frame(width: 24, height: 24)
+                                .background(Color.black.opacity(0.78))
+                                .clipShape(.rect(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Delete group")
+                    }
                 }
-                .buttonStyle(.plain)
                 .padding(7)
-                .help("Delete group")
                 .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
         }
@@ -221,6 +278,7 @@ private struct ClipboardGroupCard: View {
         }
         .contextMenu {
             Button("Copy All", action: onCopy)
+            Button(group.isPinned ? "Unpin" : "Pin", action: onTogglePin)
             Button("Rename") {
                 editedName = group.name
                 isRenaming = true
@@ -259,6 +317,7 @@ private struct ClipboardHistoryCard: View {
     let item: ClipboardHistoryItem
     let image: NSImage?
     let onCopy: () -> Void
+    let onTogglePin: () -> Void
     let onRemove: () -> Void
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var isHovering = false
@@ -300,22 +359,41 @@ private struct ClipboardHistoryCard: View {
             }
             .buttonStyle(ClipboardCardButtonStyle())
 
-            if isHovering {
-                Button(action: onRemove) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(accentColor.opacity(0.95))
-                        .frame(width: 24, height: 24)
-                        .background(Color.black.opacity(0.78))
-                        .clipShape(.rect(cornerRadius: 7))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(Color.white.opacity(0.12))
+            if item.isPinned || isHovering {
+                HStack(spacing: 5) {
+                    Button(action: onTogglePin) {
+                        Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(clipboardPinColor.opacity(item.isPinned ? 1 : 0.78))
+                            .frame(width: 24, height: 24)
+                            .background(Color.black.opacity(0.78))
+                            .clipShape(.rect(cornerRadius: 7))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 7)
+                                    .stroke(Color.white.opacity(0.12))
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help(item.isPinned ? "Unpin" : "Pin")
+
+                    if isHovering {
+                        Button(action: onRemove) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(accentColor.opacity(0.95))
+                                .frame(width: 24, height: 24)
+                                .background(Color.black.opacity(0.78))
+                                .clipShape(.rect(cornerRadius: 7))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 7)
+                                        .stroke(Color.white.opacity(0.12))
+                                }
                         }
+                        .buttonStyle(.plain)
+                        .help("Delete")
+                    }
                 }
-                .buttonStyle(.plain)
                 .padding(7)
-                .help("Delete")
                 .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
         }
@@ -326,6 +404,7 @@ private struct ClipboardHistoryCard: View {
         }
         .contextMenu {
             Button("Copy", action: onCopy)
+            Button(item.isPinned ? "Unpin" : "Pin", action: onTogglePin)
             Button("Delete", role: .destructive, action: onRemove)
         }
         .help("Click to copy")

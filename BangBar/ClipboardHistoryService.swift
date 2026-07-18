@@ -16,6 +16,43 @@ struct ClipboardHistoryItem: Identifiable, Codable, Equatable {
     let byteCount: Int
     let createdAt: Date
     let groupID: UUID?
+    var isPinned: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, payload, contentHash, byteCount, createdAt, groupID, isPinned
+    }
+
+    init(
+        id: UUID,
+        kind: ClipboardItemKind,
+        payload: String,
+        contentHash: String,
+        byteCount: Int,
+        createdAt: Date,
+        groupID: UUID?,
+        isPinned: Bool = false
+    ) {
+        self.id = id
+        self.kind = kind
+        self.payload = payload
+        self.contentHash = contentHash
+        self.byteCount = byteCount
+        self.createdAt = createdAt
+        self.groupID = groupID
+        self.isPinned = isPinned
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(ClipboardItemKind.self, forKey: .kind)
+        payload = try container.decode(String.self, forKey: .payload)
+        contentHash = try container.decode(String.self, forKey: .contentHash)
+        byteCount = try container.decode(Int.self, forKey: .byteCount)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        groupID = try container.decodeIfPresent(UUID.self, forKey: .groupID)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+    }
 
     var text: String? {
         kind == .text ? payload : nil
@@ -30,6 +67,26 @@ struct ClipboardImageGroup: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     let createdAt: Date
+    var isPinned: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, createdAt, isPinned
+    }
+
+    init(id: UUID, name: String, createdAt: Date, isPinned: Bool = false) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.isPinned = isPinned
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+    }
 }
 
 private struct LegacyClipboardHistoryItem: Codable {
@@ -182,7 +239,21 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func items(in group: ClipboardImageGroup) -> [ClipboardHistoryItem] {
-        items.filter { $0.groupID == group.id && $0.kind == .image }
+        pinnedFirst(items.filter { $0.groupID == group.id && $0.kind == .image })
+    }
+
+    func pinnedFirst(_ items: [ClipboardHistoryItem]) -> [ClipboardHistoryItem] {
+        items.sorted {
+            if $0.isPinned != $1.isPinned { return $0.isPinned }
+            return $0.createdAt > $1.createdAt
+        }
+    }
+
+    var pinnedFirstGroups: [ClipboardImageGroup] {
+        groups.sorted {
+            if $0.isPinned != $1.isPinned { return $0.isPinned }
+            return $0.createdAt > $1.createdAt
+        }
     }
 
     func copy(_ group: ClipboardImageGroup) {
@@ -211,6 +282,18 @@ final class ClipboardHistoryService: ObservableObject {
         saveGroups()
     }
 
+    func togglePin(_ item: ClipboardHistoryItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].isPinned.toggle()
+        saveIndex()
+    }
+
+    func togglePin(_ group: ClipboardImageGroup) {
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index].isPinned.toggle()
+        saveGroups()
+    }
+
     func delete(_ group: ClipboardImageGroup) {
         if activeGroupID == group.id {
             stopCollecting()
@@ -236,15 +319,20 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func clear() {
-        for item in items {
+        stopCollecting()
+        let pinnedGroupIDs = Set(groups.filter(\.isPinned).map(\.id))
+        let removedItems = items.filter {
+            !$0.isPinned && !($0.groupID.map(pinnedGroupIDs.contains) ?? false)
+        }
+        for item in removedItems {
             deletePayload(for: item)
         }
-        imageCache.removeAllObjects()
-        items.removeAll()
-        groups.removeAll()
-        stopCollecting()
+        items.removeAll { removedItems.contains($0) }
+        let retainedGroupIDs = Set(items.compactMap(\.groupID))
+        groups.removeAll { !$0.isPinned && !retainedGroupIDs.contains($0.id) }
         refreshUsage()
         saveIndex()
+        saveGroups()
     }
 
     private func startMonitoring() {
@@ -461,7 +549,8 @@ final class ClipboardHistoryService: ObservableObject {
         groupID: UUID? = nil
     ) {
         let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        if let existing = items.first(where: { $0.kind == kind && $0.contentHash == hash }) {
+        let existing = items.first { $0.kind == kind && $0.contentHash == hash }
+        if let existing {
             deletePayload(for: existing)
             items.removeAll { $0.id == existing.id }
         }
@@ -474,7 +563,8 @@ final class ClipboardHistoryService: ObservableObject {
                 contentHash: hash,
                 byteCount: data.count,
                 createdAt: Date(),
-                groupID: groupID
+                groupID: groupID,
+                isPinned: existing?.isPinned ?? false
             ),
             at: 0
         )
@@ -484,9 +574,12 @@ final class ClipboardHistoryService: ObservableObject {
     private func enforceLimitsAndSave() {
         refreshUsage()
         while items.count > Self.maximumItemCount || totalBytes > storageLimitBytes {
-            guard let oldest = items.last else { break }
+            let pinnedGroupIDs = Set(groups.filter(\.isPinned).map(\.id))
+            guard let oldest = items.last(where: {
+                !$0.isPinned && !($0.groupID.map(pinnedGroupIDs.contains) ?? false)
+            }) else { break }
             deletePayload(for: oldest)
-            items.removeLast()
+            items.removeAll { $0.id == oldest.id }
             totalBytes -= oldest.byteCount
         }
         refreshUsage()
