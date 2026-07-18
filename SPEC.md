@@ -297,7 +297,8 @@ Album artwork should read visually as one continuous element between compact and
 8. ⬜ Add `CountdownWidget` as a local, user-configured date countdown widget.
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
 10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
-11. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+11. ⬜ Build the Companion state engine and MVP with a temporary original placeholder; add the final character design later.
+12. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -474,6 +475,189 @@ Trip to Tokyo
 - A delete/reset action should be available in the modal or a contextual control so the widget can return to empty state.
 
 **Settings:** Enabled/disabled via a "Countdown" toggle in Settings and included in widget ordering.
+
+---
+
+### Companion Widget
+
+**Status:** ⬜ Planned. The behavior and technical direction are defined below; character identity, name, sprites, and final visual design are TBD.
+
+**Product name:** **Companion**. `Calm Care` is the name of its low-pressure care philosophy, not the user-facing widget name.
+
+**Goal:** Add a calm desktop companion inspired by classic virtual pets without reproducing Tamagotchi characters, branding, artwork, or exact punitive pacing. The pet should reward occasional care without interrupting focused work or punishing the user for closing the Mac, sleeping, travelling, or spending time away from the computer.
+
+**Product principles:**
+
+- The pet is a quiet companion, not a responsibility simulator.
+- Needs change slowly and primarily during meaningful Mac use rather than raw wall-clock time.
+- The user never returns to accumulated emergencies caused solely by sleep, screen lock, app termination, or time away from the computer.
+- Missing an ordinary request does not immediately count as a care mistake.
+- Poor care can influence mood, personality, and evolution, but absence alone must not kill the pet.
+- System notifications are out of scope for the first version. Important states may use the compact panel only when doing so remains rare and unobtrusive.
+- Interactions should take a few seconds. Longer activities and mini-games remain optional.
+
+**Character and visual design — TBD:**
+
+- The character will be an original BangBar creature, not an existing Tamagotchi character or a close visual copy.
+- Character name, silhouette, sprite style, color palette, animation frames, sounds, and evolution appearances will be designed later.
+- The first implementation may use a temporary neutral placeholder while the state engine is developed, but placeholder art must not become the final identity by accident.
+
+**Active-time clock:**
+
+- Pet needs advance according to accumulated `activeUseSeconds`, not continuously from wall-clock time.
+- Active use counts only while all of the following are true:
+  - the Mac is awake;
+  - the user session is unlocked;
+  - the display is active;
+  - user input idle time is less than approximately 10 minutes.
+- Sleep, display sleep, lock screen, logout, app termination, and idle time beyond the threshold pause need decay.
+- On wake or relaunch, the service resumes from the last saved state without applying full offline decay.
+- A small capped amount of passive progression may be considered later for growth, but it must never create care mistakes, sickness, mess, or death while the user is absent.
+- Use system workspace/session notifications and idle-time checks where available; avoid private frameworks and special entitlements.
+
+**Suggested calm pacing:**
+
+- Hunger loses one step after roughly 3 hours of accumulated active use.
+- Happiness loses one step after roughly 4 hours of accumulated active use.
+- Cleanliness may require attention roughly once per 6 hours of accumulated active use.
+- A request for attention occurs no more than once every 2–3 hours of active use.
+- Sickness is possible only after multiple unresolved needs across several active-use days, never from one missed interaction.
+- Growth stages take multiple real days with minimum active-use requirements:
+  - egg / arrival;
+  - baby;
+  - child;
+  - teen;
+  - adult.
+- A complete lifecycle should last approximately 4–6 weeks rather than several days.
+- All timing values should live in one configuration type so they can be tuned after real-world testing.
+
+**Core state:**
+
+```swift
+struct CompanionState: Codable {
+    var id: UUID
+    var createdAt: Date
+    var lastUpdatedAt: Date
+    var activeUseSeconds: TimeInterval
+    var stage: CompanionStage
+    var hunger: Int
+    var happiness: Int
+    var cleanliness: Int
+    var discipline: Int
+    var consecutiveUnresolvedNeeds: Int
+    var careMistakes: Int
+    var currentNeed: CompanionNeed?
+    var currentNeedStartedAt: Date?
+    var isSleeping: Bool
+}
+```
+
+- Suggested meters use a small fixed range such as `0...4` for a classic, readable feel.
+- Values are clamped on every mutation.
+- Runtime-only animation state must not be mixed into the persisted pet model.
+- The service publishes normalized UI state on the main actor.
+
+**Needs and care mistakes:**
+
+- Initial needs: hungry, wants attention, dirty, tired, and unwell.
+- Ordinary requests remain available for a generous active-time window and do not interrupt Focus Timer.
+- Ignoring one ordinary request clears or defers it without an immediate care mistake.
+- A care mistake is recorded only after repeated unresolved needs or deliberately inappropriate care.
+- Consecutive successful care gradually restores the pet's condition and can reduce the impact of earlier mistakes.
+- False/selfish calls and discipline may be added after the core loop is proven; they are not required for MVP.
+- Critical condition should produce a recoverable resting state. Permanent death is not part of MVP.
+- A completed adult lifecycle may later end with the pet peacefully leaving to explore, followed by an optional new egg.
+
+**Focus Timer integration:**
+
+- While Focus Timer is running, the pet does not surface requests, play attention animations, or take over compact mode.
+- Need decay may either pause completely during a focus session or continue without starting a response deadline; MVP should pause it for the least distracting behavior.
+- After a completed focus session, the pet may show one quiet positive reaction or offer a short interaction.
+- Focus completion must not guarantee a request every time; apply cooldowns so the reaction stays pleasant.
+- Clipboard image collection keeps its existing highest compact-mode priority.
+
+**Interactions:**
+
+- Feed: restores hunger with one click.
+- Pet: gives a small happiness increase with a short cursor/click interaction.
+- Clean: restores cleanliness when needed.
+- Rest: allows or encourages sleep when tired.
+- Status: shows the current meters and a concise hint without opening a large management screen.
+- Initial interactions should complete in a few seconds and should not open separate windows.
+- A 10–15 second optional mini-game may be added after MVP to improve happiness; declining it has no penalty.
+
+**Panel behavior:**
+
+- Expanded mode contains the full fixed-width pet widget and its direct interactions.
+- The pet does not need to be visible in compact mode during normal idle behavior.
+- Compact mode may be used for a rare unresolved important need only after the cooldown and priority rules are satisfied.
+- Compact priority remains:
+  1. active clipboard image collection;
+  2. running Focus Timer;
+  3. currently playing music;
+  4. rare important pet state, if compact pet presentation is enabled.
+- The pet must not repeatedly reopen or restart compact animations during state ticks.
+
+**Persistence:**
+
+- Persist one active pet as versioned JSON under Application Support, for example `BangBar/Companion/companion.json`.
+- Store a schema version so future state fields and evolution systems can be migrated safely.
+- Save after user interactions, stage transitions, important need changes, and periodically while active time accumulates.
+- Use atomic writes.
+- On corrupted state, preserve the unreadable file for diagnostics when practical and create a fresh pet instead of crashing.
+- Resetting the pet must require explicit confirmation in Settings.
+
+**Architecture:**
+
+- `CompanionService`: owns the simulation clock, persisted state, interactions, lifecycle, and Focus Timer coordination.
+- `CompanionState`: persisted value model.
+- `CompanionRules`: centralized tunable durations, thresholds, meter ranges, and growth requirements.
+- `CompanionWidget`: expanded SwiftUI surface.
+- `CompactCompanionWidget`: optional later compact surface for rare important needs.
+- Character sprites and animation definitions should remain separate from simulation rules so the final character can be added without rewriting the engine.
+- Add the widget as a new `BangBarWidget` case, Settings toggle, ordering option, and fixed `PanelLayout` width only when the first usable UI exists.
+
+**Evolution:**
+
+- Evolution is deterministic from accumulated care patterns plus a small seeded variation, not from aggressive random punishment.
+- Candidate inputs include care mistakes, average happiness, cleanliness, completed Focus Timer sessions, optional play frequency, and response consistency.
+- The same pet `id` should seed any random branch so relaunching cannot reroll an outcome.
+- Exact branches and adult forms remain TBD until the character family is designed.
+
+**MVP implementation plan:**
+
+1. Define `CompanionState`, `CompanionRules`, versioned persistence, and migration boundaries.
+2. Implement active-use detection and verify that sleep, lock, long idle, and app termination do not create decay.
+3. Implement slow hunger, happiness, and cleanliness progression plus feed, pet, and clean actions.
+4. Integrate Focus Timer so simulation and attention requests pause while focus is running.
+5. Build the expanded widget with a temporary original placeholder, meters, concise status, and direct actions.
+6. Add Settings enable/disable and widget ordering support.
+7. Run a multi-day pacing test and tune all intervals before adding more mechanics.
+8. Replace the placeholder with the final original character and animations when the design is ready.
+9. Add growth stages and care-based evolution.
+10. Consider optional compact important-need presentation and a short mini-game only after the quiet core loop feels right.
+
+**MVP acceptance criteria:**
+
+- Closing the lid overnight does not reduce meters or create a care mistake.
+- Leaving the Mac idle or locked for a workday does not create accumulated emergencies.
+- A continuous active work session produces no more than one optional attention request within 2–3 hours.
+- Focus Timer runs without pet interruptions.
+- `Feed`, `Pet`, and `Clean` update and persist immediately.
+- Relaunch restores the same pet and meters.
+- Several ignored ordinary requests do not cause sudden death.
+- Widget enablement and ordering behave like the existing optional widgets.
+
+**Out of scope for MVP:**
+
+- copied Tamagotchi names, characters, sprites, sounds, or branding;
+- permanent death caused by neglect;
+- system push/local notifications;
+- network accounts, cloud sync, multiplayer, breeding, trading, or social features;
+- multiple simultaneous pets;
+- monetization or collectible purchases;
+- elaborate mini-games;
+- final evolution tree before character design is complete.
 
 ---
 
