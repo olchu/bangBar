@@ -244,6 +244,8 @@ Album artwork should read visually as one continuous element between compact and
 - Shuffle button toggles shuffle for Spotify and Music.
 - Repeat button cycles Music through `off → all → one → off`; Spotify toggles repeat as `off/all`.
 - Click on artwork opens the player app.
+- For Apple Music, a favorited track shows a red top-right artwork corner with a white heart. For an unfavorited track, the corner appears on artwork hover and can be clicked to favorite the track.
+- Spotify does not show the favorite corner because its AppleScript API does not expose library favorite state or mutation.
 - Title truncates with `…` if too long.
 - Progress bar updates every second via local tick timer (no extra AppleScript calls).
 - Expanded artwork participates in the hero artwork transition from compact mode.

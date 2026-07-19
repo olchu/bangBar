@@ -10,6 +10,7 @@ struct NowPlayingWidget: View {
 
     @State private var dragPosition: Double? = nil
     @State private var barWidth: CGFloat = 0
+    @State private var isArtworkHovered = false
 
     private var title: String {
         service.isAvailable ? service.info.title : "No player open"
@@ -21,13 +22,24 @@ struct NowPlayingWidget: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Group {
-                if let artwork = service.info.artwork {
-                    Image(nsImage: artwork)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    ArtworkPlaceholder()
+            ZStack(alignment: .topTrailing) {
+                Group {
+                    if let artwork = service.info.artwork {
+                        Image(nsImage: artwork)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        ArtworkPlaceholder()
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { service.openPlayer() }
+
+                if service.info.canFavorite && (service.info.isFavorited || isArtworkHovered) {
+                    FavoriteCorner(isFavorited: service.info.isFavorited) {
+                        service.toggleFavorite()
+                    }
+                    .transition(.opacity)
                 }
             }
             .frame(
@@ -39,7 +51,7 @@ struct NowPlayingWidget: View {
             .transaction { transaction in
                 transaction.animation = nil
             }
-            .onTapGesture { service.openPlayer() }
+            .onHover { isArtworkHovered = $0 }
             .allowsHitTesting(service.isAvailable && !hideArtwork)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -134,6 +146,46 @@ struct NowPlayingWidget: View {
             height: PanelLayout.nowPlayingWidgetHeight,
             alignment: .topLeading
         )
+    }
+}
+
+private struct FavoriteCorner: View {
+    let isFavorited: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .topTrailing) {
+                FavoriteCornerShape()
+                    .fill(Color.red)
+
+                Image(systemName: isFavorited ? "heart.fill" : "heart")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.top, 5)
+                    .padding(.trailing, 5)
+            }
+            .frame(width: 34, height: 34)
+            .contentShape(FavoriteCornerShape())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isFavorited ? "Remove from Favorites" : "Add to Favorites")
+    }
+}
+
+private struct FavoriteCornerShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 0))
+            path.addLine(to: CGPoint(x: rect.maxX, y: 0))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addCurve(
+                to: CGPoint(x: 0, y: 0),
+                control1: CGPoint(x: rect.width * 0.72, y: rect.height * 0.72),
+                control2: CGPoint(x: rect.width * 0.34, y: rect.height * 0.30)
+            )
+            path.closeSubpath()
+        }
     }
 }
 

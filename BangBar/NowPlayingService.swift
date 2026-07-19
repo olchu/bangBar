@@ -10,6 +10,8 @@ struct NowPlayingInfo {
     var duration: Double = 0
     var shuffleEnabled: Bool = false
     var repeatMode: RepeatMode = .off
+    var isFavorited: Bool = false
+    var canFavorite: Bool = false
 }
 
 enum RepeatMode: String {
@@ -33,7 +35,7 @@ private enum Player: String, CaseIterable {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleId }
     }
 
-    // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration\nshuffle\nrepeat
+    // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration\nshuffle\nrepeat\nfavorite\ncanFavorite
     var trackInfoScript: String {
         switch self {
         case .spotify:
@@ -60,7 +62,7 @@ private enum Player: String, CaseIterable {
                     else
                         set r to "off"
                     end if
-                    return t & "\n" & a & "\n" & u & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
+                    return t & "\n" & a & "\n" & u & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r & "\n0\n0"
                 else
                     return ""
                 end if
@@ -85,6 +87,21 @@ private enum Player: String, CaseIterable {
                         set s to "0"
                     end if
                     set r to song repeat as string
+                    set loved to "0"
+                    set canLove to "0"
+                    try
+                        if favorited of current track then set loved to "1"
+                        set canLove to "1"
+                    end try
+                    try
+                        set libraryMatches to every track of library playlist 1 whose name is t and artist is a
+                        repeat with libraryTrack in libraryMatches
+                            if favorited of libraryTrack then
+                                set loved to "1"
+                                exit repeat
+                            end if
+                        end repeat
+                    end try
                     set tmpPath to "/tmp/bangbar_artwork.png"
                     try
                         set imgData to data of artwork 1 of current track
@@ -92,9 +109,9 @@ private enum Player: String, CaseIterable {
                         set eof of f to 0
                         write imgData to f
                         close access f
-                        return t & "\n" & a & "\n" & tmpPath & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
+                        return t & "\n" & a & "\n" & tmpPath & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r & "\n" & loved & "\n" & canLove
                     on error
-                        return t & "\n" & a & "\n" & "" & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
+                        return t & "\n" & a & "\n" & "" & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r & "\n" & loved & "\n" & canLove
                     end try
                 else
                     return ""
@@ -135,6 +152,57 @@ private enum Player: String, CaseIterable {
             """
         }
     }
+
+    func setFavoriteScript(to isFavorited: Bool) -> String? {
+        switch self {
+        case .spotify:
+            return nil
+        case .music:
+            if isFavorited {
+                return """
+                tell application "Music"
+                    set currentName to name of current track
+                    set currentArtist to artist of current track
+                    set libraryMatches to {}
+                    try
+                        set libraryMatches to every track of library playlist 1 whose name is currentName and artist is currentArtist
+                    end try
+                    if (count of libraryMatches) is 0 then
+                        try
+                            duplicate current track to library playlist 1
+                            set libraryMatches to every track of library playlist 1 whose name is currentName and artist is currentArtist
+                        end try
+                    end if
+                    repeat with libraryTrack in libraryMatches
+                        try
+                            set favorited of libraryTrack to true
+                        end try
+                    end repeat
+                    try
+                        set favorited of current track to true
+                    end try
+                end tell
+                """
+            }
+            return """
+            tell application "Music"
+                set currentName to name of current track
+                set currentArtist to artist of current track
+                try
+                    set favorited of current track to false
+                end try
+                try
+                    set libraryMatches to every track of library playlist 1 whose name is currentName and artist is currentArtist
+                    repeat with libraryTrack in libraryMatches
+                        try
+                            set favorited of libraryTrack to false
+                        end try
+                    end repeat
+                end try
+            end tell
+            """
+        }
+    }
 }
 
 final class NowPlayingService: ObservableObject {
@@ -150,6 +218,13 @@ final class NowPlayingService: ObservableObject {
     private var activePlayer: Player?
     private var artworkCacheKey: String = ""
     private var artworkCacheImage: NSImage?
+    private var pendingFavorite: PendingFavorite?
+
+    private struct PendingFavorite {
+        let trackKey: String
+        let value: Bool
+        let expiresAt: Date
+    }
 
     init() {
         poll()
@@ -175,18 +250,37 @@ final class NowPlayingService: ObservableObject {
                 let duration  = parts.count > 5 ? Double(parts[5]) ?? 0 : 0
                 let shuffleEnabled = parts.count > 6 ? parts[6] == "1" : false
                 let repeatMode = parts.count > 7 ? RepeatMode(rawValue: parts[7]) ?? .off : .off
+                let isFavorited = parts.count > 8 ? parts[8] == "1" : false
+                let canFavorite = parts.count > 9 ? parts[9] == "1" : false
                 guard !title.isEmpty else { continue }
 
                 let artwork = self?.loadArtwork(hint: hint, player: player, title: title, artist: artist)
                 DispatchQueue.main.async {
-                    self?.activePlayer = player
-                    self?.isAvailable  = true
-                    self?.info = NowPlayingInfo(
+                    guard let self else { return }
+                    let trackKey = "\(title)|\(artist)"
+                    var displayedFavorite = isFavorited
+                    if let pending = self.pendingFavorite, pending.trackKey == trackKey {
+                        if pending.value == isFavorited {
+                            self.pendingFavorite = nil
+                        } else if pending.expiresAt > Date() {
+                            displayedFavorite = pending.value
+                        } else {
+                            self.pendingFavorite = nil
+                        }
+                    } else if self.pendingFavorite != nil {
+                        self.pendingFavorite = nil
+                    }
+
+                    self.activePlayer = player
+                    self.isAvailable  = true
+                    self.info = NowPlayingInfo(
                         title: title, artist: artist,
                         isPlaying: isPlaying, artwork: artwork,
                         position: position, duration: duration,
                         shuffleEnabled: shuffleEnabled,
-                        repeatMode: repeatMode
+                        repeatMode: repeatMode,
+                        isFavorited: displayedFavorite,
+                        canFavorite: canFavorite
                     )
                 }
                 return
@@ -255,6 +349,17 @@ final class NowPlayingService: ObservableObject {
     func previousTrack()    { sendCommand(activePlayer?.prevScript) }
     func toggleShuffle()    { sendCommand(activePlayer?.toggleShuffleScript) }
     func cycleRepeat()      { sendCommand(activePlayer?.cycleRepeatScript) }
+    func toggleFavorite() {
+        guard info.canFavorite else { return }
+        info.isFavorited.toggle()
+        let newValue = info.isFavorited
+        pendingFavorite = PendingFavorite(
+            trackKey: "\(info.title)|\(info.artist)",
+            value: newValue,
+            expiresAt: Date().addingTimeInterval(8)
+        )
+        sendCommand(activePlayer?.setFavoriteScript(to: newValue))
+    }
 
     func seek(to position: Double) {
         guard let player = activePlayer else { return }
