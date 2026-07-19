@@ -87,6 +87,14 @@ Album artwork should read visually as one continuous element between compact and
 
 ## Current Widgets
 
+### Widget Settings
+
+- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Reminders, and Focus Timer.
+- Widgets without additional settings do not get an empty secondary tab.
+- General owns widget enable/disable controls and drag-and-drop ordering.
+- Calendar owns calendar selection, Reminders owns reminder-list selection, and Focus Timer owns session-duration and round settings.
+- Widget-specific settings must not be added back to General.
+
 ### Component Structure
 
 - `PanelContentView` is the thin composition root for the visible panel:

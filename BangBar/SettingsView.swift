@@ -32,6 +32,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutLabel) private var clipboardIgnoreShortcutLabel = "Not set"
     @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutGraceMS) private var clipboardIgnoreShortcutGraceMS = 1500
     @State private var selectedSettingsTab = SettingsTab.widgets
+    @State private var selectedWidgetTab = WidgetConfigurationTab.general
     @State private var widgetOrder = BangBarWidget.allCases
     @State private var draggedWidget: BangBarWidget?
 
@@ -229,6 +230,63 @@ struct SettingsView: View {
 
     private func widgetsSection(accentColor: Color) -> some View {
         VStack(alignment: .leading, spacing: 28) {
+            widgetTabBar(accentColor: accentColor)
+
+            widgetTabContent(accentColor: accentColor)
+        }
+    }
+
+    private func widgetTabBar(accentColor: Color) -> some View {
+        HStack(spacing: 4) {
+            ForEach(WidgetConfigurationTab.allCases) { tab in
+                Button {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        selectedWidgetTab = tab
+                    }
+                } label: {
+                    Text(tab.title)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(
+                            selectedWidgetTab == tab ? accentColor : SettingsTheme.secondaryText
+                        )
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(selectedWidgetTab == tab ? accentColor.opacity(0.16) : .clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(SettingsTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(SettingsTheme.border, lineWidth: 1)
+                )
+        )
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder
+    private func widgetTabContent(accentColor: Color) -> some View {
+        switch selectedWidgetTab {
+        case .general:
+            generalWidgetSettings(accentColor: accentColor)
+        case .calendar:
+            calendarWidgetSettings(accentColor: accentColor)
+        case .reminders:
+            remindersWidgetSettings(accentColor: accentColor)
+        case .focusTimer:
+            focusTimerWidgetSettings(accentColor: accentColor)
+        }
+    }
+
+    private func generalWidgetSettings(accentColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 28) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Enable, disable and reorder widgets.")
                     .font(SettingsTheme.captionFont)
@@ -245,61 +303,101 @@ struct SettingsView: View {
                 SettingsSectionLabel("AVAILABLE WIDGETS")
                 widgetsCard(accentColor: accentColor)
             }
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsSectionLabel("CALENDAR")
-                CalendarListPickerCard(selectedCalendarIdsRaw: $selectedCalendarIdsRaw, accentColor: accentColor)
+    private func calendarWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .clock,
+            description: "Choose which calendars are shown in the widget."
+        ) {
+            CalendarListPickerCard(
+                selectedCalendarIdsRaw: $selectedCalendarIdsRaw,
+                accentColor: accentColor
+            )
+        }
+    }
+
+    private func remindersWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .reminders,
+            description: "Choose the reminders list used by the widget."
+        ) {
+            SettingsCard {
+                RemindersListPickerRow(selectedListId: $reminderListId, accentColor: accentColor)
             }
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsSectionLabel("REMINDERS")
-                SettingsCard {
-                    RemindersListPickerRow(selectedListId: $reminderListId, accentColor: accentColor)
+    private func focusTimerWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .pomodoro,
+            description: "Configure focus sessions, breaks and rounds."
+        ) {
+            SettingsCard {
+                VStack(spacing: 0) {
+                    SettingsStepperRow(
+                        title: "Focus duration",
+                        value: $pomodoroWorkMinutes,
+                        range: 5...90,
+                        step: 5,
+                        unit: "min",
+                        accentColor: accentColor
+                    )
+                    SettingsDivider()
+                    SettingsStepperRow(
+                        title: "Short break",
+                        value: $pomodoroShortBreakMinutes,
+                        range: 1...30,
+                        step: 1,
+                        unit: "min",
+                        accentColor: accentColor
+                    )
+                    SettingsDivider()
+                    SettingsStepperRow(
+                        title: "Long break",
+                        value: $pomodoroLongBreakMinutes,
+                        range: 5...45,
+                        step: 5,
+                        unit: "min",
+                        accentColor: accentColor
+                    )
+                    SettingsDivider()
+                    SettingsStepperRow(
+                        title: "Rounds before long break",
+                        value: $pomodoroRounds,
+                        range: 2...8,
+                        step: 1,
+                        unit: "",
+                        accentColor: accentColor
+                    )
+                }
+            }
+        }
+    }
+
+    private func widgetSpecificSettings<Content: View>(
+        widget: BangBarWidget,
+        description: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                WidgetIcon(widget: widget, size: 24)
+                    .foregroundStyle(SettingsTheme.primaryText)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(widget.settingsTitle)
+                        .font(SettingsTheme.rowFont)
+                        .foregroundStyle(SettingsTheme.primaryText)
+
+                    Text(description)
+                        .font(SettingsTheme.descriptionFont)
+                        .foregroundStyle(SettingsTheme.secondaryText)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsSectionLabel("FOCUS TIMER")
-                SettingsCard {
-                    VStack(spacing: 0) {
-                        SettingsStepperRow(
-                            title: "Focus duration",
-                            value: $pomodoroWorkMinutes,
-                            range: 5...90,
-                            step: 5,
-                            unit: "min",
-                            accentColor: accentColor
-                        )
-                        SettingsDivider()
-                        SettingsStepperRow(
-                            title: "Short break",
-                            value: $pomodoroShortBreakMinutes,
-                            range: 1...30,
-                            step: 1,
-                            unit: "min",
-                            accentColor: accentColor
-                        )
-                        SettingsDivider()
-                        SettingsStepperRow(
-                            title: "Long break",
-                            value: $pomodoroLongBreakMinutes,
-                            range: 5...45,
-                            step: 5,
-                            unit: "min",
-                            accentColor: accentColor
-                        )
-                        SettingsDivider()
-                        SettingsStepperRow(
-                            title: "Rounds before long break",
-                            value: $pomodoroRounds,
-                            range: 2...8,
-                            step: 1,
-                            unit: "",
-                            accentColor: accentColor
-                        )
-                    }
-                }
-            }
+            content()
         }
     }
 
@@ -600,6 +698,24 @@ struct SettingsView: View {
             .tint(accentColor)
         }
         .padding(.vertical, 14)
+    }
+}
+
+private enum WidgetConfigurationTab: CaseIterable, Identifiable {
+    case general
+    case calendar
+    case reminders
+    case focusTimer
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .calendar: return "Calendar"
+        case .reminders: return "Reminders"
+        case .focusTimer: return "Focus Timer"
+        }
     }
 }
 
@@ -1510,7 +1626,7 @@ private struct RemindersListPickerRow: View {
                     Text(selectedTitle)
                         .font(SettingsTheme.captionFont)
                         .foregroundStyle(SettingsTheme.primaryText)
-                    Image(systemName: "chevron.up.chevron.down")
+                    Image(systemName: "chevron.down")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(SettingsTheme.secondaryText)
                 }
@@ -1526,6 +1642,7 @@ private struct RemindersListPickerRow: View {
                 )
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .fixedSize()
         }
         .frame(height: 52)
