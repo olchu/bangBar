@@ -324,6 +324,12 @@ struct ClockWidget: View {
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
 
+        if hours >= 24 {
+            let days = hours / 24
+            let remainingHours = hours % 24
+            return remainingHours > 0 ? "\(days)d \(remainingHours)h" : "\(days)d"
+        }
+
         if hours > 0 && minutes > 0 {
             return "\(hours)h \(minutes)min"
         }

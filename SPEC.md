@@ -220,7 +220,7 @@ Album artwork should read visually as one continuous element between compact and
   - the end time is not shown;
   - no timeline/progress line is shown;
   - calendar icons are not shown, to preserve title space;
-  - each event shows relative status below the title using compact duration text, e.g. `starts in 2h 30min`, `starts in 45min`, or `ends in 1h`.
+  - each event shows relative status below the title using compact duration text: durations below 24 hours use hours and minutes (for example `starts in 2h 30min`), while durations of 24 hours or more use days and remaining hours (for example `ends in 5d 2h`). Zero-value trailing units are omitted.
 - Empty authorized state:
   - shown when calendar access is authorized and there are no more non-all-day events today;
   - displays a left-aligned looping `man.mp4` illustration at 55×55;
