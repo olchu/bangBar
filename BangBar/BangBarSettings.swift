@@ -71,6 +71,7 @@ enum BangBarSettings {
         static let showMirrorWidget = "showMirrorWidget"
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
+        static let panelActivationThreshold = "panelActivationThreshold"
         static let showPomodoroWidget = "showPomodoroWidget"
         static let showRemindersWidget = "showRemindersWidget"
         static let reminderListId = "reminderListId"
@@ -101,6 +102,7 @@ enum BangBarSettings {
             Key.showMirrorWidget: true,
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
+            Key.panelActivationThreshold: 0,
             Key.showPomodoroWidget: true,
             Key.showRemindersWidget: true,
             Key.widgetOrder: defaultWidgetOrderRaw,
@@ -164,6 +166,10 @@ enum BangBarSettings {
 
     static var showNowPlayingWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showNowPlayingWidget) as? Bool ?? true
+    }
+
+    static var panelActivationThreshold: CGFloat {
+        CGFloat(UserDefaults.standard.integer(forKey: Key.panelActivationThreshold))
     }
 
     static var showClockWidget: Bool {

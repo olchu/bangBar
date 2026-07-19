@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.selectedCalendarIds) private var selectedCalendarIdsRaw = ""
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
+    @AppStorage(BangBarSettings.Key.panelActivationThreshold) private var panelActivationThreshold = 0
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @AppStorage(BangBarSettings.Key.pomodoroWorkMinutes) private var pomodoroWorkMinutes = 25
     @AppStorage(BangBarSettings.Key.pomodoroShortBreakMinutes) private var pomodoroShortBreakMinutes = 5
@@ -98,15 +99,31 @@ struct SettingsView: View {
                         PrivacySettingsSection()
                     }
                 }
-                .frame(width: 520)
+                .frame(width: 884)
             }
         case .appearance:
             singleColumnContent(title: "APPEARANCE", accentColor: accentColor) {
-                VStack(alignment: .leading, spacing: 14) {
-                    SettingsSectionLabel("APPEARANCE")
-                    appearanceCard(accentColor: accentColor)
+                VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("APPEARANCE")
+                        appearanceCard(accentColor: accentColor)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("INTERACTION")
+                        SettingsCard {
+                            SettingsStepperRow(
+                                title: "Panel activation area",
+                                value: $panelActivationThreshold,
+                                range: -20...40,
+                                unit: "px",
+                                resetValue: 0,
+                                accentColor: accentColor
+                            )
+                        }
+                    }
                 }
-                .frame(width: 520)
+                .frame(width: 884)
             }
         case .clipboard:
             singleColumnContent(title: "CLIPBOARD", accentColor: accentColor) {
@@ -417,13 +434,13 @@ struct SettingsView: View {
         SettingsCard {
             VStack(spacing: 0) {
                 HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 7) {
                         Text("Storage limit")
                             .font(SettingsTheme.rowFont)
                             .foregroundStyle(SettingsTheme.primaryText)
 
                         Text("Oldest items are removed automatically when the limit is reached.")
-                            .font(SettingsTheme.captionFont)
+                            .font(SettingsTheme.descriptionFont)
                             .foregroundStyle(SettingsTheme.secondaryText)
                     }
 
@@ -440,18 +457,17 @@ struct SettingsView: View {
                     .tint(accentColor)
                 }
                 .frame(minHeight: 72)
-                .padding(.horizontal, 18)
 
                 SettingsDivider()
 
                 HStack {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 7) {
                         Text("Current usage")
                             .font(SettingsTheme.rowFont)
                             .foregroundStyle(SettingsTheme.primaryText)
 
                         Text("Up to 200 items, with a 20 MB limit per item.")
-                            .font(SettingsTheme.captionFont)
+                            .font(SettingsTheme.descriptionFont)
                             .foregroundStyle(SettingsTheme.secondaryText)
                     }
 
@@ -462,18 +478,17 @@ struct SettingsView: View {
                         .foregroundStyle(accentColor)
                 }
                 .frame(minHeight: 72)
-                .padding(.horizontal, 18)
 
                 SettingsDivider()
 
                 HStack {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 7) {
                         Text("Clear clipboard history")
                             .font(SettingsTheme.rowFont)
                             .foregroundStyle(SettingsTheme.primaryText)
 
                         Text("Permanently removes saved text and images.")
-                            .font(SettingsTheme.captionFont)
+                            .font(SettingsTheme.descriptionFont)
                             .foregroundStyle(SettingsTheme.secondaryText)
                     }
 
@@ -484,7 +499,6 @@ struct SettingsView: View {
                         .disabled(clipboardHistory.items.isEmpty)
                 }
                 .frame(minHeight: 72)
-                .padding(.horizontal, 18)
             }
         }
     }
@@ -525,16 +539,16 @@ struct SettingsView: View {
                 if clipboardIgnoreShortcutEnabled {
                     SettingsDivider()
                     HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: 7) {
                             Text("Shortcut")
                                 .font(SettingsTheme.rowFont)
                                 .foregroundStyle(SettingsTheme.primaryText)
                             Text("Click Record, then press your transcription key. Fn is supported.")
-                                .font(SettingsTheme.captionFont)
+                                .font(SettingsTheme.descriptionFont)
                                 .foregroundStyle(SettingsTheme.secondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .frame(maxWidth: 290, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         Spacer(minLength: 12)
                         ShortcutRecorderField(
                             keyCode: $clipboardIgnoreShortcutKeyCode,
@@ -543,7 +557,6 @@ struct SettingsView: View {
                         )
                         .frame(width: 142, height: 30)
                     }
-                    .padding(.horizontal, 18)
                     .padding(.vertical, 14)
 
                     SettingsDivider()
@@ -569,14 +582,14 @@ struct SettingsView: View {
         accentColor: Color
     ) -> some View {
         HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text(title).font(SettingsTheme.rowFont).foregroundStyle(SettingsTheme.primaryText)
                 Text(subtitle)
-                    .font(SettingsTheme.captionFont)
+                    .font(SettingsTheme.descriptionFont)
                     .foregroundStyle(SettingsTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: 330, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
             Picker("", selection: selection) {
                 ForEach(values, id: \.self) { value in Text(label(value)).tag(value) }
@@ -586,7 +599,6 @@ struct SettingsView: View {
             .frame(width: 112)
             .tint(accentColor)
         }
-        .padding(.horizontal, 18)
         .padding(.vertical, 14)
     }
 }
@@ -615,18 +627,18 @@ private enum SettingsTab: CaseIterable, Identifiable {
         }
     }
 
-    var systemImage: String {
+    var iconAsset: String {
         switch self {
         case .widgets:
-            return "circle.grid.3x3.fill"
+            return "sidebarWidgets"
         case .permissions:
-            return "checkmark.shield"
+            return "sidebarPermissions"
         case .appearance:
-            return "paintbrush.pointed"
+            return "sidebarAppearance"
         case .clipboard:
-            return "clipboard"
+            return "sidebarClipboard"
         case .about:
-            return "info.circle"
+            return "sidebarAbout"
         }
     }
 }
@@ -700,7 +712,6 @@ private struct PrivacySettingsSection: View {
                 )
 
                 SettingsDivider()
-                    .padding(.vertical, 18)
 
                 PermissionRow(
                     title: "Calendar",
@@ -711,7 +722,6 @@ private struct PrivacySettingsSection: View {
                 )
 
                 SettingsDivider()
-                    .padding(.vertical, 18)
 
                 PermissionRow(
                     title: "Automation",
@@ -723,7 +733,6 @@ private struct PrivacySettingsSection: View {
                     }
                 )
             }
-            .padding(.vertical, 22)
         }
         .onAppear {
             refreshStatuses()
@@ -829,13 +838,13 @@ private struct PermissionRow: View {
                 .foregroundStyle(SettingsTheme.secondaryText)
                 .frame(width: 32)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text(title)
                     .font(SettingsTheme.rowFont)
                     .foregroundStyle(SettingsTheme.primaryText)
 
                 Text(status)
-                    .font(SettingsTheme.captionFont)
+                    .font(SettingsTheme.descriptionFont)
                     .foregroundStyle(SettingsTheme.secondaryText)
                     .lineLimit(2)
             }
@@ -845,8 +854,7 @@ private struct PermissionRow: View {
             Button(buttonTitle, action: action)
                 .buttonStyle(SettingsOutlineButtonStyle())
         }
-        .frame(minHeight: 74)
-        .padding(.horizontal, 18)
+        .frame(minHeight: 72)
     }
 }
 
@@ -893,9 +901,11 @@ private struct SidebarItem: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
-                Image(systemName: tab.systemImage)
-                    .font(.system(size: 22, weight: .medium))
-                    .frame(width: 28)
+                Image(tab.iconAsset)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
 
                 Text(tab.title)
                     .font(SettingsTheme.sidebarFont)
@@ -1165,6 +1175,7 @@ private struct SettingsStepperRow: View {
     let range: ClosedRange<Int>
     var step: Int = 1
     let unit: String
+    var resetValue: Int? = nil
     let accentColor: Color
 
     var body: some View {
@@ -1198,6 +1209,15 @@ private struct SettingsStepperRow: View {
                             .stroke(SettingsTheme.border, lineWidth: 1)
                     )
             )
+
+            if let resetValue {
+                Button("Reset") {
+                    value = resetValue
+                }
+                .buttonStyle(SettingsOutlineButtonStyle())
+                .disabled(value == resetValue)
+                .padding(.leading, 12)
+            }
         }
         .frame(height: 52)
     }
@@ -1233,12 +1253,12 @@ private struct SettingsToggleRow: View {
                     .foregroundStyle(SettingsTheme.primaryText)
                 if let subtitle {
                     Text(subtitle)
-                        .font(SettingsTheme.captionFont)
+                        .font(SettingsTheme.descriptionFont)
                         .foregroundStyle(SettingsTheme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(maxWidth: 380, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
 
@@ -1246,7 +1266,6 @@ private struct SettingsToggleRow: View {
                 .labelsHidden()
                 .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
         }
-        .padding(.horizontal, 18)
         .padding(.vertical, subtitle == nil ? 10 : 14)
     }
 }
@@ -1684,4 +1703,5 @@ private enum SettingsTheme {
     static let chipFont = Font.system(size: 14, weight: .regular, design: .monospaced)
     static let rowFont = Font.system(size: 16, weight: .regular, design: .monospaced)
     static let captionFont = Font.system(size: 13, weight: .regular, design: .monospaced)
+    static let descriptionFont = Font.system(size: 12, weight: .regular, design: .monospaced)
 }
