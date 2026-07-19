@@ -12,6 +12,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
+    @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
@@ -214,6 +215,8 @@ struct PanelContentView: View {
                             width: PanelLayout.mirrorWidgetWidth,
                             height: PanelLayout.mirrorWidgetHeight
                         )
+                case .system:
+                    SystemWidget()
                 }
             }
         }
@@ -237,6 +240,8 @@ struct PanelContentView: View {
             return showRemindersWidget
         case .mirror:
             return showMirrorWidget
+        case .system:
+            return showSystemWidget
         }
     }
 }

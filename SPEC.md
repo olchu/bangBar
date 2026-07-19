@@ -110,6 +110,7 @@ Album artwork should read visually as one continuous element between compact and
   - `CompactClipboardGroupWidget.swift`: compact image-collection status shown while a group is active;
   - `PanelTopBar.swift`: panel navigation, clipboard filters and image-group collection controls;
   - `NotchPanelShape.swift`: custom panel clipping shape.
+- `SystemWidget.swift` provides live CPU, memory, power/disk, thermal status, and local IPv4 information.
 - Legacy/standalone widgets live outside `PanelContentView`:
   - `CalendarWidget.swift`;
   - `SystemWidget.swift`.
@@ -125,6 +126,7 @@ Album artwork should read visually as one continuous element between compact and
   - `PomodoroWidget` (displayed as **Focus Timer**): 110×110
   - `CountdownWidget`: 150×110
   - `MirrorWidget`: 94×94
+  - `SystemWidget`: 160×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -972,11 +974,15 @@ These are not immediate commitments, but useful directions to consider after Foc
 - Useful when switching between networks or debugging connectivity.
 - Should avoid noisy live throughput unless there is a clear need.
 
-### SystemLoadWidget
+### SystemLoadWidget — Implemented
 
-- Shows a compact health indicator for CPU/RAM/thermal pressure.
-- Should avoid becoming a dense monitoring dashboard.
-- Prefer one small status summary over multiple always-changing numbers.
+- Shows live CPU and memory usage, battery/charging state or free disk space, thermal health, and the active local IPv4 address.
+- CPU and RAM use compact 24-sample sparkline cards; new samples arrive every two seconds.
+- The health dot uses a restrained breathing halo, and graph endpoints use the same subtle pulse.
+- System accents follow the user-selected accent color; warning states switch to orange.
+- Clicking the IPv4 address copies it to the clipboard.
+- Refreshes while visible on a two-second interval and stops polling when removed from the view hierarchy.
+- Remains optional and disabled by default for existing users.
 
 ### NextAlarmWidget
 

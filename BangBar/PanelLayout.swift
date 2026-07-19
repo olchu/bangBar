@@ -39,6 +39,7 @@ enum PanelLayout {
     static let nowPlayingArtworkSize: CGFloat = 110
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
+    static let systemWidgetWidth: CGFloat = 160
     static let clockWidgetWidth: CGFloat = 190
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
@@ -53,7 +54,8 @@ enum PanelLayout {
             showMoon: BangBarSettings.showMoonWidget,
             showPomodoro: BangBarSettings.showPomodoroWidget,
             showReminders: BangBarSettings.showRemindersWidget,
-            showMirror: BangBarSettings.showMirrorWidget
+            showMirror: BangBarSettings.showMirrorWidget,
+            showSystem: BangBarSettings.showSystemWidget
         )
     }
 
@@ -64,7 +66,8 @@ enum PanelLayout {
             showMoon: BangBarSettings.showMoonWidget,
             showPomodoro: BangBarSettings.showPomodoroWidget,
             showReminders: BangBarSettings.showRemindersWidget,
-            showMirror: BangBarSettings.showMirrorWidget
+            showMirror: BangBarSettings.showMirrorWidget,
+            showSystem: BangBarSettings.showSystemWidget
         )
     }
 
@@ -74,7 +77,8 @@ enum PanelLayout {
         showMoon: Bool,
         showPomodoro: Bool,
         showReminders: Bool,
-        showMirror: Bool
+        showMirror: Bool,
+        showSystem: Bool
     ) -> [CGFloat] {
         var widths: [CGFloat] = []
 
@@ -84,6 +88,7 @@ enum PanelLayout {
         if showPomodoro { widths.append(pomodoroWidgetWidth) }
         if showReminders { widths.append(remindersWidgetWidth) }
         if showMirror { widths.append(mirrorWidgetWidth) }
+        if showSystem { widths.append(systemWidgetWidth) }
 
         guard !widths.isEmpty else { return [emptyWidgetWidth] }
 
@@ -98,7 +103,8 @@ enum PanelLayout {
         showMoon: Bool,
         showPomodoro: Bool,
         showReminders: Bool,
-        showMirror: Bool
+        showMirror: Bool,
+        showSystem: Bool
     ) -> CGFloat {
         let widths = expandedWidgetWidths(
             showNowPlaying: showNowPlaying,
@@ -106,7 +112,8 @@ enum PanelLayout {
             showMoon: showMoon,
             showPomodoro: showPomodoro,
             showReminders: showReminders,
-            showMirror: showMirror
+            showMirror: showMirror,
+            showSystem: showSystem
         )
         let contentWidth = widths.reduce(0, +)
         let spacingWidth = expandedWidgetSpacing * CGFloat(max(widths.count - 1, 0))

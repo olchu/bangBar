@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
+    @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
@@ -480,6 +481,8 @@ struct SettingsView: View {
             return $showRemindersWidget
         case .mirror:
             return $showMirrorWidget
+        case .system:
+            return $showSystemWidget
         }
     }
 
@@ -1274,6 +1277,8 @@ private extension BangBarWidget {
             return PanelLayout.remindersWidgetWidth
         case .mirror:
             return PanelLayout.mirrorWidgetWidth
+        case .system:
+            return PanelLayout.systemWidgetWidth
         }
     }
 
@@ -1291,6 +1296,8 @@ private extension BangBarWidget {
             return 178
         case .mirror:
             return 150
+        case .system:
+            return 160
         }
     }
 }

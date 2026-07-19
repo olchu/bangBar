@@ -8,6 +8,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case pomodoro
     case reminders
     case mirror
+    case system
 
     var id: String { rawValue }
 
@@ -25,6 +26,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Reminders"
         case .mirror:
             return "Mirror"
+        case .system:
+            return "System"
         }
     }
 
@@ -42,6 +45,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Today's tasks and overdue"
         case .mirror:
             return "Quick mirror access"
+        case .system:
+            return "CPU, memory, battery and local IP"
         }
     }
 
@@ -59,6 +64,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetReminders"
         case .mirror:
             return "widgetMirror"
+        case .system:
+            return "widgetSystem"
         }
     }
 }
@@ -69,6 +76,7 @@ enum BangBarSettings {
         static let showClockWidget = "showClockWidget"
         static let showMoonWidget = "showMoonWidget"
         static let showMirrorWidget = "showMirrorWidget"
+        static let showSystemWidget = "showSystemWidget"
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
         static let panelActivationThreshold = "panelActivationThreshold"
@@ -100,6 +108,7 @@ enum BangBarSettings {
             Key.showClockWidget: true,
             Key.showMoonWidget: true,
             Key.showMirrorWidget: true,
+            Key.showSystemWidget: false,
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,
@@ -182,6 +191,10 @@ enum BangBarSettings {
 
     static var showMirrorWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showMirrorWidget) as? Bool ?? true
+    }
+
+    static var showSystemWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showSystemWidget) as? Bool ?? false
     }
 
     static var showPomodoroWidget: Bool {
