@@ -12,8 +12,12 @@ struct SystemWidget: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text("SYSTEM")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                Image(systemName: batterySymbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(accentColor)
+
+                Text(batteryLabel)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.72))
 
                 Spacer()
@@ -23,10 +27,12 @@ struct SystemWidget: View {
                 Text(metrics.statusLabel)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(statusColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
             .frame(height: 18)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 SystemMetricCard(
                     title: "CPU",
                     value: metrics.cpuLabel,
@@ -34,6 +40,11 @@ struct SystemWidget: View {
                     color: accentColor,
                     isPulsing: isPulsing
                 )
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.14))
+                    .frame(width: 1, height: 38)
+
                 SystemMetricCard(
                     title: "RAM",
                     value: metrics.memoryLabel,
@@ -45,18 +56,14 @@ struct SystemWidget: View {
             .frame(height: 57)
 
             HStack(spacing: 5) {
-                Image(systemName: metrics.batteryLevel == nil ? "internaldrive" : batterySymbol)
+                Image(systemName: "internaldrive")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(accentColor)
                     .frame(width: 14)
 
-                Text(powerOrDiskLabel)
+                Text(diskLabel)
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .lineLimit(1)
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.14))
-                    .frame(width: 1, height: 14)
 
                 Spacer(minLength: 0)
 
@@ -106,10 +113,14 @@ struct SystemWidget: View {
         return "battery.0percent"
     }
 
-    private var powerOrDiskLabel: String {
+    private var batteryLabel: String {
         if let batteryLevel = metrics.batteryLevel {
             return "\(batteryLevel)%\(metrics.isCharging ? " ⚡" : "")"
         }
+        return "—"
+    }
+
+    private var diskLabel: String {
         return "\(metrics.diskFreeGB)GB"
     }
 
@@ -158,22 +169,11 @@ private struct SystemMetricCard: View {
 
                 Text(value)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(color)
+                    .foregroundStyle(.white.opacity(0.82))
             }
 
             MetricSparkline(values: history, color: color, isPulsing: isPulsing)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.025))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-                .shadow(color: color.opacity(0.07), radius: 7)
-        )
     }
 }
 
@@ -185,13 +185,7 @@ private struct MetricSparkline: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                VStack(spacing: 0) {
-                    Spacer()
-                    Rectangle().fill(Color.white.opacity(0.055)).frame(height: 1)
-                    Spacer()
-                    Rectangle().fill(Color.white.opacity(0.055)).frame(height: 1)
-                    Spacer()
-                }
+                MetricDotGrid()
 
                 SparklineAreaShape(values: values)
                     .fill(
@@ -219,6 +213,37 @@ private struct MetricSparkline: View {
     private func endpoint(in size: CGSize) -> CGPoint {
         let value = min(max(values.last ?? 0, 0), 100)
         return CGPoint(x: max(2, size.width - 2), y: max(2, min(size.height - 2, size.height * (1 - value / 100))))
+    }
+}
+
+private struct MetricDotGrid: View {
+    private let spacing: CGFloat = 10
+    private let dotSize: CGFloat = 1.25
+
+    var body: some View {
+        Canvas { context, size in
+            var dots = Path()
+            var y = spacing / 2
+
+            while y < size.height {
+                var x = spacing / 2
+                while x < size.width {
+                    dots.addEllipse(
+                        in: CGRect(
+                            x: x - dotSize / 2,
+                            y: y - dotSize / 2,
+                            width: dotSize,
+                            height: dotSize
+                        )
+                    )
+                    x += spacing
+                }
+                y += spacing
+            }
+
+            context.fill(dots, with: .color(.white.opacity(0.34)))
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -281,6 +306,8 @@ final class SystemMetricsService: NSObject, ObservableObject {
         cpuUsage >= 90
             || memoryUsage >= 90
             || diskFreeGB < 10
+            || (batteryLevel ?? 100) <= 15
+            || ipAddress == nil
             || thermalState == .serious
             || thermalState == .critical
     }
@@ -289,7 +316,13 @@ final class SystemMetricsService: NSObject, ObservableObject {
         switch thermalState {
         case .serious: return "WARM"
         case .critical: return "HOT"
-        default: return needsAttention ? "CHECK" : "GOOD"
+        default:
+            if ipAddress == nil { return "OFFLINE" }
+            if let batteryLevel, batteryLevel <= 15 { return "LOW BAT" }
+            if diskFreeGB < 10 { return "LOW DISK" }
+            if cpuUsage >= 90 { return "CPU HIGH" }
+            if memoryUsage >= 90 { return "RAM HIGH" }
+            return "GOOD"
         }
     }
 
