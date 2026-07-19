@@ -1008,9 +1008,7 @@ private struct WidgetChip: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: widget.systemImage)
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 16)
+            WidgetIcon(widget: widget, size: 16)
 
             Text(widget.settingsTitle)
                 .font(.system(size: 12, weight: .regular, design: .monospaced))
@@ -1062,8 +1060,7 @@ private struct WidgetSettingsRow: View {
 
     var body: some View {
         HStack(spacing: 18) {
-            Image(systemName: widget.systemImage)
-                .font(.system(size: 25, weight: .medium))
+            WidgetIcon(widget: widget, size: 28)
                 .foregroundStyle(SettingsTheme.primaryText)
                 .frame(width: 36)
 
@@ -1084,6 +1081,19 @@ private struct WidgetSettingsRow: View {
                 .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
         }
         .frame(height: 72)
+    }
+}
+
+private struct WidgetIcon: View {
+    let widget: BangBarWidget
+    let size: CGFloat
+
+    var body: some View {
+        Image(widget.iconAsset)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
     }
 }
 

@@ -45,20 +45,20 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         }
     }
 
-    var systemImage: String {
+    var iconAsset: String {
         switch self {
         case .nowPlaying:
-            return "music.note"
+            return "widgetMusic"
         case .clock:
-            return "calendar"
+            return "widgetCalendar"
         case .moon:
-            return "moon"
+            return "widgetMoon"
         case .pomodoro:
-            return "stopwatch"
+            return "widgetFocus"
         case .reminders:
-            return "bell.badge"
+            return "widgetReminders"
         case .mirror:
-            return "rectangle.portrait"
+            return "widgetMirror"
         }
     }
 }
