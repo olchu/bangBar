@@ -219,6 +219,8 @@ final class NowPlayingService: ObservableObject {
     private var artworkCacheKey: String = ""
     private var artworkCacheImage: NSImage?
     private var pendingFavorite: PendingFavorite?
+    private var isPollInFlight = false
+    private var pollRequested = false
 
     private struct PendingFavorite {
         let trackKey: String
@@ -238,6 +240,12 @@ final class NowPlayingService: ObservableObject {
     }
 
     private func poll() {
+        guard !isPollInFlight else {
+            pollRequested = true
+            return
+        }
+        isPollInFlight = true
+
         DispatchQueue.global(qos: .utility).async { [weak self] in
             for player in Player.allCases where player.isRunning {
                 guard let result = self?.runScript(player.trackInfoScript), !result.isEmpty else { continue }
@@ -282,15 +290,25 @@ final class NowPlayingService: ObservableObject {
                         isFavorited: displayedFavorite,
                         canFavorite: canFavorite
                     )
+                    self.finishPoll()
                 }
                 return
             }
             DispatchQueue.main.async {
-                self?.activePlayer = nil
-                self?.isAvailable  = false
-                self?.info = NowPlayingInfo()
+                guard let self else { return }
+                self.activePlayer = nil
+                self.isAvailable  = false
+                self.info = NowPlayingInfo()
+                self.finishPoll()
             }
         }
+    }
+
+    private func finishPoll() {
+        isPollInFlight = false
+        guard pollRequested else { return }
+        pollRequested = false
+        poll()
     }
 
     private func loadArtwork(hint: String, player: Player, title: String, artist: String) -> NSImage? {
@@ -331,24 +349,52 @@ final class NowPlayingService: ObservableObject {
     }
 
     private func runScript(_ source: String) -> String? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", source]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError  = Pipe()
-        guard (try? p.run()) != nil else { return nil }
-        p.waitUntilExit()
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return out?.isEmpty == false ? out : nil
+        guard let script = NSAppleScript(source: source) else { return nil }
+        var errorInfo: NSDictionary?
+        let result = script.executeAndReturnError(&errorInfo)
+        guard errorInfo == nil else { return nil }
+        let output = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return output?.isEmpty == false ? output : nil
     }
 
-    func togglePlayPause() { sendCommand(activePlayer?.playPauseScript) }
-    func nextTrack()        { sendCommand(activePlayer?.nextScript) }
-    func previousTrack()    { sendCommand(activePlayer?.prevScript) }
-    func toggleShuffle()    { sendCommand(activePlayer?.toggleShuffleScript) }
-    func cycleRepeat()      { sendCommand(activePlayer?.cycleRepeatScript) }
+    func togglePlayPause() {
+        guard isAvailable else { return }
+        info.isPlaying.toggle()
+        sendCommand(activePlayer?.playPauseScript)
+    }
+
+    func nextTrack() {
+        guard isAvailable else { return }
+        info.position = 0
+        sendCommand(activePlayer?.nextScript)
+    }
+
+    func previousTrack() {
+        guard isAvailable else { return }
+        info.position = 0
+        sendCommand(activePlayer?.prevScript)
+    }
+
+    func toggleShuffle() {
+        guard isAvailable else { return }
+        info.shuffleEnabled.toggle()
+        sendCommand(activePlayer?.toggleShuffleScript)
+    }
+
+    func cycleRepeat() {
+        guard let player = activePlayer else { return }
+        switch player {
+        case .spotify:
+            info.repeatMode = info.repeatMode == .off ? .all : .off
+        case .music:
+            info.repeatMode = switch info.repeatMode {
+            case .off: .all
+            case .all: .one
+            case .one: .off
+            }
+        }
+        sendCommand(player.cycleRepeatScript)
+    }
     func toggleFavorite() {
         guard info.canFavorite else { return }
         info.isFavorited.toggle()
@@ -385,7 +431,7 @@ final class NowPlayingService: ObservableObject {
         guard let source else { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             _ = self?.runScript(source)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self?.poll() }
+            DispatchQueue.main.async { self?.poll() }
         }
     }
 }

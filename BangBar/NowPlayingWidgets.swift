@@ -36,7 +36,7 @@ struct NowPlayingWidget: View {
                 .onTapGesture { service.openPlayer() }
 
                 if service.info.canFavorite && (service.info.isFavorited || isArtworkHovered) {
-                    FavoriteCorner(isFavorited: service.info.isFavorited) {
+                    FavoriteCorner(isFavorited: service.info.isFavorited, color: accentColor) {
                         service.toggleFavorite()
                     }
                     .transition(.opacity)
@@ -151,13 +151,14 @@ struct NowPlayingWidget: View {
 
 private struct FavoriteCorner: View {
     let isFavorited: Bool
+    let color: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 FavoriteCornerShape()
-                    .fill(Color.red)
+                    .fill(color)
 
                 Image(systemName: isFavorited ? "heart.fill" : "heart")
                     .font(.system(size: 11, weight: .bold))
