@@ -55,7 +55,7 @@ struct PanelContentView: View {
                         }
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
-                    .animation(.easeOut(duration: 0.18), value: state.contentVisible)
+                    .animation(.easeOut(duration: 0.10), value: state.contentVisible)
                 }
 
                 if let progress = state.artworkHeroProgress, nowPlaying.isAvailable {
@@ -85,7 +85,7 @@ struct PanelContentView: View {
                         onOpenSettings: onOpenSettings
                     )
                     .opacity(state.contentVisible ? 1.0 : 0.0)
-                    .animation(.easeOut(duration: 0.16), value: state.contentVisible)
+                    .animation(.easeOut(duration: 0.10), value: state.contentVisible)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .zIndex(20)
                 }

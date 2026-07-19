@@ -187,7 +187,7 @@ class HoverPanel: NSPanel {
 
                 self.animateFrame(
                     to: targetFrame,
-                    duration: 0.22,
+                    duration: 0.16,
                     progress: { [weak self] progress in
                         self?.state.artworkHeroProgress = progress
                     }
@@ -195,9 +195,7 @@ class HoverPanel: NSPanel {
                     self.state.artworkHeroProgress = 1
                     self.state.isCompact = false
                     self.state.isExpanded = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
-                        self.state.contentVisible = true
-                    }
+                    self.state.contentVisible = true
                     let cleanupWork = DispatchWorkItem { [weak self] in
                         guard let self else { return }
                         self.updateStateWithoutAnimation {
@@ -211,21 +209,17 @@ class HoverPanel: NSPanel {
                 }
             } else if wasCompact {
                 self.state.artworkHeroProgress = nil
-                self.animateFrame(to: targetFrame, duration: 0.22, completion: {
+                self.animateFrame(to: targetFrame, duration: 0.18, completion: {
                     self.state.isCompact = false
                     self.state.isExpanded = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
-                        self.state.contentVisible = true
-                    }
+                    self.state.contentVisible = true
                 })
             } else {
                 self.state.artworkHeroProgress = nil
                 self.state.isCompact = false
                 self.state.isExpanded = true
                 self.setFrame(targetFrame, display: true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    self.state.contentVisible = true
-                }
+                self.state.contentVisible = true
             }
         }
     }
