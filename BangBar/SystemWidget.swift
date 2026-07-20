@@ -144,7 +144,7 @@ private struct PulsingStatusDot: View {
 
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: 6, height: 6)
                 .shadow(color: color.opacity(isPulsing ? 0.9 : 0.45), radius: isPulsing ? 7 : 3)
         }
         .frame(width: 22, height: 22)
@@ -190,7 +190,7 @@ private struct MetricSparkline: View {
                 SparklineAreaShape(values: values)
                     .fill(
                         LinearGradient(
-                            colors: [color.opacity(0.20), color.opacity(0.01)],
+                            colors: [color.opacity(0.34), color.opacity(0.02)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
