@@ -4,9 +4,9 @@ import Foundation
 import SwiftUI
 
 struct GitHubWidget: View {
+    @ObservedObject var contributions: GitHubContributionsService
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.githubUsername) private var username = ""
-    @StateObject private var contributions = GitHubContributionsService()
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -180,7 +180,7 @@ private final class GitHubContributionTooltipNSView: NSView {
 }
 
 @MainActor
-private final class GitHubContributionsService: ObservableObject {
+final class GitHubContributionsService: ObservableObject {
     struct Day: Identifiable {
         let date: Date
         let dateString: String

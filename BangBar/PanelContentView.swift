@@ -20,6 +20,7 @@ struct PanelContentView: View {
     @StateObject private var mirror = MirrorCameraService()
     @StateObject private var calendarEvents = CalendarEventService()
     @StateObject private var reminders = ReminderService()
+    @StateObject private var githubContributions = GitHubContributionsService()
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -218,7 +219,7 @@ struct PanelContentView: View {
                 case .system:
                     SystemWidget()
                 case .github:
-                    GitHubWidget()
+                    GitHubWidget(contributions: githubContributions)
                 }
             }
         }

@@ -400,6 +400,7 @@ The approximation is intended for a small visual widget rather than telescope po
 - `GitHubContributionsService` requests the user's public GitHub contribution HTML for each calendar year intersecting the trailing-year range and merges days by `data-date`.
 - Requests identify the app with a `BangBar` user agent. Invalid usernames, parsing failures, and unavailable responses produce compact empty/error states.
 - Successful results for the same username are cached in memory for three hours.
+- `PanelContentView` owns `GitHubContributionsService`; `GitHubWidget` observes the injected service. Switching to Clipboard removes the widget view but must not destroy its loaded contribution state or visibly reinitialize it when returning.
 - The service loads approximately 53 weeks so the footer can report the total for the trailing 365 days, even though only the latest 13 weeks are rendered.
 
 **Display:**
