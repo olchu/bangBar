@@ -27,8 +27,8 @@ final class TooltipManager {
     func show(text: String, near cursorPoint: NSPoint, offset: CGSize = CGSize(width: 14, height: 10)) {
         guard canShow else { return }
 
-        let hostingView = tooltipHostingView(for: text)
         let fittedSize = tooltipSize(for: text)
+        let hostingView = tooltipHostingView(for: text, width: fittedSize.width)
         hostingView.frame = NSRect(origin: .zero, size: fittedSize)
         hostingView.layoutSubtreeIfNeeded()
 
@@ -70,16 +70,16 @@ final class TooltipManager {
         currentText = nil
     }
 
-    private func tooltipHostingView(for text: String) -> NSHostingView<TooltipContent> {
+    private func tooltipHostingView(for text: String, width: CGFloat) -> NSHostingView<TooltipContent> {
         if let hostingView {
             if currentText != text {
-                hostingView.rootView = TooltipContent(text: text)
+                hostingView.rootView = TooltipContent(text: text, width: width)
                 currentText = text
             }
             return hostingView
         }
 
-        let hostingView = NSHostingView(rootView: TooltipContent(text: text))
+        let hostingView = NSHostingView(rootView: TooltipContent(text: text, width: width))
         self.hostingView = hostingView
         currentText = text
         return hostingView
@@ -92,8 +92,17 @@ final class TooltipManager {
             .font: TooltipContent.font,
             .paragraphStyle: paragraphStyle
         ]
+        let longestLineWidth = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { (String($0) as NSString).size(withAttributes: attributes).width }
+            .max() ?? 0
+        let width = min(
+            max(ceil(longestLineWidth) + TooltipContent.horizontalPadding * 2, TooltipContent.minimumWidth),
+            TooltipContent.maximumWidth
+        )
+        let textWidth = width - TooltipContent.horizontalPadding * 2
         let textRect = (text as NSString).boundingRect(
-            with: NSSize(width: TooltipContent.textWidth, height: .greatestFiniteMagnitude),
+            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: attributes
         )
@@ -101,19 +110,20 @@ final class TooltipManager {
             ceil(textRect.height) + TooltipContent.verticalPadding * 2,
             TooltipContent.minimumHeight
         )
-        return NSSize(width: TooltipContent.width, height: height)
+        return NSSize(width: width, height: height)
     }
 }
 
 private struct TooltipContent: View {
-    static let width: CGFloat = 260
+    static let maximumWidth: CGFloat = 260
+    static let minimumWidth: CGFloat = 44
     static let horizontalPadding: CGFloat = 10
     static let verticalPadding: CGFloat = 7
     static let minimumHeight: CGFloat = 34
-    static let textWidth = width - horizontalPadding * 2
     static let font = NSFont.systemFont(ofSize: 11, weight: .regular)
 
     let text: String
+    let width: CGFloat
 
     var body: some View {
         Text(text)
@@ -121,10 +131,10 @@ private struct TooltipContent: View {
             .foregroundStyle(.black.opacity(0.88))
             .multilineTextAlignment(.leading)
             .lineLimit(nil)
-            .frame(width: Self.textWidth, alignment: .leading)
+            .frame(width: width - Self.horizontalPadding * 2, alignment: .leading)
             .padding(.horizontal, Self.horizontalPadding)
             .padding(.vertical, Self.verticalPadding)
-            .frame(width: Self.width, alignment: .leading)
+            .frame(width: width, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
             .background(
                 RoundedRectangle(cornerRadius: 7)
