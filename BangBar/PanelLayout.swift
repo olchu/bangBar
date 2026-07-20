@@ -20,6 +20,15 @@ enum PanelLayout {
         return max(topBarHeight, notchHeight + notchContentClearance)
     }
 
+    static func notchWidth(on screen: NSScreen?) -> CGFloat {
+        guard let leftArea = screen?.auxiliaryTopLeftArea,
+              let rightArea = screen?.auxiliaryTopRightArea else {
+            return 0
+        }
+
+        return max(rightArea.minX - leftArea.maxX, 0)
+    }
+
     static func expandedHeight(on screen: NSScreen) -> CGFloat {
         topSafeInset(on: screen) + expandedContentHeight
     }

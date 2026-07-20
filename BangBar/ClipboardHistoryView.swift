@@ -1,6 +1,7 @@
 import SwiftUI
 
 private let clipboardPinColor = Color(hex: "#FF9F0A")
+private let clipboardCardHeight = PanelLayout.nowPlayingWidgetHeight - 4
 
 enum ClipboardHistoryFilter: String, CaseIterable, Identifiable {
     case all = "All"
@@ -139,7 +140,7 @@ struct ClipboardHistoryView: View {
                             .font(.system(size: 9, weight: .semibold))
                     }
                     .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 54, height: PanelLayout.nowPlayingWidgetHeight)
+                    .frame(width: 54, height: clipboardCardHeight)
                     .background(Color.white.opacity(0.035))
                     .clipShape(.rect(cornerRadius: 10))
                     .overlay {
@@ -228,7 +229,7 @@ private struct ClipboardGroupCard: View {
                 .padding(.vertical, 11)
             }
             .padding(.horizontal, 11)
-            .frame(width: 205, height: PanelLayout.nowPlayingWidgetHeight, alignment: .leading)
+            .frame(width: 205, height: clipboardCardHeight, alignment: .leading)
             .background(Color.white.opacity(0.035))
             .clipShape(.rect(cornerRadius: 10))
             .overlay {
@@ -344,7 +345,7 @@ private struct ClipboardHistoryCard: View {
                 }
                 .frame(
                     width: item.kind == .image ? 150 : 180,
-                    height: PanelLayout.nowPlayingWidgetHeight
+                    height: clipboardCardHeight
                 )
                 .background(Color.white.opacity(0.035))
                 .clipShape(.rect(cornerRadius: 10))

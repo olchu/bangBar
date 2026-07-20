@@ -25,6 +25,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.pomodoroLongBreakMinutes) private var pomodoroLongBreakMinutes = 15
     @AppStorage(BangBarSettings.Key.pomodoroRounds) private var pomodoroRounds = 4
     @AppStorage(BangBarSettings.Key.clipboardStorageLimitMB) private var clipboardStorageLimitMB = 100
+    @AppStorage(BangBarSettings.Key.clipboardButtonPosition) private var clipboardButtonPositionRaw = ClipboardButtonPosition.nearNotch.rawValue
     @AppStorage(BangBarSettings.Key.clipboardIgnoreTransientChanges) private var clipboardIgnoreTransientChanges = true
     @AppStorage(BangBarSettings.Key.clipboardTransientDelayMS) private var clipboardTransientDelayMS = 1000
     @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutEnabled) private var clipboardIgnoreShortcutEnabled = false
@@ -130,6 +131,10 @@ struct SettingsView: View {
         case .clipboard:
             singleColumnContent(title: "CLIPBOARD", accentColor: accentColor) {
                 VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("APPEARANCE")
+                        clipboardAppearanceCard(accentColor: accentColor)
+                    }
                     VStack(alignment: .leading, spacing: 14) {
                         SettingsSectionLabel("STORAGE")
                         clipboardSettingsCard(accentColor: accentColor)
@@ -528,6 +533,35 @@ struct SettingsView: View {
                 SettingsDivider()
                 SettingsToggleRow(title: "Tint walking figure", isOn: $tintWalkingMan, accentColor: accentColor)
             }
+        }
+    }
+
+    private func clipboardAppearanceCard(accentColor: Color) -> some View {
+        SettingsCard {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Clipboard button position")
+                        .font(SettingsTheme.rowFont)
+                        .foregroundStyle(SettingsTheme.primaryText)
+
+                    Text("Place the button beside the notch or at the panel's left edge.")
+                        .font(SettingsTheme.descriptionFont)
+                        .foregroundStyle(SettingsTheme.secondaryText)
+                }
+
+                Spacer()
+
+                Picker("", selection: $clipboardButtonPositionRaw) {
+                    ForEach(ClipboardButtonPosition.allCases) { position in
+                        Text(position.title).tag(position.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 230)
+                .tint(accentColor)
+            }
+            .frame(minHeight: 72)
         }
     }
 
