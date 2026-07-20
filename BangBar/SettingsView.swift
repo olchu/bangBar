@@ -5,6 +5,10 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension Notification.Name {
+    static let bangBarSettingsWillOpen = Notification.Name("bangBarSettingsWillOpen")
+}
+
 struct SettingsView: View {
     @ObservedObject var clipboardHistory: ClipboardHistoryService
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
@@ -74,6 +78,10 @@ struct SettingsView: View {
         }
         .onChange(of: widgetOrderRaw) { _, _ in
             loadWidgetOrder()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .bangBarSettingsWillOpen)) { _ in
+            selectedSettingsTab = .widgets
+            selectedWidgetTab = .general
         }
     }
 
@@ -262,6 +270,7 @@ struct SettingsView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(selectedWidgetTab == tab ? accentColor.opacity(0.16) : .clear)
                         )
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -1082,6 +1091,7 @@ private struct SidebarItem: View {
             .foregroundStyle(isSelected ? accentColor : SettingsTheme.secondaryText)
             .padding(.horizontal, 20)
             .frame(width: 208, height: 58)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? accentColor.opacity(0.18) : .clear)

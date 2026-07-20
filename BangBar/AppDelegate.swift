@@ -179,6 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if let settingsWindow {
+            NotificationCenter.default.post(name: .bangBarSettingsWillOpen, object: nil)
             NSApp.activate(ignoringOtherApps: true)
             centerSettingsWindow(settingsWindow)
             settingsWindow.makeKeyAndOrderFront(nil)
