@@ -14,8 +14,11 @@ The panel background is pure sRGB black (`0,0,0`) inside the clipped notch shape
 
 - Triggered by hovering the stable notch trigger zone.
 - Panel appears pinned to the top edge.
-- Expanded panel width is calculated from `PanelLayout`: horizontal padding, fixed widget widths, divider width, and spacing.
+- Expanded panel width is calculated from `PanelLayout`: horizontal padding, intrinsic widget widths, divider widths, and spacing.
 - Expanded panel width must not be maintained as a separate hardcoded window width.
+- The panel grows and shrinks to the enabled widgets that fit the current width budget; widgets must never overlap or be covered by a wider neighbor.
+- The maximum expanded width is the smaller of the original full-widget budget (`1468 pt`) and the current screen's visible width minus `8 pt` on each side.
+- This is a width budget, not a hardcoded widget-count limit. A future narrow widget may still fit where a wider one does not.
 - The panel must not visually detach from the top edge during frame animation.
 - Expanded content fades in after the frame animation begins.
 
@@ -89,10 +92,10 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Widget Settings
 
-- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Reminders, and Focus Timer.
+- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, and GitHub.
 - Widgets without additional settings do not get an empty secondary tab.
 - General owns widget enable/disable controls and drag-and-drop ordering.
-- Calendar owns calendar selection, Reminders owns reminder-list selection, and Focus Timer owns session-duration and round settings.
+- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, and GitHub owns the public username.
 - Widget-specific settings must not be added back to General.
 
 ### Component Structure
@@ -119,23 +122,27 @@ Album artwork should read visually as one continuous element between compact and
 ### Layout Constants
 
 - Expanded layout is configured by `PanelLayout`.
-- Widget sizes are fixed, not inferred from flexible SwiftUI content:
+- Each widget declares its layout width in `BangBarWidget.layoutWidth`; the panel itself derives its width from the enabled content:
   - `NowPlayingWidget`: 300×110
-  - `ClockWidget`: 190×110
-  - `MoonWidget`: 110×110, with an 87.3×87.3 moon image
+  - `ClockWidget`: 210×110
+  - `MoonWidget`: 110×110, with a 78×78 moon image
   - `PomodoroWidget` (displayed as **Focus Timer**): 110×110
   - `CountdownWidget`: 150×110
   - `MirrorWidget`: 94×94
   - `SystemWidget`: 160×110
+  - `GitHubWidget`: 150×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
   - compact width: `min(max(notchWidth + compactNotchSidePadding * 2, 320), 360)`, with `compactNotchSidePadding = 100`
   - compact horizontal padding: `min(max(height + 18, 50), 50)`
-  - widget spacing: 20
+  - widget spacing: 12
 - Current expanded width formula:
-  - `padding * 2 + sum(widget widths) + spacing * (widget count - 1)`
-- Future widgets should add their fixed width to `PanelLayout.expandedWidgetWidths` so the panel grows automatically.
+  - `padding * 2 + sum(widget.layoutWidth) + dividerWidth * (widget count - 1) + spacing * 2 * (widget count - 1)`
+- Settings evaluates the proposed enabled-widget set before enabling another widget. If it exceeds `PanelLayout.maximumExpandedWidth(on:)`, that toggle is disabled and its subtitle explains that another widget must be turned off.
+- Runtime rendering also calls `widgetsThatFit(_:maximumWidth:)` in saved order as a safety boundary, so older preferences and smaller screens cannot produce overlapping widgets.
+- Widgets use their declared frames directly without compensating negative offsets or negative horizontal padding. Calendar received a wider declared frame and GitHub a narrower one so neighboring widgets are pushed normally instead of being overdrawn.
+- Future widgets must provide `BangBarWidget.layoutWidth`; no separate panel/window-width constant should be added.
 
 ### Clipboard History — Implemented
 
@@ -306,7 +313,7 @@ Album artwork should read visually as one continuous element between compact and
 
 1. ✅ Focus Timer (`PomodoroWidget` internally) is implemented and wired into the expanded panel, compact mode, and Settings.
 2. ✅ Settings entry points are implemented through the app menu and expanded-panel chrome button.
-3. ✅ `MoonWidget` is implemented as a local, no-permission widget and wired into Settings and widget ordering.
+3. ✅ `MoonWidget` is implemented with local astronomical calculations, optional Core Location access, manual-city fallback, and widget ordering.
 4. ✅ `RemindersWidget` and `ReminderService` are implemented and wired into Settings and widget ordering.
 5. ✅ Clipboard History is implemented as a panel-level surface with `All`, `Text`, and `Images` filters, persistent text/image items, and image-group collection and management.
 6. ⬜ Implement Mirror photo capture according to the development plan above.
@@ -321,10 +328,11 @@ Album artwork should read visually as one continuous element between compact and
 
 **Goal:** Show current moon phase, illuminated percentage, and next full moon date.
 
-**Data source:** Calculated locally — no network required.
+**Data source:** Astronomical values are calculated locally — no network is required after coordinates are known.
 - Compute approximate solar and lunar ecliptic longitudes from J2000.
 - Current illumination uses lunar elongation: `(1 - cos(elongation)) / 2`.
 - Next full moon date is found by sampling forward from the current date and refining the illumination peak.
+- The observing coordinates come from Core Location when automatic location is enabled, otherwise from the city saved in Settings. Resolving a newly entered city may use the system geocoder and network.
 
 **Display:**
 ```
@@ -337,6 +345,7 @@ Last             Jun 30
 - Moon image: `MoonTexture` asset clipped to a circle.
 - No moon-cycle progress arc is drawn.
 - Phase shadow: render a darkened full `MoonTexture` base, then render the bright texture above it through a calculated illumination mask. The mask area matches the calculated illumination percentage; everything outside it stays under shadow.
+- The illumination mask is rotated to match the bright limb as seen relative to the observer's local horizon; it is not kept permanently vertical.
 - Moon disk is slightly smaller than the original 90×90 design and vertically positioned to balance the text overlay.
 - Shadow side uses a darker overlay than the default texture shadow.
 - Top-left: rounded illuminated fraction, shown as a percent without a leading dot.
@@ -347,9 +356,75 @@ Last             Jun 30
 
 **Phases (8):** New → Waxing Crescent → First Quarter → Waxing Gibbous → Full → Waning Gibbous → Last Quarter → Waning Crescent
 
-**No service needed** — pure computed properties on a struct `MoonPhase`.
+**Shadow orientation:**
 
-**Settings:** Enabled/disabled via "Moon" toggle in Settings.
+1. Convert the approximate ecliptic positions of the Sun and Moon to apparent equatorial right ascension and declination using the obliquity of the ecliptic. Let these be `(αs, δs)` and `(αm, δm)`.
+2. Calculate the position angle of the Moon's bright limb, measured eastward from celestial north:
+   ```
+   χ = atan2(
+       cos(δs) · sin(αs − αm),
+       sin(δs) · cos(δm) − cos(δs) · sin(δm) · cos(αs − αm)
+   )
+   ```
+3. Calculate local apparent sidereal time from J2000 days and observer longitude, then the Moon's hour angle `H = LST − αm`.
+4. Calculate the Moon's parallactic angle for observer latitude `φ`:
+   ```
+   q = atan2(
+       sin(H),
+       tan(φ) · cos(δm) − sin(δm) · cos(H)
+   )
+   ```
+5. The bright-limb angle relative to the local zenith is `χ − q`. `MoonIlluminationMask` is authored with its illuminated side pointing right rather than up, so add `90°`. SwiftUI screen coordinates have Y increasing downward, so mirror the final angle:
+   ```
+   screenRotation = −(degrees(χ − q) + 90°)
+   ```
+6. Recalculate from the live panel date. This makes the shadow orientation change with time, observer latitude, and longitude while the illumination fraction continues to determine the mask shape.
+
+The approximation is intended for a small visual widget rather than telescope pointing. The calculation lives in `MoonOrientation.swift`; `MoonPhase` continues to own phase, illumination, and full-moon timing. `MoonLocationService` owns permission requests, current coordinates, and manual-city resolution.
+
+**Settings:**
+- Enabled/disabled via the Moon toggle in General widget settings.
+- Settings → Widgets → Moon contains an automatic-location toggle and manual city field.
+- Automatic and manual coordinates are persisted separately, so a Core Location refresh never overwrites the selected fallback city.
+- When automatic location is denied or disabled, the saved manual city is used.
+- The rows use text labels without decorative leading icons.
+
+---
+
+### GitHubWidget
+
+**Goal:** Show a compact GitHub-style public contribution calendar using the user's accent color.
+
+**Data source and loading:**
+- The username is stored in `BangBarSettings.Key.githubUsername`; no token or GitHub authentication is required.
+- `GitHubContributionsService` requests the user's public GitHub contribution HTML for each calendar year intersecting the trailing-year range and merges days by `data-date`.
+- Requests identify the app with a `BangBar` user agent. Invalid usernames, parsing failures, and unavailable responses produce compact empty/error states.
+- Successful results for the same username are cached in memory for three hours.
+- The service loads approximately 53 weeks so the footer can report the total for the trailing 365 days, even though only the latest 13 weeks are rendered.
+
+**Display:**
+- The widget is a static 150×110 surface; it does not scroll horizontally.
+- It shows the latest 13 calendar weeks, approximately the last three months.
+- Month labels appear above the grid. Labels too close to the following month are suppressed to avoid overlap.
+- Only `Mon`, `Wed`, and `Fri` weekday labels are printed on the left.
+- Empty past/today cells remain subtly visible; future dates are rendered as clear space with no square.
+- Contribution levels 1–4 use increasing opacity of the current accent color. Level 0 uses a faint neutral square.
+- Hovering a day opens the shared adaptive-width tooltip with either `No contributions on …` or the exact contribution count and date.
+- The footer is centered below the grid and reads `N contributions in the last year` using the full trailing-year total.
+- The GitHub name/header and decorative icon are not shown inside the widget, preserving room for the grid.
+
+**Settings:**
+- Enabled/disabled via the GitHub toggle in General widget settings.
+- Settings → Widgets → GitHub contains the public username field and no decorative leading icon.
+- An empty username shows `Add username in Settings` in the widget.
+
+### SystemWidget visual details
+
+- CPU and RAM charts use the same sparkline implementation and both include an accent-colored area gradient beneath the line.
+- The gradient runs from accent color at `34%` opacity near the line to `2%` at the bottom.
+- Sparkline grid dots use `8 pt` spacing, `1.25 pt` diameter, and white at `24%` opacity: denser but quieter than the original grid.
+- The sparkline endpoint remains a 4×4 accent dot with glow.
+- The filled center of the separate pulsing status indicator is 6×6; its outer ring remains 19×19.
 
 ---
 
@@ -810,6 +885,9 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - See **Auto-Update** section for the full implementation spec.
 
 **Widgets section:**
+- Every secondary-tab button uses the full visual tab rectangle as its hit target, not only the text glyphs.
+- Sidebar navigation rows likewise use the full highlighted row as their hit target while retaining their centered, fixed-width layout.
+- Closing and reopening Settings always returns to `WIDGETS → General`, regardless of the previously selected sidebar item or widget tab.
 - Shows helper text explaining that widgets can be enabled, disabled, and reordered.
 - Top tray shows currently enabled widgets in saved order; top tray chips do not show toggles and are sized proportionally to their real panel widget widths.
 - Top tray uses native SwiftUI `onDrag`/`onDrop` reordering for enabled widgets, with a solid black drag preview for each chip.
@@ -822,15 +900,22 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Music — show/hide `NowPlayingWidget`
 - Toggle: Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`
+- Toggle: GitHub — show/hide `GitHubWidget`
 - Toggle: Focus Timer — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
 - Toggle: Notion — show/hide `NotionWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
 
+**Shared tooltips:**
+- Tooltip width is content-adaptive: short text hugs its content, with a minimum width of `44 pt`.
+- Long text wraps at a maximum tooltip width of `260 pt`; height is then calculated from the wrapped text.
+- Tooltips are clamped to the active screen's visible frame and suppressed during panel transitions to avoid detached or stale overlays.
+
 **Permissions section:**
 - Toggle: Open BangBar at login (via `SMAppService`)
 - Camera: shows authorization status, requests access or opens System Settings
 - Calendar: shows authorization status, requests full access or opens System Settings
+- Location: requested from the Moon settings when automatic location is enabled; denial falls back to the saved city
 - Automation: opens System Settings › Privacy › Automation (required for Spotify/Music AppleScript control)
 
 **Appearance section:**
