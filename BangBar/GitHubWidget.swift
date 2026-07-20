@@ -49,7 +49,7 @@ struct GitHubWidget: View {
                     ForEach(0..<7, id: \.self) { dayIndex in
                         Text(weekdayLabel(for: dayIndex))
                             .font(.system(size: 7, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.48))
+                            .foregroundStyle(.white.opacity(0.68))
                             .frame(width: 18, height: 7, alignment: .leading)
                     }
                 }
@@ -60,7 +60,7 @@ struct GitHubWidget: View {
                     ForEach(contributions.visibleMonthMarkers) { marker in
                         Text(marker.title)
                             .font(.system(size: 7, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.42))
+                            .foregroundStyle(.white.opacity(0.68))
                             .offset(x: CGFloat(marker.weekIndex) * 10)
                     }
                 }
@@ -70,10 +70,15 @@ struct GitHubWidget: View {
                     ForEach(contributions.visibleWeeks) { week in
                         VStack(spacing: 3) {
                             ForEach(week.days) { day in
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .fill(color(for: day.level))
-                                    .frame(width: 7, height: 7)
-                                    .overlay(GitHubContributionTooltipView(text: day.tooltip))
+                                if day.date < tomorrow {
+                                    RoundedRectangle(cornerRadius: 1.5)
+                                        .fill(color(for: day.level))
+                                        .frame(width: 7, height: 7)
+                                        .overlay(GitHubContributionTooltipView(text: day.tooltip))
+                                } else {
+                                    Color.clear
+                                        .frame(width: 7, height: 7)
+                                }
                             }
                         }
                     }
@@ -91,6 +96,12 @@ struct GitHubWidget: View {
         case 5: "Fri"
         default: ""
         }
+    }
+
+    private var tomorrow: Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .day, value: 1, to: today)!
     }
 
     private func color(for level: Int) -> Color {
