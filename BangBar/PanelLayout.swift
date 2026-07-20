@@ -39,7 +39,7 @@ enum PanelLayout {
     static let compactMaximumWidth: CGFloat = 360
     static let expandedVisibleEdgePadding: CGFloat = 20
     static let expandedHorizontalPadding: CGFloat = panelTopEarInset + panelTopRadius + expandedVisibleEdgePadding
-    static let expandedWidgetSpacing: CGFloat = 20
+    static let expandedWidgetSpacing: CGFloat = 12
     static let expandedDividerWidth: CGFloat = 1
     static let expandedDividerHeight: CGFloat = 60
     /// The width occupied by the original seven-widget layout. New widgets must fit this budget.
@@ -52,8 +52,8 @@ enum PanelLayout {
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
     static let systemWidgetWidth: CGFloat = 160
-    static let githubWidgetWidth: CGFloat = 170
-    static let clockWidgetWidth: CGFloat = 190
+    static let githubWidgetWidth: CGFloat = 150
+    static let clockWidgetWidth: CGFloat = 210
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
     static let remindersWidgetWidth: CGFloat = 130

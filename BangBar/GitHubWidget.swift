@@ -2,9 +2,11 @@ import Combine
 import Foundation
 import SwiftUI
 
-struct GitHubWidget: View {
-    static let horizontalOverflow: CGFloat = 12
+extension Notification.Name {
+    static let bangBarPanelWillOpen = Notification.Name("bangBarPanelWillOpen")
+}
 
+struct GitHubWidget: View {
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.githubUsername) private var username = ""
     @StateObject private var contributions = GitHubContributionsService()
@@ -15,10 +17,6 @@ struct GitHubWidget: View {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(accentColor)
-
-                Text("GITHUB")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.72))
 
                 Spacer(minLength: 4)
 
@@ -38,7 +36,7 @@ struct GitHubWidget: View {
             }
         }
         .frame(
-            width: PanelLayout.githubWidgetWidth + Self.horizontalOverflow * 2,
+            width: PanelLayout.githubWidgetWidth,
             height: PanelLayout.nowPlayingWidgetHeight,
             alignment: .topLeading
         )
@@ -55,23 +53,11 @@ struct GitHubWidget: View {
     }
 
     private var contributionGrid: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 5) {
+        HStack(alignment: .top, spacing: 5) {
+            VStack(spacing: 3) {
                 Color.clear
-                    .frame(width: 18, height: 1)
+                    .frame(width: 18, height: 9)
 
-                ZStack(alignment: .topLeading) {
-                    ForEach(contributions.monthMarkers) { marker in
-                        Text(marker.title)
-                            .font(.system(size: 7, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.42))
-                            .offset(x: CGFloat(marker.weekIndex) * 10)
-                    }
-                }
-                .frame(width: 167, height: 9, alignment: .leading)
-            }
-
-            HStack(spacing: 5) {
                 VStack(spacing: 3) {
                     ForEach(0..<7, id: \.self) { dayIndex in
                         Text(weekdayLabel(for: dayIndex))
@@ -80,22 +66,55 @@ struct GitHubWidget: View {
                             .frame(width: 18, height: 7, alignment: .leading)
                     }
                 }
+            }
 
-                HStack(spacing: 3) {
-                    ForEach(contributions.weeks) { week in
-                        VStack(spacing: 3) {
-                            ForEach(week.days) { day in
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .fill(color(for: day.level))
-                                    .frame(width: 7, height: 7)
-                                    .help(day.tooltip)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ZStack(alignment: .topLeading) {
+                            ForEach(contributions.monthMarkers) { marker in
+                                Text(marker.title)
+                                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.42))
+                                    .offset(x: CGFloat(marker.weekIndex) * 10)
+                            }
+                        }
+                        .frame(width: contributions.gridContentWidth, height: 9, alignment: .leading)
+
+                        HStack(spacing: 3) {
+                            ForEach(contributions.weeks) { week in
+                                VStack(spacing: 3) {
+                                    ForEach(week.days) { day in
+                                        RoundedRectangle(cornerRadius: 1.5)
+                                            .fill(color(for: day.level))
+                                            .frame(width: 7, height: 7)
+                                            .help(day.tooltip)
+                                    }
+                                }
+                                .id(week.id)
                             }
                         }
                     }
                 }
+                .scrollIndicators(.hidden)
+                .frame(width: 127)
+                .onAppear { scrollToLatestWeek(using: proxy) }
+                .onChange(of: contributions.weeks.count) { _, _ in
+                    scrollToLatestWeek(using: proxy)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .bangBarPanelWillOpen)) { _ in
+                    scrollToLatestWeek(using: proxy)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func scrollToLatestWeek(using proxy: ScrollViewProxy) {
+        guard let lastWeek = contributions.weeks.last else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(lastWeek.id, anchor: .trailing)
+        }
     }
 
     private func weekdayLabel(for index: Int) -> String {
@@ -169,7 +188,16 @@ private final class GitHubContributionsService: ObservableObject {
     private var loadedAt: Date?
 
     var totalCount: Int {
-        weeks.flatMap(\.days).reduce(0) { $0 + $1.count }
+        let today = Self.calendar.startOfDay(for: Date())
+        let firstDay = Self.calendar.date(byAdding: .day, value: -364, to: today)!
+        return weeks
+            .flatMap(\.days)
+            .filter { $0.date >= firstDay && $0.date <= today }
+            .reduce(0) { $0 + $1.count }
+    }
+
+    var gridContentWidth: CGFloat {
+        CGFloat(weeks.count) * 7 + CGFloat(max(weeks.count - 1, 0)) * 3
     }
 
     var monthMarkers: [MonthMarker] {
@@ -207,23 +235,27 @@ private final class GitHubContributionsService: ObservableObject {
         defer { isLoading = false }
 
         let range = Self.visibleDateRange()
-        guard let url = Self.contributionsURL(username: username, range: range) else {
+        let urls = Self.contributionsURLs(username: username, range: range)
+        guard !urls.isEmpty else {
             errorMessage = "Unable to load contributions"
             return
         }
 
         do {
-            var request = URLRequest(url: url)
-            request.setValue("BangBar", forHTTPHeaderField: "User-Agent")
-            request.setValue("text/html", forHTTPHeaderField: "Accept")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200..<300).contains(httpResponse.statusCode),
-                  let html = String(data: data, encoding: .utf8) else {
-                throw URLError(.badServerResponse)
+            var contributions: [String: ContributionValue] = [:]
+            for url in urls {
+                var request = URLRequest(url: url)
+                request.setValue("BangBar", forHTTPHeaderField: "User-Agent")
+                request.setValue("text/html", forHTTPHeaderField: "Accept")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200..<300).contains(httpResponse.statusCode),
+                      let html = String(data: data, encoding: .utf8) else {
+                    throw URLError(.badServerResponse)
+                }
+                contributions.merge(Self.parseContributions(from: html)) { _, latest in latest }
             }
 
-            let contributions = Self.parseContributions(from: html)
             guard !contributions.isEmpty else {
                 throw URLError(.cannotParseResponse)
             }
@@ -273,24 +305,29 @@ private final class GitHubContributionsService: ObservableObject {
         let today = calendar.startOfDay(for: Date())
         let weekdayOffset = calendar.component(.weekday, from: today) - 1
         let currentWeekStart = calendar.date(byAdding: .day, value: -weekdayOffset, to: today)!
-        let start = calendar.date(byAdding: .weekOfYear, value: -16, to: currentWeekStart)!
+        let start = calendar.date(byAdding: .weekOfYear, value: -52, to: currentWeekStart)!
         let end = calendar.date(byAdding: .day, value: 6, to: currentWeekStart)!
         return start...end
     }
 
-    private static func contributionsURL(
+    private static func contributionsURLs(
         username: String,
         range: ClosedRange<Date>
-    ) -> URL? {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "github.com"
-        components.path = "/users/\(username)/contributions"
-        components.queryItems = [
-            URLQueryItem(name: "from", value: dateFormatter.string(from: range.lowerBound)),
-            URLQueryItem(name: "to", value: dateFormatter.string(from: min(range.upperBound, Date())))
-        ]
-        return components.url
+    ) -> [URL] {
+        let startYear = calendar.component(.year, from: range.lowerBound)
+        let endYear = calendar.component(.year, from: min(range.upperBound, Date()))
+
+        return (startYear...endYear).compactMap { year in
+            var components = URLComponents()
+            components.scheme = "https"
+            components.host = "github.com"
+            components.path = "/users/\(username)/contributions"
+            components.queryItems = [
+                URLQueryItem(name: "from", value: String(format: "%04d-01-01", year)),
+                URLQueryItem(name: "to", value: String(format: "%04d-12-31", year))
+            ]
+            return components.url
+        }
     }
 
     private struct ContributionValue {

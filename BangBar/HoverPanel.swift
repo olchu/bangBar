@@ -154,6 +154,7 @@ class HoverPanel: NSPanel {
 
     func slideIn() {
         guard !isAnimatingFrame else { return }
+        NotificationCenter.default.post(name: .bangBarPanelWillOpen, object: nil)
         TooltipManager.shared.suppressShowing(for: 0.7)
         isHiding = false
         openedAt = Date()

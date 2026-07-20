@@ -193,7 +193,6 @@ struct PanelContentView: View {
                 case .clock:
                     ClockWidget(date: currentTime, calendarEvents: calendarEvents)
                         .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
-                        .offset(x: -8)
                 case .moon:
                     MoonWidget(date: currentTime)
                         .frame(
@@ -220,7 +219,6 @@ struct PanelContentView: View {
                     SystemWidget()
                 case .github:
                     GitHubWidget()
-                        .padding(.horizontal, -GitHubWidget.horizontalOverflow)
                 }
             }
         }
