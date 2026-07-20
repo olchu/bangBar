@@ -1,10 +1,7 @@
 import Combine
+import AppKit
 import Foundation
 import SwiftUI
-
-extension Notification.Name {
-    static let bangBarPanelWillClose = Notification.Name("bangBarPanelWillClose")
-}
 
 struct GitHubWidget: View {
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
@@ -58,56 +55,33 @@ struct GitHubWidget: View {
                 }
             }
 
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        ZStack(alignment: .topLeading) {
-                            ForEach(contributions.monthMarkers) { marker in
-                                Text(marker.title)
-                                    .font(.system(size: 7, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.42))
-                                    .offset(x: CGFloat(marker.weekIndex) * 10)
-                            }
-                        }
-                        .frame(width: contributions.gridContentWidth, height: 9, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                ZStack(alignment: .topLeading) {
+                    ForEach(contributions.visibleMonthMarkers) { marker in
+                        Text(marker.title)
+                            .font(.system(size: 7, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.42))
+                            .offset(x: CGFloat(marker.weekIndex) * 10)
+                    }
+                }
+                .frame(width: 127, height: 9, alignment: .leading)
 
-                        HStack(spacing: 3) {
-                            ForEach(contributions.weeks) { week in
-                                VStack(spacing: 3) {
-                                    ForEach(week.days) { day in
-                                        RoundedRectangle(cornerRadius: 1.5)
-                                            .fill(color(for: day.level))
-                                            .frame(width: 7, height: 7)
-                                            .help(day.tooltip)
-                                    }
-                                }
-                                .id(week.id)
+                HStack(spacing: 3) {
+                    ForEach(contributions.visibleWeeks) { week in
+                        VStack(spacing: 3) {
+                            ForEach(week.days) { day in
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(color(for: day.level))
+                                    .frame(width: 7, height: 7)
+                                    .overlay(GitHubContributionTooltipView(text: day.tooltip))
                             }
-
-                            Color.clear
-                                .frame(width: 3, height: 1)
-                                .id("github-grid-end")
                         }
                     }
                 }
-                .scrollIndicators(.hidden)
-                .defaultScrollAnchor(.trailing)
-                .frame(width: 127)
-                .onReceive(NotificationCenter.default.publisher(for: .bangBarPanelWillClose)) { _ in
-                    scrollToLatestWeek(using: proxy)
-                }
             }
+            .frame(width: 127, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .center)
-    }
-
-    private func scrollToLatestWeek(using proxy: ScrollViewProxy) {
-        guard !contributions.weeks.isEmpty else { return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            proxy.scrollTo("github-grid-end", anchor: .trailing)
-        }
     }
 
     private func weekdayLabel(for index: Int) -> String {
@@ -141,6 +115,56 @@ struct GitHubWidget: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct GitHubContributionTooltipView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> GitHubContributionTooltipNSView {
+        let view = GitHubContributionTooltipNSView(frame: .zero)
+        view.text = text
+        return view
+    }
+
+    func updateNSView(_ nsView: GitHubContributionTooltipNSView, context: Context) {
+        nsView.text = text
+    }
+}
+
+private final class GitHubContributionTooltipNSView: NSView {
+    var text = ""
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard TooltipManager.shared.canShow, let window, window.isVisible else { return }
+        let cursorRect = NSRect(origin: event.locationInWindow, size: .zero)
+        let cursorPoint = window.convertToScreen(cursorRect).origin
+        TooltipManager.shared.show(text: text, near: cursorPoint)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        TooltipManager.shared.hide()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { TooltipManager.shared.hide() }
+        super.viewWillMove(toWindow: newWindow)
     }
 }
 
@@ -189,13 +213,11 @@ private final class GitHubContributionsService: ObservableObject {
             .reduce(0) { $0 + $1.count }
     }
 
-    var gridContentWidth: CGFloat {
-        CGFloat(weeks.count) * 7 + CGFloat(max(weeks.count - 1, 0)) * 3
-    }
+    var visibleWeeks: [Week] { Array(weeks.suffix(13)) }
 
-    var monthMarkers: [MonthMarker] {
+    var visibleMonthMarkers: [MonthMarker] {
         var previousMonth: Int?
-        let markers = weeks.enumerated().compactMap { index, week -> MonthMarker? in
+        let markers = visibleWeeks.enumerated().compactMap { index, week -> MonthMarker? in
             guard let firstDay = week.days.first else { return nil }
             let month = Self.calendar.component(.month, from: firstDay.date)
             defer { previousMonth = month }

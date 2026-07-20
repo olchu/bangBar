@@ -236,7 +236,6 @@ class HoverPanel: NSPanel {
         TooltipManager.shared.hide()
         isHiding = true
         state.contentVisible = false
-        NotificationCenter.default.post(name: .bangBarPanelWillClose, object: nil)
         state.showsClipboardHistory = false
 
         if clipboardHistory.isCollectingImages || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
