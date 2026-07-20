@@ -63,6 +63,7 @@ struct SettingsView: View {
                 mainContent(accentColor: accentColor)
             }
         }
+        .environment(\.colorScheme, .dark)
         .foregroundStyle(SettingsTheme.primaryText)
         .background(SettingsTheme.background)
         .containerBackground(SettingsTheme.background, for: .window)
@@ -560,6 +561,7 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 230)
                 .tint(accentColor)
+                .environment(\.colorScheme, .dark)
             }
             .frame(minHeight: 72)
         }
@@ -1669,7 +1671,8 @@ private struct RemindersListPickerRow: View {
                         .foregroundStyle(SettingsTheme.primaryText)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(SettingsTheme.secondaryText)
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(Color.white.opacity(0.76))
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 28)
@@ -1684,6 +1687,7 @@ private struct RemindersListPickerRow: View {
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
+            .environment(\.colorScheme, .dark)
             .fixedSize()
         }
         .frame(height: 52)

@@ -217,7 +217,7 @@ private struct MetricSparkline: View {
 }
 
 private struct MetricDotGrid: View {
-    private let spacing: CGFloat = 10
+    private let spacing: CGFloat = 8
     private let dotSize: CGFloat = 1.25
 
     var body: some View {
@@ -241,7 +241,7 @@ private struct MetricDotGrid: View {
                 y += spacing
             }
 
-            context.fill(dots, with: .color(.white.opacity(0.34)))
+            context.fill(dots, with: .color(.white.opacity(0.24)))
         }
         .allowsHitTesting(false)
     }
