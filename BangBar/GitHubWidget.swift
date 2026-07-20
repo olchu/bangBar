@@ -3,7 +3,7 @@ import Foundation
 import SwiftUI
 
 extension Notification.Name {
-    static let bangBarPanelWillOpen = Notification.Name("bangBarPanelWillOpen")
+    static let bangBarPanelWillClose = Notification.Name("bangBarPanelWillClose")
 }
 
 struct GitHubWidget: View {
@@ -12,27 +12,22 @@ struct GitHubWidget: View {
     @StateObject private var contributions = GitHubContributionsService()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 7) {
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(accentColor)
-
-                Spacer(minLength: 4)
-
-                Text(summaryLabel)
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.48))
-                    .lineLimit(1)
-            }
-
+        VStack(alignment: .leading) {
             if username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 emptyState("Add username in Settings")
             } else if let errorMessage = contributions.errorMessage {
                 emptyState(errorMessage)
             } else {
-                contributionGrid
-                    .opacity(contributions.isLoading && contributions.weeks.isEmpty ? 0.35 : 1)
+                VStack(spacing: 10) {
+                    contributionGrid
+
+                    Text("\(contributions.totalCount) contributions in the last year")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .opacity(contributions.isLoading && contributions.weeks.isEmpty ? 0.35 : 1)
             }
         }
         .frame(
@@ -46,11 +41,6 @@ struct GitHubWidget: View {
     }
 
     private var accentColor: Color { Color(hex: accentColorHex) }
-
-    private var summaryLabel: String {
-        guard !contributions.weeks.isEmpty else { return "4 MONTHS" }
-        return "\(contributions.totalCount) CONTRIBUTIONS"
-    }
 
     private var contributionGrid: some View {
         HStack(alignment: .top, spacing: 5) {
@@ -93,16 +83,17 @@ struct GitHubWidget: View {
                                 }
                                 .id(week.id)
                             }
+
+                            Color.clear
+                                .frame(width: 3, height: 1)
+                                .id("github-grid-end")
                         }
                     }
                 }
                 .scrollIndicators(.hidden)
+                .defaultScrollAnchor(.trailing)
                 .frame(width: 127)
-                .onAppear { scrollToLatestWeek(using: proxy) }
-                .onChange(of: contributions.weeks.count) { _, _ in
-                    scrollToLatestWeek(using: proxy)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .bangBarPanelWillOpen)) { _ in
+                .onReceive(NotificationCenter.default.publisher(for: .bangBarPanelWillClose)) { _ in
                     scrollToLatestWeek(using: proxy)
                 }
             }
@@ -111,9 +102,11 @@ struct GitHubWidget: View {
     }
 
     private func scrollToLatestWeek(using proxy: ScrollViewProxy) {
-        guard let lastWeek = contributions.weeks.last else { return }
-        DispatchQueue.main.async {
-            proxy.scrollTo(lastWeek.id, anchor: .trailing)
+        guard !contributions.weeks.isEmpty else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            proxy.scrollTo("github-grid-end", anchor: .trailing)
         }
     }
 
@@ -132,7 +125,7 @@ struct GitHubWidget: View {
         case 2: accentColor.opacity(0.46)
         case 3: accentColor.opacity(0.72)
         case 4...: accentColor
-        default: Color.white.opacity(0.06)
+        default: Color.white.opacity(0.09)
         }
     }
 
