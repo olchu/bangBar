@@ -82,6 +82,18 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetSystem"
         }
     }
+
+    var layoutWidth: CGFloat {
+        switch self {
+        case .nowPlaying: PanelLayout.nowPlayingWidgetWidth
+        case .clock: PanelLayout.clockWidgetWidth
+        case .moon: PanelLayout.moonWidgetWidth
+        case .pomodoro: PanelLayout.pomodoroWidgetWidth
+        case .reminders: PanelLayout.remindersWidgetWidth
+        case .mirror: PanelLayout.mirrorWidgetWidth
+        case .system: PanelLayout.systemWidgetWidth
+        }
+    }
 }
 
 enum BangBarSettings {

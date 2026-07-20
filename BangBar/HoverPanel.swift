@@ -51,10 +51,16 @@ class HoverPanel: NSPanel {
 
     convenience init() {
         let screen = NSScreen.main!
+        let expandedWidth = PanelLayout.expandedWidth(
+            for: PanelLayout.widgetsThatFit(
+                PanelLayout.enabledWidgets,
+                maximumWidth: PanelLayout.maximumExpandedWidth(on: screen)
+            )
+        )
         let initialRect = NSRect(
-            x: screen.frame.midX - PanelLayout.expandedWidth / 2,
+            x: screen.frame.midX - expandedWidth / 2,
             y: screen.frame.maxY - PanelLayout.expandedHeight(on: screen),
-            width: PanelLayout.expandedWidth,
+            width: expandedWidth,
             height: PanelLayout.expandedHeight(on: screen)
         )
         self.init(
@@ -256,7 +262,12 @@ class HoverPanel: NSPanel {
     }
 
     private func expandedFrame(on screen: NSScreen) -> NSRect {
-        let width = PanelLayout.expandedWidth
+        let width = PanelLayout.expandedWidth(
+            for: PanelLayout.widgetsThatFit(
+                PanelLayout.enabledWidgets,
+                maximumWidth: PanelLayout.maximumExpandedWidth(on: screen)
+            )
+        )
         let height = PanelLayout.expandedHeight(on: screen)
 
         return NSRect(

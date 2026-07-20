@@ -42,6 +42,9 @@ enum PanelLayout {
     static let expandedWidgetSpacing: CGFloat = 20
     static let expandedDividerWidth: CGFloat = 1
     static let expandedDividerHeight: CGFloat = 60
+    /// The width occupied by the original seven-widget layout. New widgets must fit this budget.
+    static let maximumExpandedWidth: CGFloat = 1468
+    static let expandedScreenEdgeInset: CGFloat = 8
 
     static let nowPlayingWidgetWidth: CGFloat = 300
     static let nowPlayingWidgetHeight: CGFloat = 110
@@ -69,15 +72,55 @@ enum PanelLayout {
     }
 
     static var expandedWidth: CGFloat {
-        expandedWidth(
-            showNowPlaying: BangBarSettings.showNowPlayingWidget,
-            showClock: BangBarSettings.showClockWidget,
-            showMoon: BangBarSettings.showMoonWidget,
-            showPomodoro: BangBarSettings.showPomodoroWidget,
-            showReminders: BangBarSettings.showRemindersWidget,
-            showMirror: BangBarSettings.showMirrorWidget,
-            showSystem: BangBarSettings.showSystemWidget
+        expandedWidth(for: enabledWidgets)
+    }
+
+    static var enabledWidgets: [BangBarWidget] {
+        BangBarSettings.widgetOrder(
+            from: UserDefaults.standard.string(forKey: BangBarSettings.Key.widgetOrder)
+                ?? BangBarSettings.defaultWidgetOrderRaw
         )
+        .filter { widget in
+            switch widget {
+            case .nowPlaying: BangBarSettings.showNowPlayingWidget
+            case .clock: BangBarSettings.showClockWidget
+            case .moon: BangBarSettings.showMoonWidget
+            case .pomodoro: BangBarSettings.showPomodoroWidget
+            case .reminders: BangBarSettings.showRemindersWidget
+            case .mirror: BangBarSettings.showMirrorWidget
+            case .system: BangBarSettings.showSystemWidget
+            }
+        }
+    }
+
+    static func maximumExpandedWidth(on screen: NSScreen?) -> CGFloat {
+        guard let screen else { return maximumExpandedWidth }
+        return min(maximumExpandedWidth, screen.visibleFrame.width - expandedScreenEdgeInset * 2)
+    }
+
+    static func expandedWidth(for widgets: [BangBarWidget]) -> CGFloat {
+        guard !widgets.isEmpty else {
+            return expandedHorizontalPadding * 2 + emptyWidgetWidth
+        }
+
+        let widgetWidth = widgets.reduce(0) { $0 + $1.layoutWidth }
+        let dividerCount = CGFloat(widgets.count - 1)
+        let elementSpacingCount = dividerCount * 2
+        return expandedHorizontalPadding * 2
+            + widgetWidth
+            + dividerCount * expandedDividerWidth
+            + elementSpacingCount * expandedWidgetSpacing
+    }
+
+    static func widgetsThatFit(
+        _ widgets: [BangBarWidget],
+        maximumWidth: CGFloat
+    ) -> [BangBarWidget] {
+        var result: [BangBarWidget] = []
+        for widget in widgets where expandedWidth(for: result + [widget]) <= maximumWidth {
+            result.append(widget)
+        }
+        return result
     }
 
     static func expandedWidgetWidths(

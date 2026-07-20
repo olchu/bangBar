@@ -223,7 +223,11 @@ struct PanelContentView: View {
     }
 
     private var activeWidgets: [BangBarWidget] {
-        BangBarSettings.widgetOrder(from: widgetOrderRaw).filter(isWidgetVisible)
+        let enabledWidgets = BangBarSettings.widgetOrder(from: widgetOrderRaw).filter(isWidgetVisible)
+        return PanelLayout.widgetsThatFit(
+            enabledWidgets,
+            maximumWidth: PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        )
     }
 
     private func isWidgetVisible(_ widget: BangBarWidget) -> Bool {

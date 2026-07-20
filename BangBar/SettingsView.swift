@@ -449,6 +449,7 @@ struct SettingsView: View {
                     WidgetSettingsRow(
                         widget: widget,
                         isEnabled: toggleBinding(for: widget),
+                        canEnable: canEnableWidget(widget),
                         accentColor: accentColor
                     )
                     .onDrag {
@@ -494,6 +495,15 @@ struct SettingsView: View {
 
     private func isWidgetEnabled(_ widget: BangBarWidget) -> Bool {
         toggleBinding(for: widget).wrappedValue
+    }
+
+    private func canEnableWidget(_ widget: BangBarWidget) -> Bool {
+        if isWidgetEnabled(widget) { return true }
+
+        let enabledWidgets = widgetOrder.filter(isWidgetEnabled)
+        let proposedWidgets = widgetOrder.filter { enabledWidgets.contains($0) || $0 == widget }
+        return PanelLayout.expandedWidth(for: proposedWidgets)
+            <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
     }
 
     private func loadWidgetOrder() {
@@ -1211,6 +1221,7 @@ private struct WidgetChip: View {
 private struct WidgetSettingsRow: View {
     let widget: BangBarWidget
     @Binding var isEnabled: Bool
+    let canEnable: Bool
     let accentColor: Color
 
     var body: some View {
@@ -1224,9 +1235,9 @@ private struct WidgetSettingsRow: View {
                     .font(SettingsTheme.rowFont)
                     .foregroundStyle(SettingsTheme.primaryText)
 
-                Text(widget.subtitle)
+                Text(canEnable ? widget.subtitle : "Not enough panel space — disable another widget")
                     .font(SettingsTheme.captionFont)
-                    .foregroundStyle(SettingsTheme.secondaryText)
+                    .foregroundStyle(canEnable ? SettingsTheme.secondaryText : accentColor.opacity(0.8))
             }
 
             Spacer()
@@ -1234,6 +1245,7 @@ private struct WidgetSettingsRow: View {
             Toggle("", isOn: $isEnabled)
                 .labelsHidden()
                 .toggleStyle(SettingsSwitchToggleStyle(accentColor: accentColor))
+                .disabled(!canEnable)
         }
         .frame(height: 72)
     }
@@ -1300,22 +1312,7 @@ private extension BangBarWidget {
     }
 
     private var realPanelWidth: CGFloat {
-        switch self {
-        case .nowPlaying:
-            return PanelLayout.nowPlayingWidgetWidth
-        case .clock:
-            return PanelLayout.clockWidgetWidth
-        case .moon:
-            return PanelLayout.moonWidgetWidth
-        case .pomodoro:
-            return PanelLayout.pomodoroWidgetWidth
-        case .reminders:
-            return PanelLayout.remindersWidgetWidth
-        case .mirror:
-            return PanelLayout.mirrorWidgetWidth
-        case .system:
-            return PanelLayout.systemWidgetWidth
-        }
+        layoutWidth
     }
 
     private var minimumReadableChipWidth: CGFloat {
