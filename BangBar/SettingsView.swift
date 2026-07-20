@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
+    @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
+    @AppStorage(BangBarSettings.Key.githubUsername) private var githubUsername = ""
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
@@ -298,6 +300,8 @@ struct SettingsView: View {
             remindersWidgetSettings(accentColor: accentColor)
         case .focusTimer:
             focusTimerWidgetSettings(accentColor: accentColor)
+        case .github:
+            githubWidgetSettings(accentColor: accentColor)
         }
     }
 
@@ -318,6 +322,47 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsSectionLabel("AVAILABLE WIDGETS")
                 widgetsCard(accentColor: accentColor)
+            }
+        }
+    }
+
+    private func githubWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .github,
+            description: "Show public contribution activity from your GitHub profile."
+        ) {
+            SettingsCard {
+                HStack(spacing: 16) {
+                    WidgetIcon(widget: .github, size: 24)
+                        .foregroundStyle(accentColor)
+                        .frame(width: 32)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("GitHub username")
+                            .font(SettingsTheme.rowFont)
+
+                        Text("Public contributions are shown without authentication.")
+                            .font(SettingsTheme.captionFont)
+                            .foregroundStyle(SettingsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    TextField("username", text: $githubUsername)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 12)
+                        .frame(width: 190, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(SettingsTheme.cardBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(SettingsTheme.border, lineWidth: 1)
+                                )
+                        )
+                }
+                .frame(height: 72)
             }
         }
     }
@@ -499,6 +544,8 @@ struct SettingsView: View {
             return $showMirrorWidget
         case .system:
             return $showSystemWidget
+        case .github:
+            return $showGitHubWidget
         }
     }
 
@@ -764,6 +811,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case calendar
     case reminders
     case focusTimer
+    case github
 
     var id: Self { self }
 
@@ -773,6 +821,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
         case .calendar: return "Calendar"
         case .reminders: return "Reminders"
         case .focusTimer: return "Focus Timer"
+        case .github: return "GitHub"
         }
     }
 }
@@ -1266,11 +1315,18 @@ private struct WidgetIcon: View {
     let size: CGFloat
 
     var body: some View {
-        Image(widget.iconAsset)
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .frame(width: size, height: size)
+        Group {
+            if widget == .github {
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: size * 0.72, weight: .semibold))
+            } else {
+                Image(widget.iconAsset)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 
@@ -1340,6 +1396,8 @@ private extension BangBarWidget {
         case .mirror:
             return 150
         case .system:
+            return 160
+        case .github:
             return 160
         }
     }

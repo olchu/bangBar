@@ -23,6 +23,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case reminders
     case mirror
     case system
+    case github
 
     var id: String { rawValue }
 
@@ -42,6 +43,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Mirror"
         case .system:
             return "System"
+        case .github:
+            return "GitHub"
         }
     }
 
@@ -61,6 +64,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Quick mirror access"
         case .system:
             return "CPU, memory, battery and local IP"
+        case .github:
+            return "Public contributions from the last four months"
         }
     }
 
@@ -80,6 +85,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetMirror"
         case .system:
             return "widgetSystem"
+        case .github:
+            return "widgetGitHub"
         }
     }
 
@@ -92,6 +99,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         case .reminders: PanelLayout.remindersWidgetWidth
         case .mirror: PanelLayout.mirrorWidgetWidth
         case .system: PanelLayout.systemWidgetWidth
+        case .github: PanelLayout.githubWidgetWidth
         }
     }
 }
@@ -103,6 +111,8 @@ enum BangBarSettings {
         static let showMoonWidget = "showMoonWidget"
         static let showMirrorWidget = "showMirrorWidget"
         static let showSystemWidget = "showSystemWidget"
+        static let showGitHubWidget = "showGitHubWidget"
+        static let githubUsername = "githubUsername"
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
         static let panelActivationThreshold = "panelActivationThreshold"
@@ -136,6 +146,8 @@ enum BangBarSettings {
             Key.showMoonWidget: true,
             Key.showMirrorWidget: true,
             Key.showSystemWidget: false,
+            Key.showGitHubWidget: false,
+            Key.githubUsername: "",
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,
@@ -223,6 +235,10 @@ enum BangBarSettings {
 
     static var showSystemWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showSystemWidget) as? Bool ?? false
+    }
+
+    static var showGitHubWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showGitHubWidget) as? Bool ?? false
     }
 
     static var showPomodoroWidget: Bool {

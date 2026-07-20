@@ -52,6 +52,7 @@ enum PanelLayout {
     static let mirrorWidgetWidth: CGFloat = 94
     static let mirrorWidgetHeight: CGFloat = 94
     static let systemWidgetWidth: CGFloat = 160
+    static let githubWidgetWidth: CGFloat = 170
     static let clockWidgetWidth: CGFloat = 190
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
@@ -89,6 +90,7 @@ enum PanelLayout {
             case .reminders: BangBarSettings.showRemindersWidget
             case .mirror: BangBarSettings.showMirrorWidget
             case .system: BangBarSettings.showSystemWidget
+            case .github: BangBarSettings.showGitHubWidget
             }
         }
     }
