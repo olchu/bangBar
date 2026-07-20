@@ -7,6 +7,11 @@ struct MoonWidget: View {
 
     let date: Date
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+    @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var usesCurrentLocation = true
+    @AppStorage(BangBarSettings.Key.moonLatitude) private var latitude = 41.0082
+    @AppStorage(BangBarSettings.Key.moonLongitude) private var longitude = 28.9784
+    @AppStorage(BangBarSettings.Key.moonCurrentLatitude) private var currentLatitude = 41.0082
+    @AppStorage(BangBarSettings.Key.moonCurrentLongitude) private var currentLongitude = 28.9784
 
     private var phase: MoonPhase {
         MoonPhase(date: date)
@@ -22,6 +27,9 @@ struct MoonWidget: View {
             moonInfoOverlay
         }
         .frame(width: PanelLayout.moonWidgetWidth, height: PanelLayout.nowPlayingWidgetHeight)
+        .onAppear {
+            if usesCurrentLocation { MoonLocationService.shared.requestCurrentLocation() }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(phase.name), \(phase.illuminationPercent)% visible, next full moon \(phase.fullMoonDateText)")
     }
@@ -165,6 +173,11 @@ struct MoonWidget: View {
                         illumination: phase.illuminationFraction,
                         isWaxing: phase.isWaxing
                     )
+                    .rotation(.degrees(MoonOrientation.brightLimbRotation(
+                        date: date,
+                        latitude: usesCurrentLocation ? currentLatitude : latitude,
+                        longitude: usesCurrentLocation ? currentLongitude : longitude
+                    )))
                 }
         }
         .frame(width: Self.moonDiskSize, height: Self.moonDiskSize)

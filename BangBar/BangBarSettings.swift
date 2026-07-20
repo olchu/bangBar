@@ -113,6 +113,12 @@ enum BangBarSettings {
         static let showSystemWidget = "showSystemWidget"
         static let showGitHubWidget = "showGitHubWidget"
         static let githubUsername = "githubUsername"
+        static let moonUsesCurrentLocation = "moonUsesCurrentLocation"
+        static let moonLocationName = "moonLocationName"
+        static let moonLatitude = "moonLatitude"
+        static let moonLongitude = "moonLongitude"
+        static let moonCurrentLatitude = "moonCurrentLatitude"
+        static let moonCurrentLongitude = "moonCurrentLongitude"
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
         static let panelActivationThreshold = "panelActivationThreshold"
@@ -148,6 +154,12 @@ enum BangBarSettings {
             Key.showSystemWidget: false,
             Key.showGitHubWidget: false,
             Key.githubUsername: "",
+            Key.moonUsesCurrentLocation: true,
+            Key.moonLocationName: "Istanbul",
+            Key.moonLatitude: 41.0082,
+            Key.moonLongitude: 28.9784,
+            Key.moonCurrentLatitude: 41.0082,
+            Key.moonCurrentLongitude: 28.9784,
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,

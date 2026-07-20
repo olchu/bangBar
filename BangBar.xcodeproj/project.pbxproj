@@ -270,6 +270,7 @@
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "BangBar shows your next upcoming meeting for today.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "BangBar shows your next upcoming meeting for today.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "BangBar uses the camera for the mirror widget.";
+				INFOPLIST_KEY_NSLocationUsageDescription = "BangBar uses your location to show the Moon's real orientation in the sky.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "BangBar shows your tasks due today.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -306,6 +307,7 @@
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "BangBar shows your next upcoming meeting for today.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "BangBar shows your next upcoming meeting for today.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "BangBar uses the camera for the mirror widget.";
+				INFOPLIST_KEY_NSLocationUsageDescription = "BangBar uses your location to show the Moon's real orientation in the sky.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "BangBar shows your tasks due today.";
 				LD_RUNPATH_SEARCH_PATHS = (

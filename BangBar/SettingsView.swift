@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreLocation
 import EventKit
 import ServiceManagement
 import SwiftUI
@@ -18,6 +19,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
     @AppStorage(BangBarSettings.Key.githubUsername) private var githubUsername = ""
+    @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var moonUsesCurrentLocation = true
+    @AppStorage(BangBarSettings.Key.moonLocationName) private var moonLocationName = "Istanbul"
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
@@ -296,6 +299,8 @@ struct SettingsView: View {
             generalWidgetSettings(accentColor: accentColor)
         case .calendar:
             calendarWidgetSettings(accentColor: accentColor)
+        case .moon:
+            moonWidgetSettings(accentColor: accentColor)
         case .reminders:
             remindersWidgetSettings(accentColor: accentColor)
         case .focusTimer:
@@ -333,10 +338,6 @@ struct SettingsView: View {
         ) {
             SettingsCard {
                 HStack(spacing: 16) {
-                    WidgetIcon(widget: .github, size: 24)
-                        .foregroundStyle(accentColor)
-                        .frame(width: 32)
-
                     VStack(alignment: .leading, spacing: 5) {
                         Text("GitHub username")
                             .font(SettingsTheme.rowFont)
@@ -364,6 +365,19 @@ struct SettingsView: View {
                 }
                 .frame(height: 72)
             }
+        }
+    }
+
+    private func moonWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .moon,
+            description: "Match the Moon's illuminated edge to your local sky."
+        ) {
+            MoonLocationSettingsCard(
+                usesCurrentLocation: $moonUsesCurrentLocation,
+                locationName: $moonLocationName,
+                accentColor: accentColor
+            )
         }
     }
 
@@ -809,6 +823,7 @@ struct SettingsView: View {
 private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case general
     case calendar
+    case moon
     case reminders
     case focusTimer
     case github
@@ -819,6 +834,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
         switch self {
         case .general: return "General"
         case .calendar: return "Calendar"
+        case .moon: return "Moon"
         case .reminders: return "Reminders"
         case .focusTimer: return "Focus Timer"
         case .github: return "GitHub"
@@ -1078,6 +1094,112 @@ private struct PermissionRow: View {
                 .buttonStyle(SettingsOutlineButtonStyle())
         }
         .frame(minHeight: 72)
+    }
+}
+
+private struct MoonLocationSettingsCard: View {
+    @Binding var usesCurrentLocation: Bool
+    @Binding var locationName: String
+    let accentColor: Color
+
+    @StateObject private var service = MoonLocationService.shared
+    @State private var cityQuery = ""
+
+    var body: some View {
+        SettingsCard {
+            VStack(spacing: 0) {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Current location")
+                            .font(SettingsTheme.rowFont)
+                        Text(locationStatus)
+                            .font(SettingsTheme.captionFont)
+                            .foregroundStyle(SettingsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $usesCurrentLocation)
+                        .labelsHidden()
+                        .tint(accentColor)
+                }
+                .frame(height: 72)
+
+                SettingsDivider()
+
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("City")
+                            .font(SettingsTheme.rowFont)
+                        Text("Used when automatic location is off. Current: \(locationName)")
+                            .font(SettingsTheme.captionFont)
+                            .foregroundStyle(SettingsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    TextField("City", text: $cityQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .padding(.horizontal, 12)
+                        .frame(width: 190, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(SettingsTheme.cardBackground)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(SettingsTheme.border, lineWidth: 1)
+                                )
+                        )
+                        .disabled(usesCurrentLocation || service.isSearching)
+                        .onSubmit { resolveCity() }
+
+                    Button(service.isSearching ? "Searching…" : "Use city") {
+                        resolveCity()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(accentColor)
+                    .disabled(usesCurrentLocation || cityQuery.trimmingCharacters(in: .whitespaces).isEmpty || service.isSearching)
+                }
+                .frame(height: 72)
+
+                if let error = service.searchError {
+                    Text(error)
+                        .font(SettingsTheme.captionFont)
+                        .foregroundStyle(accentColor)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.bottom, 10)
+                }
+            }
+        }
+        .onAppear {
+            cityQuery = locationName
+            if usesCurrentLocation { service.requestCurrentLocation() }
+        }
+        .onChange(of: usesCurrentLocation) { _, enabled in
+            if enabled { service.requestCurrentLocation() }
+        }
+    }
+
+    private var locationStatus: String {
+        switch service.authorizationStatus {
+        case .authorizedAlways:
+            return "Allowed — using the Mac's location"
+        case .notDetermined:
+            return "Turn on to request permission"
+        case .denied, .restricted:
+            return "Permission denied — choose a city below"
+        @unknown default:
+            return "Location status unavailable"
+        }
+    }
+
+    private func resolveCity() {
+        Task {
+            if await service.resolveCity(cityQuery) {
+                usesCurrentLocation = false
+            }
+        }
     }
 }
 
