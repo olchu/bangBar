@@ -74,6 +74,11 @@ struct PanelTopBar: View {
                 }
                 .padding(.horizontal, PanelLayout.topBarHorizontalPadding)
             }
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: .center
+            )
         }
         .frame(maxWidth: .infinity)
         .frame(height: height)
