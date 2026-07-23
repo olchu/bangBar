@@ -448,7 +448,7 @@ private struct ClipboardHistoryCard: View {
             .padding(.bottom, 9)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 34)
+        .frame(height: 34, alignment: .bottom)
         .allowsHitTesting(false)
     }
 
