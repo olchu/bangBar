@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
+    @AppStorage(BangBarSettings.Key.showCompanionWidget) private var showCompanionWidget = false
     @AppStorage(BangBarSettings.Key.githubUsername) private var githubUsername = ""
     @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var moonUsesCurrentLocation = true
     @AppStorage(BangBarSettings.Key.moonLocationName) private var moonLocationName = "Istanbul"
@@ -307,6 +308,8 @@ struct SettingsView: View {
             focusTimerWidgetSettings(accentColor: accentColor)
         case .github:
             githubWidgetSettings(accentColor: accentColor)
+        case .companion:
+            companionWidgetSettings(accentColor: accentColor)
         }
     }
 
@@ -378,6 +381,15 @@ struct SettingsView: View {
                 locationName: $moonLocationName,
                 accentColor: accentColor
             )
+        }
+    }
+
+    private func companionWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .companion,
+            description: "Care advances only while you are actively using your Mac."
+        ) {
+            CompanionSettingsCard(accentColor: accentColor)
         }
     }
 
@@ -560,6 +572,8 @@ struct SettingsView: View {
             return $showSystemWidget
         case .github:
             return $showGitHubWidget
+        case .companion:
+            return $showCompanionWidget
         }
     }
 
@@ -827,6 +841,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case reminders
     case focusTimer
     case github
+    case companion
 
     var id: Self { self }
 
@@ -838,6 +853,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
         case .reminders: return "Reminders"
         case .focusTimer: return "Focus Timer"
         case .github: return "GitHub"
+        case .companion: return "Companion"
         }
     }
 }
@@ -1203,6 +1219,43 @@ private struct MoonLocationSettingsCard: View {
     }
 }
 
+private struct CompanionSettingsCard: View {
+    let accentColor: Color
+    @StateObject private var service = CompanionService.shared
+    @State private var showsResetConfirmation = false
+
+    var body: some View {
+        SettingsCard {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Start over")
+                        .font(SettingsTheme.rowFont)
+                    Text("Create a new companion and reset all current meters.")
+                        .font(SettingsTheme.captionFont)
+                        .foregroundStyle(SettingsTheme.secondaryText)
+                }
+
+                Spacer()
+
+                Button("Reset companion") {
+                    showsResetConfirmation = true
+                }
+                .buttonStyle(SettingsOutlineButtonStyle())
+            }
+            .frame(height: 72)
+        }
+        .confirmationDialog(
+            "Reset your companion?",
+            isPresented: $showsResetConfirmation
+        ) {
+            Button("Reset companion", role: .destructive) { service.reset() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Current progress and meters will be replaced with a new companion.")
+        }
+    }
+}
+
 private struct SettingsSidebar: View {
     @Binding var selectedTab: SettingsTab
 
@@ -1521,6 +1574,8 @@ private extension BangBarWidget {
             return 160
         case .github:
             return 160
+        case .companion:
+            return 176
         }
     }
 }

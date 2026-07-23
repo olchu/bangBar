@@ -24,6 +24,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case mirror
     case system
     case github
+    case companion
 
     var id: String { rawValue }
 
@@ -45,6 +46,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "System"
         case .github:
             return "GitHub"
+        case .companion:
+            return "Companion"
         }
     }
 
@@ -66,6 +69,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "CPU, memory, battery and local IP"
         case .github:
             return "Public contributions from the last four months"
+        case .companion:
+            return "A calm desktop pet that grows with active use"
         }
     }
 
@@ -87,6 +92,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetSystem"
         case .github:
             return "widgetGitHub"
+        case .companion:
+            return "widgetCompanion"
         }
     }
 
@@ -100,6 +107,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         case .mirror: PanelLayout.mirrorWidgetWidth
         case .system: PanelLayout.systemWidgetWidth
         case .github: PanelLayout.githubWidgetWidth
+        case .companion: PanelLayout.companionWidgetWidth
         }
     }
 }
@@ -112,6 +120,7 @@ enum BangBarSettings {
         static let showMirrorWidget = "showMirrorWidget"
         static let showSystemWidget = "showSystemWidget"
         static let showGitHubWidget = "showGitHubWidget"
+        static let showCompanionWidget = "showCompanionWidget"
         static let githubUsername = "githubUsername"
         static let moonUsesCurrentLocation = "moonUsesCurrentLocation"
         static let moonLocationName = "moonLocationName"
@@ -153,6 +162,7 @@ enum BangBarSettings {
             Key.showMirrorWidget: true,
             Key.showSystemWidget: false,
             Key.showGitHubWidget: false,
+            Key.showCompanionWidget: false,
             Key.githubUsername: "",
             Key.moonUsesCurrentLocation: true,
             Key.moonLocationName: "Istanbul",
@@ -251,6 +261,10 @@ enum BangBarSettings {
 
     static var showGitHubWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showGitHubWidget) as? Bool ?? false
+    }
+
+    static var showCompanionWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showCompanionWidget) as? Bool ?? false
     }
 
     static var showPomodoroWidget: Bool {

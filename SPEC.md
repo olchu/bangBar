@@ -92,10 +92,10 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Widget Settings
 
-- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, and GitHub.
+- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, and Companion.
 - Widgets without additional settings do not get an empty secondary tab.
 - General owns widget enable/disable controls and drag-and-drop ordering.
-- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, and GitHub owns the public username.
+- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, GitHub owns the public username, and Companion owns the confirmed reset action.
 - Widget-specific settings must not be added back to General.
 
 ### Component Structure
@@ -131,6 +131,7 @@ Album artwork should read visually as one continuous element between compact and
   - `MirrorWidget`: 94×94
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
+  - `CompanionWidget`: 170×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -321,7 +322,7 @@ Album artwork should read visually as one continuous element between compact and
 8. ⬜ Add `CountdownWidget` as a local, user-configured date countdown widget.
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
 10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
-11. ⬜ Build the Companion state engine and MVP with a temporary original placeholder; add the final character design later.
+11. ✅ Companion state engine and expanded-widget MVP are implemented with a temporary original placeholder; final character design, growth, and evolution remain later work.
 12. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
@@ -573,7 +574,7 @@ Trip to Tokyo
 
 ### Companion Widget
 
-**Status:** ⬜ Planned. The behavior and technical direction are defined below; character identity, name, sprites, and final visual design are TBD.
+**Status:** 🟡 MVP implemented. Persistent meters, active-use timing, Focus Timer pause, direct care actions, Settings integration, and a temporary original character are available. Character identity, growth/evolution, compact presentation, and final visual design remain TBD.
 
 **Product name:** **Companion**. `Calm Care` is the name of its low-pressure care philosophy, not the user-facing widget name.
 
@@ -709,6 +710,20 @@ struct CompanionState: Codable {
 - `CompactCompanionWidget`: optional later compact surface for rare important needs.
 - Character sprites and animation definitions should remain separate from simulation rules so the final character can be added without rewriting the engine.
 - Add the widget as a new `BangBarWidget` case, Settings toggle, ordering option, and fixed `PanelLayout` width only when the first usable UI exists.
+
+**Implemented MVP surface:**
+
+- `CompanionWidget` is 170×110 and participates in the same width budget, enable/disable, and drag ordering as other widgets.
+- The temporary character is an original accent-colored rounded creature rendered with SwiftUI shapes; it is explicitly placeholder art.
+- Three five-step meters are visible: `FOOD`, `HAPPY`, and `CLEAN`.
+- Feed, Pet, and Clean are direct in-widget buttons with short reactions and no separate window.
+- `CompanionService.shared` owns the state independently from the widget view, so Clipboard switching does not reset the pet.
+- State is encoded as versioned JSON and atomically stored at `Application Support/BangBar/Companion/companion.json`.
+- A 15-second engine tick accumulates at most 30 seconds per tick and only while the system session is active, user idle time is below 10 minutes, and Focus Timer is not running.
+- Current tuning is one hunger step per 3 active hours, happiness per 4 active hours, and cleanliness per 6 active hours.
+- Sleep/wake and session lock/unlock notifications pause and resume accumulation without offline catch-up.
+- Settings → Widgets → Companion provides a destructive reset action with confirmation.
+- Growth stages, care mistakes, rare compact requests, mini-games, and evolution are intentionally not active in this MVP.
 
 **Evolution:**
 
@@ -902,6 +917,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`
 - Toggle: GitHub — show/hide `GitHubWidget`
+- Toggle: Companion — show/hide `CompanionWidget`
 - Toggle: Focus Timer — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
 - Toggle: Notion — show/hide `NotionWidget`
