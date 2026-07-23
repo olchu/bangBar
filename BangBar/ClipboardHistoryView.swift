@@ -336,11 +336,12 @@ private struct ClipboardHistoryCard: View {
                     HStack {
                         Text(item.createdAt, style: .relative)
                             .lineLimit(1)
+                            .foregroundStyle(.white.opacity(0.42))
                         Spacer()
                         Image(systemName: item.kind == .text ? "text.alignleft" : "photo")
+                            .foregroundStyle(accentColor)
                     }
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.42))
                     .padding(9)
                 }
                 .frame(
