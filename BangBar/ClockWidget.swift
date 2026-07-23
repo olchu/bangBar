@@ -257,7 +257,7 @@ struct ClockWidget: View {
 
             Text(relativeEventStatus(for: event))
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(accentColor)
+                .foregroundStyle(.white.opacity(0.42))
                 .lineLimit(1)
         }
         .padding(.leading, 8)
@@ -287,7 +287,7 @@ struct ClockWidget: View {
 
             Text(relativeEventStatus(for: event))
                 .font(.system(size: 8, weight: .medium))
-                .foregroundStyle(accentColor)
+                .foregroundStyle(.white.opacity(0.28))
                 .lineLimit(1)
         }
         .padding(.leading, 8)
@@ -320,13 +320,7 @@ struct ClockWidget: View {
     }
 
     private func durationString(from start: Date, to end: Date) -> String {
-        let totalSeconds = max(Int(ceil(end.timeIntervalSince(start))), 0)
-
-        if totalSeconds < 60 {
-            return "\(totalSeconds)s"
-        }
-
-        let totalMinutes = totalSeconds / 60
+        let totalMinutes = max(Int(ceil(end.timeIntervalSince(start) / 60)), 0)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
 

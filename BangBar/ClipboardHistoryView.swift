@@ -330,26 +330,16 @@ private struct ClipboardHistoryCard: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Button(action: onCopy) {
-                ZStack(alignment: .bottomLeading) {
-                    cardContent
-
-                    HStack {
-                        Text(item.createdAt, style: .relative)
-                            .lineLimit(1)
-                            .foregroundStyle(.white.opacity(0.42))
-                        Spacer()
-                        Image(systemName: item.kind == .text ? "text.alignleft" : "photo")
-                            .foregroundStyle(accentColor)
-                    }
-                    .font(.system(size: 9, weight: .medium))
-                    .padding(9)
-                }
+                cardContent
                 .frame(
                     width: item.kind == .image ? 150 : 180,
                     height: clipboardCardHeight
                 )
                 .background(Color.white.opacity(0.035))
                 .clipShape(.rect(cornerRadius: 10))
+                .overlay(alignment: .bottom) {
+                    metadataOverlay
+                }
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(
@@ -410,6 +400,56 @@ private struct ClipboardHistoryCard: View {
             Button("Delete", role: .destructive, action: onRemove)
         }
         .help("Click to copy")
+    }
+
+    private func elapsedTime(at date: Date) -> String {
+        let seconds = max(Int(date.timeIntervalSince(item.createdAt)), 0)
+
+        if seconds < 60 {
+            return "\(seconds) sec"
+        }
+
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return "\(minutes) min"
+        }
+
+        let hours = minutes / 60
+        if hours < 24 {
+            return "\(hours) hr"
+        }
+
+        return "\(hours / 24) d"
+    }
+
+    private var metadataOverlay: some View {
+        ZStack(alignment: .bottom) {
+            if item.kind == .image {
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.72)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+
+            HStack {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(elapsedTime(at: context.date))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: item.kind == .text ? "text.alignleft" : "photo")
+            }
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(accentColor)
+            .padding(.horizontal, 9)
+            .padding(.bottom, 9)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 34)
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
