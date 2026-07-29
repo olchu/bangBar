@@ -6,36 +6,38 @@ struct HabitsWidget: View {
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex =
         BangBarSettings.defaultAccentColorHex
     @State private var scrollViewIdentity = UUID()
+    @State private var pendingScrollReset: Task<Void, Never>?
+    @State private var pendingScrollEnable: Task<Void, Never>?
+    @State private var isScrollEnabled = false
 
     private var accentColor: Color { Color(hex: accentColorHex) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 0) {
             header
 
             if service.habits.isEmpty {
                 emptyState
             } else {
-                ScrollView(.vertical, showsIndicators: true) {
-                    LazyVStack(spacing: 1) {
-                        ForEach(service.habits) { habit in
-                            HabitWidgetRow(
-                                habit: habit,
-                                isCompleted: service.isCompletedToday(habit),
-                                recentStates: service.recentStates(for: habit),
-                                currentStreak: service.currentStreak(for: habit),
-                                accentColor: accentColor
-                            ) {
-                                withAnimation(.easeInOut(duration: 0.16)) {
-                                    service.toggleToday(habit)
-                                }
+                GeometryReader { geometry in
+                    Group {
+                        if isScrollEnabled {
+                            ScrollView(.vertical, showsIndicators: true) {
+                                habitRows
                             }
+                            .id(scrollViewIdentity)
+                            .scrollClipDisabled(false)
+                        } else {
+                            habitRows
                         }
                     }
+                    .frame(
+                        width: geometry.size.width,
+                        height: geometry.size.height,
+                        alignment: .top
+                    )
+                    .clipped()
                 }
-                .id(scrollViewIdentity)
-                .defaultScrollAnchor(.top)
-                .scrollClipDisabled(false)
             }
         }
         .frame(
@@ -47,13 +49,63 @@ struct HabitsWidget: View {
             service.refreshDay()
         }
         .onChange(of: isPanelContentVisible) { _, isVisible in
-            guard !isVisible else { return }
+            pendingScrollReset?.cancel()
+            pendingScrollEnable?.cancel()
+
+            if isVisible {
+                pendingScrollEnable = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled, isPanelContentVisible else { return }
+
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        isScrollEnabled = true
+                    }
+                }
+                return
+            }
+
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                scrollViewIdentity = UUID()
+                isScrollEnabled = false
+            }
+
+            pendingScrollReset = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled, !isPanelContentVisible else { return }
+
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    scrollViewIdentity = UUID()
+                }
             }
         }
+        .onDisappear {
+            pendingScrollReset?.cancel()
+            pendingScrollEnable?.cancel()
+        }
+    }
+
+    private var habitRows: some View {
+        VStack(spacing: 1) {
+            ForEach(service.habits) { habit in
+                HabitWidgetRow(
+                    habit: habit,
+                    isCompleted: service.isCompletedToday(habit),
+                    recentStates: service.recentStates(for: habit),
+                    currentStreak: service.currentStreak(for: habit),
+                    accentColor: accentColor
+                ) {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        service.toggleToday(habit)
+                    }
+                }
+            }
+        }
+        .padding(.top, 3)
     }
 
     private var header: some View {
