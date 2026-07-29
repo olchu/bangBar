@@ -34,6 +34,22 @@ struct HabitStatistics {
     let thirtyDayRate: Double
 }
 
+struct HabitCompletionSummary {
+    let completedCount: Int
+    let eligibleCount: Int
+
+    var completionRate: Double {
+        guard eligibleCount > 0 else { return 0 }
+        return Double(completedCount) / Double(eligibleCount)
+    }
+}
+
+enum HabitDayState {
+    case ineligible
+    case incomplete
+    case complete
+}
+
 @MainActor
 final class HabitService: ObservableObject {
     static let shared = HabitService()
@@ -169,7 +185,13 @@ final class HabitService: ObservableObject {
     }
 
     func aggregateCompletionRate(days: Int, now: Date = Date()) -> Double {
-        guard days > 0 else { return 0 }
+        aggregateCompletionSummary(days: days, now: now).completionRate
+    }
+
+    func aggregateCompletionSummary(days: Int, now: Date = Date()) -> HabitCompletionSummary {
+        guard days > 0 else {
+            return HabitCompletionSummary(completedCount: 0, eligibleCount: 0)
+        }
         var completed = 0
         var eligible = 0
 
@@ -184,16 +206,19 @@ final class HabitService: ObservableObject {
             }
         }
 
-        guard eligible > 0 else { return 0 }
-        return Double(completed) / Double(eligible)
+        return HabitCompletionSummary(completedCount: completed, eligibleCount: eligible)
     }
 
     func statistics(for habit: HabitDefinition, now: Date = Date()) -> HabitStatistics {
         HabitStatistics(
-            currentStreak: currentStreak(for: habit, now: now),
+            currentStreak: calculateCurrentStreak(for: habit, now: now),
             bestStreak: bestStreak(for: habit, now: now),
             thirtyDayRate: completionRate(for: habit, days: 30, now: now)
         )
+    }
+
+    func currentStreak(for habit: HabitDefinition, now: Date = Date()) -> Int {
+        calculateCurrentStreak(for: habit, now: now)
     }
 
     func recentDaySummaries(days: Int = 30, now: Date = Date()) -> [HabitDaySummary] {
@@ -211,6 +236,20 @@ final class HabitService: ObservableObject {
                 completedCount: completed,
                 eligibleCount: eligibleHabits.count
             )
+        }
+    }
+
+    func recentStates(
+        for habit: HabitDefinition,
+        days: Int = 7,
+        now: Date = Date()
+    ) -> [HabitDayState] {
+        datesEndingToday(count: days, now: now).reversed().map { date in
+            let day = Self.dayIdentifier(for: date, calendar: calendar)
+            guard day >= habit.creationDay else { return .ineligible }
+            return records[day]?.completedHabitIDs.contains(habit.id) == true
+                ? .complete
+                : .incomplete
         }
     }
 
@@ -243,7 +282,7 @@ final class HabitService: ObservableObject {
         return Double(completed) / Double(eligibleDays.count)
     }
 
-    private func currentStreak(for habit: HabitDefinition, now: Date) -> Int {
+    private func calculateCurrentStreak(for habit: HabitDefinition, now: Date) -> Int {
         let today = calendar.startOfDay(for: now)
         let todayKey = Self.dayIdentifier(for: today, calendar: calendar)
         let todayComplete = records[todayKey]?.completedHabitIDs.contains(habit.id) == true

@@ -11,11 +11,16 @@ struct HabitSettingsContent: View {
     @FocusState private var isNewHabitFieldFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        HStack(alignment: .top, spacing: 16) {
             managementSection
-            summarySection
-            historySection
-            perHabitSection
+                .frame(width: 310)
+
+            VStack(alignment: .leading, spacing: 18) {
+                summarySection
+                historySection
+                perHabitSection
+            }
+            .frame(maxWidth: .infinity)
         }
         .confirmationDialog(
             "Delete this habit and its history?",
@@ -39,9 +44,7 @@ struct HabitSettingsContent: View {
     }
 
     private var managementSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsSectionLabel("DAILY HABITS")
-
+        VStack(alignment: .leading, spacing: 10) {
             SettingsCard {
                 VStack(spacing: 0) {
                     addHabitRow
@@ -80,6 +83,7 @@ struct HabitSettingsContent: View {
             Text("Edit names in place. Drag a row to change the order used by the widget.")
                 .font(SettingsTheme.captionFont)
                 .foregroundStyle(SettingsTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -108,30 +112,31 @@ struct HabitSettingsContent: View {
                 .contentShape(Rectangle())
         }
         .padding(.horizontal, 16)
-        .frame(height: 58)
+        .frame(height: 48)
     }
 
     private var summarySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsSectionLabel("OVERVIEW")
+        VStack(alignment: .leading, spacing: 10) {
+            let sevenDays = service.aggregateCompletionSummary(days: 7)
+            let thirtyDays = service.aggregateCompletionSummary(days: 30)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 HabitMetricCard(
                     title: "TODAY",
                     value: "\(service.completedTodayCount)/\(service.habits.count)",
-                    subtitle: percent(service.todayCompletionRate),
+                    percentage: percent(service.todayCompletionRate),
                     accentColor: accentColor
                 )
                 HabitMetricCard(
                     title: "LAST 7 DAYS",
-                    value: percent(service.aggregateCompletionRate(days: 7)),
-                    subtitle: "completion",
+                    value: "\(sevenDays.completedCount)/\(sevenDays.eligibleCount)",
+                    percentage: percent(sevenDays.completionRate),
                     accentColor: accentColor
                 )
                 HabitMetricCard(
                     title: "LAST 30 DAYS",
-                    value: percent(service.aggregateCompletionRate(days: 30)),
-                    subtitle: "completion",
+                    value: "\(thirtyDays.completedCount)/\(thirtyDays.eligibleCount)",
+                    percentage: percent(thirtyDays.completionRate),
                     accentColor: accentColor
                 )
             }
@@ -139,8 +144,10 @@ struct HabitSettingsContent: View {
     }
 
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsSectionLabel("LAST 30 DAYS")
+        VStack(alignment: .leading, spacing: 8) {
+            Text("30-day history")
+                .font(SettingsTheme.rowFont)
+                .foregroundStyle(SettingsTheme.secondaryText)
 
             SettingsCard {
                 if service.habits.isEmpty {
@@ -149,22 +156,20 @@ struct HabitSettingsContent: View {
                         .foregroundStyle(SettingsTheme.secondaryText)
                         .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
                 } else {
-                    let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 10)
-                    LazyVGrid(columns: columns, spacing: 12) {
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: 5), count: 15)
+                    LazyVGrid(columns: columns, spacing: 5) {
                         ForEach(service.recentDaySummaries()) { summary in
                             HabitHistoryDay(summary: summary, accentColor: accentColor)
                         }
                     }
-                    .padding(16)
+                    .padding(.vertical, 12)
                 }
             }
         }
     }
 
     private var perHabitSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsSectionLabel("BY HABIT")
-
+        VStack(alignment: .leading, spacing: 8) {
             SettingsCard {
                 if service.habits.isEmpty {
                     Text("Per-habit streaks will appear here.")
@@ -173,6 +178,9 @@ struct HabitSettingsContent: View {
                         .frame(maxWidth: .infinity, minHeight: 72, alignment: .center)
                 } else {
                     VStack(spacing: 0) {
+                        HabitStatisticsHeader()
+                        SettingsDivider()
+
                         ForEach(Array(service.habits.enumerated()), id: \.element.id) { index, habit in
                             HabitStatisticsRow(
                                 habit: habit,
@@ -227,6 +235,7 @@ private struct EditableHabitRow: View {
     let onDelete: () -> Void
 
     @State private var title: String
+    @State private var isHovered = false
 
     init(
         habit: HabitDefinition,
@@ -273,7 +282,7 @@ private struct EditableHabitRow: View {
             .help("Save name")
 
             Button(action: onDelete) {
-                Image(systemName: "trash")
+                Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(SettingsTheme.secondaryText)
                     .frame(width: 26, height: 26)
@@ -282,7 +291,10 @@ private struct EditableHabitRow: View {
             .help("Delete habit")
         }
         .padding(.horizontal, 16)
-        .frame(height: 52)
+        .frame(height: 44)
+        .background(isHovered ? Color.white.opacity(0.045) : .clear)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 
     private func commitRename() {
@@ -299,26 +311,26 @@ private struct EditableHabitRow: View {
 private struct HabitMetricCard: View {
     let title: String
     let value: String
-    let subtitle: String
+    let percentage: String
     let accentColor: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(SettingsTheme.secondaryText)
 
             Text(value)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(accentColor)
+                .font(.system(size: 21, weight: .semibold, design: .rounded))
+                .foregroundStyle(SettingsTheme.primaryText)
                 .contentTransition(.numericText())
 
-            Text(subtitle)
-                .font(SettingsTheme.captionFont)
-                .foregroundStyle(SettingsTheme.secondaryText)
+            Text(percentage)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(accentColor)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 106, alignment: .leading)
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(SettingsTheme.cardBackground)
@@ -334,43 +346,21 @@ private struct HabitHistoryDay: View {
     let summary: HabitDaySummary
     let accentColor: Color
 
-    private var dateLabel: String {
-        summary.date.formatted(.dateTime.day())
-    }
-
-    private var weekdayLabel: String {
-        summary.date.formatted(.dateTime.weekday(.narrow))
-    }
-
     var body: some View {
-        VStack(spacing: 5) {
-            Text(weekdayLabel)
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .foregroundStyle(SettingsTheme.secondaryText)
+        RoundedRectangle(cornerRadius: 2)
+            .fill(fillColor)
+            .aspectRatio(1, contentMode: .fit)
+            .help(
+                summary.eligibleCount == 0
+                    ? "No habits on \(summary.day)"
+                    : "\(summary.completedCount) of \(summary.eligibleCount) completed on \(summary.day)"
+            )
+    }
 
-            ZStack {
-                Circle()
-                    .fill(
-                        summary.eligibleCount == 0
-                            ? Color.white.opacity(0.04)
-                            : accentColor.opacity(0.12 + summary.completionRate * 0.88)
-                    )
-                    .frame(width: 27, height: 27)
-
-                Text(dateLabel)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(
-                        summary.completionRate > 0.55
-                            ? Color.white
-                            : SettingsTheme.secondaryText
-                    )
-            }
-        }
-        .help(
-            summary.eligibleCount == 0
-                ? "No habits on \(summary.day)"
-                : "\(summary.completedCount) of \(summary.eligibleCount) completed on \(summary.day)"
-        )
+    private var fillColor: Color {
+        guard summary.eligibleCount > 0 else { return .white.opacity(0.05) }
+        guard summary.completionRate > 0 else { return .white.opacity(0.13) }
+        return accentColor.opacity(0.28 + summary.completionRate * 0.72)
     }
 }
 
@@ -380,36 +370,60 @@ private struct HabitStatisticsRow: View {
     let accentColor: Color
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
             Text(habit.title)
-                .font(SettingsTheme.rowFont)
+                .font(.system(size: 10, weight: .regular, design: .rounded))
                 .foregroundStyle(SettingsTheme.primaryText)
                 .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
-
-            statistic(value: "\(statistics.currentStreak)d", label: "CURRENT")
-            statistic(value: "\(statistics.bestStreak)d", label: "BEST")
-            statistic(
-                value: "\(Int((statistics.thirtyDayRate * 100).rounded()))%",
-                label: "30 DAYS"
-            )
+            Text("\(statistics.currentStreak) days")
+                .frame(width: 74, alignment: .leading)
+            Text("\(statistics.bestStreak) days")
+                .frame(width: 68, alignment: .leading)
+            completion
         }
-        .padding(.horizontal, 16)
-        .frame(height: 58)
+        .font(.system(size: 9, weight: .medium, design: .rounded))
+        .foregroundStyle(SettingsTheme.secondaryText)
+        .padding(.horizontal, 12)
+        .frame(height: 38)
     }
 
-    private func statistic(value: String, label: String) -> some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            Text(value)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(accentColor)
+    private var completion: some View {
+        HStack(spacing: 7) {
+            Text("\(Int((statistics.thirtyDayRate * 100).rounded()))%")
+                .frame(width: 30, alignment: .trailing)
 
-            Text(label)
-                .font(.system(size: 7, weight: .semibold, design: .monospaced))
-                .foregroundStyle(SettingsTheme.secondaryText)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.10))
+                    Capsule()
+                        .fill(accentColor)
+                        .frame(width: proxy.size.width * statistics.thirtyDayRate)
+                }
+            }
+            .frame(height: 2)
         }
-        .frame(width: 70, alignment: .trailing)
+        .frame(width: 116)
+    }
+}
+
+private struct HabitStatisticsHeader: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Habit")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Current streak")
+                .frame(width: 74, alignment: .leading)
+            Text("Best streak")
+                .frame(width: 68, alignment: .leading)
+            Text("30-day completion")
+                .frame(width: 116, alignment: .leading)
+        }
+        .font(.system(size: 8, weight: .medium, design: .rounded))
+        .foregroundStyle(SettingsTheme.secondaryText)
+        .padding(.horizontal, 12)
+        .frame(height: 34)
     }
 }
 

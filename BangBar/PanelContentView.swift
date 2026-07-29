@@ -226,7 +226,10 @@ struct PanelContentView: View {
                 case .companion:
                     EmptyView()
                 case .habits:
-                    HabitsWidget(service: habits)
+                    HabitsWidget(
+                        service: habits,
+                        isPanelContentVisible: state.contentVisible
+                    )
                 }
             }
         }
