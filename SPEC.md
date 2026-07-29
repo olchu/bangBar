@@ -92,10 +92,10 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Widget Settings
 
-- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, and Companion.
+- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, Companion, and Habits.
 - Widgets without additional settings do not get an empty secondary tab.
 - General owns widget enable/disable controls and drag-and-drop ordering.
-- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, GitHub owns the public username, and Companion owns the confirmed reset action.
+- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, GitHub owns the public username, Companion owns the confirmed reset action, and Habits owns habit management and statistics.
 - Widget-specific settings must not be added back to General.
 
 ### Component Structure
@@ -132,6 +132,7 @@ Album artwork should read visually as one continuous element between compact and
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
   - `CompanionWidget`: 170×110
+  - `HabitsWidget`: 210×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -323,7 +324,8 @@ Album artwork should read visually as one continuous element between compact and
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
 10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
 11. ✅ Companion state engine and expanded-widget MVP are implemented with a temporary original placeholder; final character design, growth, and evolution remain later work.
-12. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+12. ⬜ Add `HabitsWidget` with daily completion, local history/statistics, and Settings management according to the plan below.
+13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
 
@@ -508,6 +510,94 @@ Today  Buy milk
 - Fetches incomplete reminders asynchronously through EventKit callbacks.
 - Normalizes reminders into app-owned value types before rendering.
 - Refreshes periodically while the panel is expanded and when reminder access changes.
+
+---
+
+### HabitsWidget
+
+**Status:** ⬜ Planned. This section defines the first implementation scope; no feature code has been started.
+
+**Goal:** Let the user define actions they intend to perform every day, mark each one complete directly in the expanded panel, and review enough history to understand consistency over time.
+
+**Scope and states:**
+- Every configured habit is daily; custom weekdays, frequencies, reminders, quantities, notes, and partial progress are out of scope for the first version.
+- A habit has exactly two states for the current local day: incomplete and complete.
+- Incomplete is the default. Clicking a row or its status control toggles it to complete; clicking again returns it to incomplete.
+- Completed habits remain in their configured position. They are never hidden, moved to the bottom, or removed from the day's list.
+- A newly created habit is incomplete for the current day. Renaming or reordering a habit preserves its identity and history.
+
+**Layout and interaction:**
+- Fixed `210×110` expanded widget, implemented in `HabitsWidget.swift`.
+- Header shows `TODAY` and a compact completion value such as `3/5`. A thin progress bar uses the shared accent color for its completed portion.
+- The habit list occupies the remaining height and scrolls vertically when it does not fit. The scroll view must not show a permanent scrollbar and must retain comfortable row hit targets.
+- An incomplete row uses the current accent color for its status circle and title.
+- A complete row uses white at `0.8` opacity, shows a checkmark, and strikes through the title. The strike and checkmark use the same white `0.8` treatment.
+- State changes animate quickly without changing row order. The whole row is clickable.
+- Long names truncate to one line in the widget; the full title is available through the shared tooltip behavior.
+- Empty state reads `Add habits in Settings` with a small accent-colored status mark.
+- The widget has no add, delete, rename, or reorder controls; configuration belongs to Settings.
+
+**Daily rollover:**
+- Day boundaries use `Calendar.autoupdatingCurrent.startOfDay(for:)`, so reset follows the user's current locale, calendar, time zone, and daylight-saving changes.
+- Completion is stored against a local day identifier rather than being destructively cleared at midnight. When the observed day changes, the service publishes a fresh incomplete state for the new day and preserves previous records as history.
+- The service checks the day when it starts, when the panel becomes active, after settings changes, and when the system reports a significant time or calendar-day change. The app does not need to remain running at midnight.
+- Moving the clock or time zone backward must reveal the records belonging to the resulting local date rather than overwriting them.
+
+**Data model and persistence:**
+- `HabitDefinition`: stable UUID, title, sort order, and creation-day identifier.
+- `HabitDayRecord`: local day identifier plus the set of completed habit UUIDs for that day.
+- A small `HabitService` owns CRUD, ordering, completion toggles, rollover observation, statistics, serialization, and change publication.
+- Persist definitions and day records as versioned `Codable` JSON in `UserDefaults` under dedicated `BangBarSettings.Key` values. Malformed data falls back safely to an empty collection without crashing the panel.
+- Keep a rolling 365 days of records. Pruning never removes habit definitions.
+- Deleting a habit requires confirmation and removes that habit plus its associated history. Renaming and reordering never rewrite history.
+- No network, account, notification, calendar, or health permission is required.
+
+**History and statistics:**
+- Statistics count only dates on or after a habit's creation date; days before the habit existed are excluded from denominators.
+- Settings → Widgets → Habits shows:
+  - today's completed count and percentage;
+  - aggregate completion rate for the last 7 days;
+  - aggregate completion rate for the last 30 days;
+  - each habit's current streak, best streak within retained history, and 30-day completion rate;
+  - a compact day-by-day history for the latest 30 days, where each day exposes completed versus available habits.
+- A streak is a run of consecutive eligible local days with that habit completed. Today's incomplete state does not break the current streak until the day has ended.
+- Aggregate daily completion is `completed eligible habits / eligible habits`. Days with no eligible habits are excluded.
+- Undoing today's completion updates the widget and all statistics immediately.
+
+**Settings:**
+- Enabled/disabled through a `Habits` toggle in Widgets → General and included in drag-and-drop widget ordering as `BangBarWidget.habits`.
+- Widgets → Habits is a real secondary tab because it contains configuration and statistics.
+- The configuration list supports adding, renaming, deleting, and drag-and-drop reordering.
+- Habit titles are trimmed, must not be empty, and are limited to 80 characters. Duplicate titles are allowed because identity is UUID-based.
+- Add and rename changes are persisted immediately. Delete presents a confirmation explaining that the habit's history will also be removed.
+- The settings list and history/statistics view use the same shared `HabitService` data and update live after a widget toggle.
+
+**Architecture and wiring:**
+- `HabitService.swift` contains the persisted value types, storage migration/version handling, daily calendar logic, and testable statistics calculations.
+- `HabitsWidget.swift` contains the widget and focused row/progress subviews.
+- `SettingsView` owns the management and statistics surface but does not duplicate storage logic.
+- `PanelContentView` receives or owns the shared service according to its existing service-lifetime pattern and only wires `HabitsWidget` into the ordered widget row.
+- Add `.habits` to `BangBarWidget`, use `PanelLayout.habitsWidgetWidth`, and extend enablement, ordering, width-budget validation, labels, and icon mapping without adding a separate panel-width constant.
+- Add a dedicated settings asset (proposed name `widgetHabits`) consistent with the existing monochrome widget icon set.
+
+**Acceptance criteria:**
+1. The user can add, rename, delete, and reorder habits in Settings, and the widget reflects every change without relaunching.
+2. Clicking an incomplete habit marks it complete; it stays in place, becomes white at `0.8` opacity, and gains a strikethrough and checkmark.
+3. Clicking a completed habit returns it to the accent-colored incomplete state.
+4. More habits than fit in `210×110` can be reached by vertical scrolling without expanding or overlapping the panel.
+5. Reopening the app on the same date restores that day's states; opening it on a later local date shows all eligible habits incomplete while retaining prior history.
+6. Seven-day, 30-day, per-habit streak, and 30-day history values follow the definitions above and update after every toggle.
+7. Widget enablement, ordering, and panel width budgeting behave like existing optional widgets.
+8. Empty, first-day, clock-change, time-zone-change, malformed-storage, rename, reorder, and confirmed-delete cases do not crash or corrupt other settings.
+
+**Implementation plan:**
+1. Add persisted models and pure date/statistics helpers, then cover rollover, streak, denominator, retention, and migration behavior with focused tests.
+2. Implement `HabitService` CRUD, ordering, current-day toggling, `UserDefaults` persistence, pruning, and date-change observation.
+3. Build the `210×110` widget with the approved accent/incomplete and white-completed visual states, progress header, scrolling, tooltip, and empty state.
+4. Add `.habits` to widget metadata, settings keys/defaults, panel rendering, ordering, and width-budget calculations.
+5. Build Settings → Widgets → Habits management, delete confirmation, 7/30-day summary, per-habit streaks, and 30-day history.
+6. Add the matching widget icon asset and accessibility labels for toggle rows, completion controls, progress, and statistics.
+7. Build and manually verify live updates, persistence across relaunch, midnight/time-zone rollover, scrolling, panel width limits, and behavior with zero, one, and many habits.
 
 ---
 
@@ -922,6 +1012,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Focus Timer — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
 - Toggle: Notion — show/hide `NotionWidget`
+- Toggle: Habits — show/hide `HabitsWidget`
 - Toggle: Mirror — show/hide `MirrorWidget`
 
 **Shared tooltips:**
@@ -945,7 +1036,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Temporary Changes card enables delayed stable-content capture and selects the wait duration.
 - Transcription card enables shortcut-based suppression, records the shortcut (including `fn`), and selects the post-release protection duration.
 
-**Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
+**Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, `HabitsWidget` (incomplete rows and progress), and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 
 ---
 
@@ -1033,7 +1124,7 @@ The app quits; the script runs in the background, waits 1.5 s for the process to
 ## Layout Plan (after new widgets)
 
 ```
-[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [RemindersWidget] | Divider | [NotionWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [CountdownWidget] | Divider | [MirrorWidget]
+[NowPlayingWidget] | Divider | [ClockWidget] | Divider | [RemindersWidget] | Divider | [HabitsWidget] | Divider | [NotionWidget] | Divider | [MoonWidget] | [PomodoroWidget] | [CountdownWidget] | Divider | [MirrorWidget]
 ```
 
 Panel width may need to increase to accommodate all widgets.
