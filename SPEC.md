@@ -92,10 +92,10 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Widget Settings
 
-- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, Companion, and Habits.
+- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, and Habits.
 - Widgets without additional settings do not get an empty secondary tab.
 - General owns widget enable/disable controls and drag-and-drop ordering.
-- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, GitHub owns the public username, Companion owns the confirmed reset action, and Habits owns habit management and statistics.
+- Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, GitHub owns the public username, and Habits owns habit management and statistics.
 - Widget-specific settings must not be added back to General.
 
 ### Component Structure
@@ -131,7 +131,6 @@ Album artwork should read visually as one continuous element between compact and
   - `MirrorWidget`: 94×94
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
-  - `CompanionWidget`: 170×110
   - `HabitsWidget`: 210×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
@@ -323,7 +322,7 @@ Album artwork should read visually as one continuous element between compact and
 8. ⬜ Add `CountdownWidget` as a local, user-configured date countdown widget.
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
 10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
-11. ✅ Companion state engine and expanded-widget MVP are implemented with a temporary original placeholder; final character design, growth, and evolution remain later work.
+11. ⏸ Companion development is paused. Its existing code and saved state remain in the project, but the widget, toggle, ordering chip, and Companion settings tab are hidden from the interface and its runtime service is not started.
 12. ⬜ Add `HabitsWidget` with daily completion, local history/statistics, and Settings management according to the plan below.
 13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
@@ -665,7 +664,9 @@ Trip to Tokyo
 
 ### Companion Widget
 
-**Status:** 🟡 MVP implemented. Persistent meters, active-use timing, Focus Timer pause, direct care actions, Settings integration, and a temporary original character are available. Character identity, growth/evolution, compact presentation, and final visual design remain TBD.
+**Status:** ⏸ Paused and hidden. The existing implementation and saved state are retained for possible future work, but Companion is not exposed in Settings or the panel and its runtime service is not started.
+
+**Visibility rule:** `.companion` may remain in the internal `BangBarWidget` enum and legacy saved ordering for compatibility, but it must be excluded from user-visible widget cases, settings tabs, ordering controls, panel width calculation, and runtime rendering until development resumes.
 
 **Product name:** **Companion**. `Calm Care` is the name of its low-pressure care philosophy, not the user-facing widget name.
 
@@ -1008,7 +1009,6 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Toggle: Calendar — show/hide `ClockWidget`
 - Toggle: Moon — show/hide `MoonWidget`
 - Toggle: GitHub — show/hide `GitHubWidget`
-- Toggle: Companion — show/hide `CompanionWidget`
 - Toggle: Focus Timer — show/hide `PomodoroWidget`
 - Toggle: Countdown — show/hide `CountdownWidget`
 - Toggle: Notion — show/hide `NotionWidget`

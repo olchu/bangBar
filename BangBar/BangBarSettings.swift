@@ -28,6 +28,10 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static var visibleCases: [BangBarWidget] {
+        allCases.filter { $0 != .companion }
+    }
+
     var title: String {
         switch self {
         case .nowPlaying:

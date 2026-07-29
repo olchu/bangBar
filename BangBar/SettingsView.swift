@@ -45,7 +45,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutGraceMS) private var clipboardIgnoreShortcutGraceMS = 1500
     @State private var selectedSettingsTab = SettingsTab.widgets
     @State private var selectedWidgetTab = WidgetConfigurationTab.general
-    @State private var widgetOrder = BangBarWidget.allCases
+    @State private var widgetOrder = BangBarWidget.visibleCases
     @State private var draggedWidget: BangBarWidget?
 
     private var accentColorBinding: Binding<Color> {
@@ -308,8 +308,6 @@ struct SettingsView: View {
             focusTimerWidgetSettings(accentColor: accentColor)
         case .github:
             githubWidgetSettings(accentColor: accentColor)
-        case .companion:
-            companionWidgetSettings(accentColor: accentColor)
         }
     }
 
@@ -592,6 +590,7 @@ struct SettingsView: View {
 
     private func loadWidgetOrder() {
         widgetOrder = BangBarSettings.widgetOrder(from: widgetOrderRaw)
+            .filter { BangBarWidget.visibleCases.contains($0) }
         persistWidgetOrder()
     }
 
@@ -841,7 +840,6 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case reminders
     case focusTimer
     case github
-    case companion
 
     var id: Self { self }
 
@@ -853,7 +851,6 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
         case .reminders: return "Reminders"
         case .focusTimer: return "Focus Timer"
         case .github: return "GitHub"
-        case .companion: return "Companion"
         }
     }
 }

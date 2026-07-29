@@ -92,7 +92,7 @@ enum PanelLayout {
             case .mirror: BangBarSettings.showMirrorWidget
             case .system: BangBarSettings.showSystemWidget
             case .github: BangBarSettings.showGitHubWidget
-            case .companion: BangBarSettings.showCompanionWidget
+            case .companion: false
             }
         }
     }
