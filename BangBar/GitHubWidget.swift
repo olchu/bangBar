@@ -33,7 +33,15 @@ struct GitHubWidget: View {
             alignment: .topLeading
         )
         .task(id: username) {
-            await contributions.load(username: username)
+            while !Task.isCancelled {
+                await contributions.load(username: username)
+
+                do {
+                    try await Task.sleep(for: GitHubContributionsService.refreshInterval)
+                } catch {
+                    return
+                }
+            }
         }
     }
 
@@ -181,6 +189,8 @@ private final class GitHubContributionTooltipNSView: NSView {
 
 @MainActor
 final class GitHubContributionsService: ObservableObject {
+    static let refreshInterval: Duration = .seconds(30 * 60)
+
     struct Day: Identifiable {
         let date: Date
         let dateString: String
@@ -252,7 +262,7 @@ final class GitHubContributionsService: ObservableObject {
 
         if loadedUsername.caseInsensitiveCompare(username) == .orderedSame,
            let loadedAt,
-           Date().timeIntervalSince(loadedAt) < 3 * 60 * 60 {
+           Date().timeIntervalSince(loadedAt) < 30 * 60 {
             return
         }
 

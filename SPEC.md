@@ -399,6 +399,7 @@ The approximation is intended for a small visual widget rather than telescope po
 **Data source and loading:**
 - The username is stored in `BangBarSettings.Key.githubUsername`; no token or GitHub authentication is required.
 - `GitHubContributionsService` requests the user's public GitHub contribution HTML for each calendar year intersecting the trailing-year range and merges days by `data-date`.
+- While the widget is active, contribution data refreshes every 30 minutes. A successful response is cached for the same interval.
 - Requests identify the app with a `BangBar` user agent. Invalid usernames, parsing failures, and unavailable responses produce compact empty/error states.
 - Successful results for the same username are cached in memory for three hours.
 - `PanelContentView` owns `GitHubContributionsService`; `GitHubWidget` observes the injected service. Switching to Clipboard removes the widget view but must not destroy its loaded contribution state or visibly reinitialize it when returning.
