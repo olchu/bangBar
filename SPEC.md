@@ -323,7 +323,7 @@ Album artwork should read visually as one continuous element between compact and
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
 10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
 11. ⏸ Companion development is paused. Its existing code and saved state remain in the project, but the widget, toggle, ordering chip, and Companion settings tab are hidden from the interface and its runtime service is not started.
-12. ⬜ Add `HabitsWidget` with daily completion, local history/statistics, and Settings management according to the plan below.
+12. ✅ `HabitsWidget` is implemented with daily completion, local history/statistics, and Settings management according to the plan below.
 13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 
 ### MoonWidget
@@ -514,7 +514,7 @@ Today  Buy milk
 
 ### HabitsWidget
 
-**Status:** ⬜ Planned. This section defines the first implementation scope; no feature code has been started.
+**Status:** ✅ Implemented.
 
 **Goal:** Let the user define actions they intend to perform every day, mark each one complete directly in the expanded panel, and review enough history to understand consistency over time.
 

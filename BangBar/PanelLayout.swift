@@ -54,6 +54,7 @@ enum PanelLayout {
     static let systemWidgetWidth: CGFloat = 160
     static let githubWidgetWidth: CGFloat = 150
     static let companionWidgetWidth: CGFloat = 170
+    static let habitsWidgetWidth: CGFloat = 210
     static let clockWidgetWidth: CGFloat = 210
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
@@ -93,6 +94,7 @@ enum PanelLayout {
             case .system: BangBarSettings.showSystemWidget
             case .github: BangBarSettings.showGitHubWidget
             case .companion: false
+            case .habits: BangBarSettings.showHabitsWidget
             }
         }
     }

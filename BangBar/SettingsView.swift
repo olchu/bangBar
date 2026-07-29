@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
     @AppStorage(BangBarSettings.Key.showCompanionWidget) private var showCompanionWidget = false
+    @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
     @AppStorage(BangBarSettings.Key.githubUsername) private var githubUsername = ""
     @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var moonUsesCurrentLocation = true
     @AppStorage(BangBarSettings.Key.moonLocationName) private var moonLocationName = "Istanbul"
@@ -47,6 +48,7 @@ struct SettingsView: View {
     @State private var selectedWidgetTab = WidgetConfigurationTab.general
     @State private var widgetOrder = BangBarWidget.visibleCases
     @State private var draggedWidget: BangBarWidget?
+    @StateObject private var habits = HabitService.shared
 
     private var accentColorBinding: Binding<Color> {
         Binding(
@@ -308,6 +310,8 @@ struct SettingsView: View {
             focusTimerWidgetSettings(accentColor: accentColor)
         case .github:
             githubWidgetSettings(accentColor: accentColor)
+        case .habits:
+            habitsWidgetSettings(accentColor: accentColor)
         }
     }
 
@@ -388,6 +392,15 @@ struct SettingsView: View {
             description: "Care advances only while you are actively using your Mac."
         ) {
             CompanionSettingsCard(accentColor: accentColor)
+        }
+    }
+
+    private func habitsWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .habits,
+            description: "Build daily consistency and review your recent progress."
+        ) {
+            HabitSettingsContent(service: habits, accentColor: accentColor)
         }
     }
 
@@ -572,6 +585,8 @@ struct SettingsView: View {
             return $showGitHubWidget
         case .companion:
             return $showCompanionWidget
+        case .habits:
+            return $showHabitsWidget
         }
     }
 
@@ -840,6 +855,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case reminders
     case focusTimer
     case github
+    case habits
 
     var id: Self { self }
 
@@ -851,6 +867,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
         case .reminders: return "Reminders"
         case .focusTimer: return "Focus Timer"
         case .github: return "GitHub"
+        case .habits: return "Habits"
         }
     }
 }
@@ -1573,6 +1590,8 @@ private extension BangBarWidget {
             return 160
         case .companion:
             return 176
+        case .habits:
+            return 190
         }
     }
 }
@@ -1811,7 +1830,7 @@ private struct SettingsSwitchToggleStyle: ToggleStyle {
     }
 }
 
-private struct SettingsCard<Content: View>: View {
+struct SettingsCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -1828,7 +1847,7 @@ private struct SettingsCard<Content: View>: View {
     }
 }
 
-private struct SettingsSectionLabel: View {
+struct SettingsSectionLabel: View {
     let title: String
 
     init(_ title: String) {
@@ -1842,7 +1861,7 @@ private struct SettingsSectionLabel: View {
     }
 }
 
-private struct SettingsDivider: View {
+struct SettingsDivider: View {
     var body: some View {
         Rectangle()
             .fill(SettingsTheme.border)
@@ -2100,7 +2119,7 @@ private struct CalendarPickerStatusRow: View {
     }
 }
 
-private enum SettingsTheme {
+enum SettingsTheme {
     static let background = Color.black
     static let cardBackground = Color.black.opacity(0.35)
     static let border = Color.white.opacity(0.13)

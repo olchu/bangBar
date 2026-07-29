@@ -14,6 +14,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
+    @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
@@ -21,6 +22,7 @@ struct PanelContentView: View {
     @StateObject private var calendarEvents = CalendarEventService()
     @StateObject private var reminders = ReminderService()
     @StateObject private var githubContributions = GitHubContributionsService()
+    @StateObject private var habits = HabitService.shared
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -103,6 +105,7 @@ struct PanelContentView: View {
         .onReceive(timer) { date in
             currentTime = date
             calendarEvents.refreshIfNeeded(now: date)
+            habits.refreshDay(now: date)
         }
         .onAppear {
             if showClockWidget { calendarEvents.start() }
@@ -222,6 +225,8 @@ struct PanelContentView: View {
                     GitHubWidget(contributions: githubContributions)
                 case .companion:
                     EmptyView()
+                case .habits:
+                    HabitsWidget(service: habits)
                 }
             }
         }
@@ -255,6 +260,8 @@ struct PanelContentView: View {
             return showGitHubWidget
         case .companion:
             return false
+        case .habits:
+            return showHabitsWidget
         }
     }
 }
