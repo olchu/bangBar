@@ -43,24 +43,29 @@ struct PanelContentView: View {
                     compactWidget
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
-                    Group {
-                        if state.showsClipboardHistory {
-                            ClipboardHistoryView(
-                                service: clipboardHistory,
-                                filter: state.clipboardFilter,
-                                topSafeInset: state.topSafeInset
-                            )
-                        } else {
-                            HStack(spacing: PanelLayout.expandedWidgetSpacing) {
-                                expandedWidgets(hideExpandedArtwork: hideExpandedArtwork)
-                            }
-                            .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
-                            .padding(.top, state.topSafeInset)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    ZStack {
+                        HStack(spacing: PanelLayout.expandedWidgetSpacing) {
+                            expandedWidgets(hideExpandedArtwork: hideExpandedArtwork)
                         }
+                        .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
+                        .padding(.top, state.topSafeInset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .opacity(state.showsClipboardHistory ? 0 : 1)
+                        .allowsHitTesting(!state.showsClipboardHistory)
+                        .accessibilityHidden(state.showsClipboardHistory)
+
+                        ClipboardHistoryView(
+                            service: clipboardHistory,
+                            filter: state.clipboardFilter,
+                            topSafeInset: state.topSafeInset
+                        )
+                        .opacity(state.showsClipboardHistory ? 1 : 0)
+                        .allowsHitTesting(state.showsClipboardHistory)
+                        .accessibilityHidden(!state.showsClipboardHistory)
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.10), value: state.contentVisible)
+                    .animation(.easeOut(duration: 0.16), value: state.showsClipboardHistory)
                 }
 
                 if let progress = state.artworkHeroProgress, nowPlaying.isAvailable {
@@ -228,7 +233,7 @@ struct PanelContentView: View {
                 case .habits:
                     HabitsWidget(
                         service: habits,
-                        isPanelContentVisible: state.contentVisible
+                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
                     )
                 }
             }
