@@ -113,21 +113,18 @@ struct HabitsWidget: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 5) {
                     ForEach(weekDates, id: \.self) { date in
+                        let summary = service.daySummary(for: date)
+
                         VStack(spacing: 3) {
                             Text(weekdayLabel(for: date))
                                 .font(.system(size: 7, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(.white.opacity(0.56))
 
-                            Circle()
-                                .fill(isToday(date) ? Color.clear : Color.white.opacity(0.28))
-                                .overlay(
-                                    Circle()
-                                        .stroke(
-                                            isToday(date) ? accentColor : Color.clear,
-                                            lineWidth: 1.2
-                                        )
-                                )
-                                .frame(width: 7, height: 7)
+                            WeeklyCompletionDot(
+                                summary: summary,
+                                isToday: isToday(date),
+                                accentColor: accentColor
+                            )
                         }
                         .frame(width: 17)
                     }
@@ -195,6 +192,42 @@ struct HabitsWidget: View {
         Calendar.autoupdatingCurrent.isDateInToday(date)
     }
 
+}
+
+private struct WeeklyCompletionDot: View {
+    let summary: HabitDaySummary
+    let isToday: Bool
+    let accentColor: Color
+
+    private let size: CGFloat = 7
+
+    private var helpText: String {
+        let weekday = summary.date.formatted(.dateTime.weekday(.wide))
+        guard summary.eligibleCount > 0 else {
+            return "\(weekday) · No habits"
+        }
+        return "\(weekday) · \(summary.completedCount) of \(summary.eligibleCount)"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Circle()
+                .fill(.white.opacity(summary.eligibleCount > 0 ? 0.16 : 0.06))
+
+            Rectangle()
+                .fill(accentColor)
+                .frame(height: size * summary.completionRate)
+        }
+        .clipShape(Circle())
+        .overlay {
+            Circle()
+                .stroke(isToday ? accentColor : .clear, lineWidth: 1.2)
+        }
+        .frame(width: size, height: size)
+        .animation(.easeInOut(duration: 0.18), value: summary.completionRate)
+        .help(helpText)
+        .accessibilityLabel(helpText)
+    }
 }
 
 private struct HabitWidgetRow: View {

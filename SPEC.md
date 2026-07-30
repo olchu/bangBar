@@ -328,21 +328,21 @@ Album artwork should read visually as one continuous element between compact and
 
 ### MoonWidget
 
-**Goal:** Show current moon phase, illuminated percentage, and next full moon date.
+**Goal:** Show current moon phase, illuminated percentage, and the next new and full moon dates.
 
 **Data source:** Astronomical values are calculated locally — no network is required after coordinates are known.
 - Compute approximate solar and lunar ecliptic longitudes from J2000.
 - Current illumination uses lunar elongation: `(1 - cos(elongation)) / 2`.
-- Next full moon date is found by sampling forward from the current date and refining the illumination peak.
+- Next new and full moon dates are found by sampling forward from the current date and refining the illumination minimum or peak.
 - The observing coordinates come from Core Location when automatic location is enabled, otherwise from the city saved in Settings. Resolving a newly entered city may use the system geocoder and network.
 
 **Display:**
 ```
-100%                 21D
-ILLUM.           TO FULL
+100%                 Last
+ILLUM.              PHASE
        [MoonTexture]
-PHASE              FULL
-Last             Jun 30
+NEW                 FULL
+Jun 15            Jun 30
 ```
 - Moon image: `MoonTexture` asset clipped to a circle.
 - No moon-cycle progress arc is drawn.
@@ -351,8 +351,8 @@ Last             Jun 30
 - Moon disk is slightly smaller than the original 90×90 design and vertically positioned to balance the text overlay.
 - Shadow side uses a darker overlay than the default texture shadow.
 - Top-left: rounded illuminated fraction, shown as a percent without a leading dot.
-- Top-right: days until the next full moon, formatted as `XD`, labelled `TO FULL`.
-- Bottom-left: `PHASE` label with the current phase short name below it, title-cased, white, medium weight.
+- Top-right: `PHASE` label with the current phase short name above it, title-cased, white, medium weight.
+- Bottom-left: `NEW` label with the next calculated new moon date below it, white, medium weight; date is never in the past.
 - Bottom-right: `FULL` label with the next calculated full moon date below it, white, medium weight; date is never in the past.
 - Accent-colored moon values use `BangBarSettings.Key.accentColorHex`; non-accent values remain white.
 
@@ -527,7 +527,7 @@ Today  Buy milk
 
 **Layout and interaction:**
 - Fixed `240×110` expanded widget, implemented in `HabitsWidget.swift`.
-- Header shows a Monday–Sunday strip with the current local day outlined in the accent color and a compact circular accent progress ring containing only the completion value such as `3/5`.
+- Header shows a Monday–Sunday completion strip: each dot fills from bottom to top in proportion to that day's eligible habits completed, future or ineligible days remain faint, and the current local day is outlined in the accent color. Hovering a dot shows the exact daily count. A compact circular accent progress ring contains today's completion value such as `3/5`.
 - The header reserves only the height required by its visible content; it must not leave a large blank band between the weekday dots and the first habit row.
 - Each habit row shows seven compact history dots for the trailing seven local calendar days and the current streak in days. Accent dots mean complete, neutral dots mean incomplete, and very faint dots mean the habit did not exist yet.
 - The habit list occupies the remaining height and scrolls vertically when it does not fit. The scroll view must not show a permanent scrollbar and must retain comfortable row hit targets.

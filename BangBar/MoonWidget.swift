@@ -31,7 +31,11 @@ struct MoonWidget: View {
             if usesCurrentLocation { MoonLocationService.shared.requestCurrentLocation() }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(phase.name), \(phase.illuminationPercent)% visible, next full moon \(phase.fullMoonDateText)")
+        .accessibilityLabel(
+            "\(phase.name), \(phase.illuminationPercent)% visible, "
+                + "next new moon \(phase.newMoonDateText), "
+                + "next full moon \(phase.fullMoonDateText)"
+        )
     }
 
     private var moonInfoOverlay: some View {
@@ -46,20 +50,33 @@ struct MoonWidget: View {
 
                 Spacer(minLength: 0)
 
-                daysUntilFullMoonMetric(value: phase.daysUntilFullMoonText)
+                cornerMetric(
+                    label: "PHASE",
+                    value: phase.shortName,
+                    alignment: .trailing,
+                    usesAccentColor: false
+                )
                     .frame(width: 46, alignment: .trailing)
             }
 
             Spacer(minLength: 0)
 
             HStack(alignment: .bottom, spacing: 8) {
-                phaseMetric(value: phase.shortName)
+                moonEventMetric(
+                    label: "NEW",
+                    value: phase.newMoonDateText,
+                    alignment: .leading
+                )
                     .frame(width: 46, alignment: .leading)
 
                 Spacer(minLength: 0)
 
-                fullMoonMetric(value: phase.fullMoonDateText)
-                .frame(width: 46, alignment: .trailing)
+                moonEventMetric(
+                    label: "FULL",
+                    value: phase.fullMoonDateText,
+                    alignment: .trailing
+                )
+                    .frame(width: 46, alignment: .trailing)
             }
         }
         .frame(
@@ -73,7 +90,8 @@ struct MoonWidget: View {
         label: String,
         value: String,
         alignment: HorizontalAlignment,
-        showsDot: Bool = false
+        showsDot: Bool = false,
+        usesAccentColor: Bool = true
     ) -> some View {
         VStack(alignment: alignment, spacing: 2) {
             HStack(spacing: 4) {
@@ -85,7 +103,9 @@ struct MoonWidget: View {
 
                 Text(value)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(accentColor.opacity(0.95))
+                    .foregroundStyle(
+                        usesAccentColor ? accentColor.opacity(0.95) : .white.opacity(0.95)
+                    )
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
             }
@@ -100,9 +120,13 @@ struct MoonWidget: View {
         }
     }
 
-    private func phaseMetric(value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("PHASE")
+    private func moonEventMetric(
+        label: String,
+        value: String,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(label)
                 .font(.system(size: 5.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.42))
                 .tracking(1.4)
@@ -114,40 +138,6 @@ struct MoonWidget: View {
                 .foregroundStyle(.white.opacity(0.95))
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
-        }
-    }
-
-    private func fullMoonMetric(value: String) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text("FULL")
-                .font(.system(size: 5.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.42))
-                .tracking(1.4)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-
-            Text(value)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.95))
-                .lineLimit(1)
-                .minimumScaleFactor(0.55)
-        }
-    }
-
-    private func daysUntilFullMoonMetric(value: String) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(value)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(accentColor.opacity(0.95))
-                .lineLimit(1)
-                .minimumScaleFactor(0.55)
-
-            Text("TO FULL")
-                .font(.system(size: 5.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.42))
-                .tracking(1.4)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
         }
     }
 
@@ -252,9 +242,8 @@ struct MoonPhase {
         Self.fullMoonDateFormatter.string(from: nextFullMoonDate)
     }
 
-    var daysUntilFullMoonText: String {
-        let days = max(0, Int(ceil(nextFullMoonDate.timeIntervalSince(date) / Self.secondsPerDay)))
-        return "\(days)D"
+    var newMoonDateText: String {
+        Self.fullMoonDateFormatter.string(from: nextNewMoonDate)
     }
 
     var currentDateText: String {
@@ -287,6 +276,10 @@ struct MoonPhase {
 
     private var nextFullMoonDate: Date {
         Self.nextFullMoon(after: date)
+    }
+
+    private var nextNewMoonDate: Date {
+        Self.nextNewMoon(after: date)
     }
 
     private enum Phase: CaseIterable {
@@ -330,6 +323,30 @@ struct MoonPhase {
         return refinedDate
     }
 
+    private static func nextNewMoon(after date: Date) -> Date {
+        let sampleStep = 6.0 * 60 * 60
+        let sampleCount = Int((synodicPeriod * secondsPerDay) / sampleStep)
+        var bestDate = date
+        var bestIllumination = Double.infinity
+
+        for sample in 0...sampleCount {
+            let candidate = date.addingTimeInterval(Double(sample) * sampleStep)
+            let illumination = illuminationFraction(on: candidate)
+
+            if illumination < bestIllumination {
+                bestIllumination = illumination
+                bestDate = candidate
+            }
+        }
+
+        let refinedDate = refinedNewMoon(near: bestDate, window: sampleStep)
+        guard refinedDate >= date else {
+            return nextNewMoon(after: date.addingTimeInterval(sampleStep))
+        }
+
+        return refinedDate
+    }
+
     private static func previousFullMoon(before date: Date) -> Date {
         let sampleStep = 6.0 * 60 * 60
         let sampleCount = Int((synodicPeriod * secondsPerDay) / sampleStep)
@@ -364,6 +381,25 @@ struct MoonPhase {
             let second = upper.addingTimeInterval(-span / 3)
 
             if illuminationFraction(on: first) < illuminationFraction(on: second) {
+                lower = first
+            } else {
+                upper = second
+            }
+        }
+
+        return lower.addingTimeInterval(upper.timeIntervalSince(lower) / 2)
+    }
+
+    private static func refinedNewMoon(near date: Date, window: TimeInterval) -> Date {
+        var lower = date.addingTimeInterval(-window)
+        var upper = date.addingTimeInterval(window)
+
+        for _ in 0..<28 {
+            let span = upper.timeIntervalSince(lower)
+            let first = lower.addingTimeInterval(span / 3)
+            let second = upper.addingTimeInterval(-span / 3)
+
+            if illuminationFraction(on: first) > illuminationFraction(on: second) {
                 lower = first
             } else {
                 upper = second

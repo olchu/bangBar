@@ -223,20 +223,34 @@ final class HabitService: ObservableObject {
 
     func recentDaySummaries(days: Int = 30, now: Date = Date()) -> [HabitDaySummary] {
         datesEndingToday(count: days, now: now).reversed().map { date in
-            let day = Self.dayIdentifier(for: date, calendar: calendar)
-            let eligibleHabits = habits.filter { $0.creationDay <= day }
-            let completed = eligibleHabits.reduce(into: 0) { count, habit in
-                if records[day]?.completedHabitIDs.contains(habit.id) == true {
-                    count += 1
-                }
-            }
+            daySummary(for: date, now: now)
+        }
+    }
+
+    func daySummary(for date: Date, now: Date = Date()) -> HabitDaySummary {
+        let day = Self.dayIdentifier(for: date, calendar: calendar)
+        let today = calendar.startOfDay(for: now)
+        guard calendar.startOfDay(for: date) <= today else {
             return HabitDaySummary(
                 day: day,
                 date: date,
-                completedCount: completed,
-                eligibleCount: eligibleHabits.count
+                completedCount: 0,
+                eligibleCount: 0
             )
         }
+
+        let eligibleHabits = habits.filter { $0.creationDay <= day }
+        let completed = eligibleHabits.reduce(into: 0) { count, habit in
+            if records[day]?.completedHabitIDs.contains(habit.id) == true {
+                count += 1
+            }
+        }
+        return HabitDaySummary(
+            day: day,
+            date: date,
+            completedCount: completed,
+            eligibleCount: eligibleHabits.count
+        )
     }
 
     func recentStates(
