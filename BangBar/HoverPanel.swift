@@ -2,6 +2,10 @@ import AppKit
 import Combine
 import SwiftUI
 
+private protocol PanelScrollHandling: AnyObject {
+    func handlePanelScrollWheel(_ event: NSEvent) -> Bool
+}
+
 class HoverPanel: NSPanel {
     var isHiding = false
     var onHoverEvent: ((NSEvent) -> Void)?
@@ -98,6 +102,17 @@ class HoverPanel: NSPanel {
         contentView.onHoverEvent = { [weak self] event in
             self?.onHoverEvent?(event)
         }
+        contentView.shouldHandleVerticalSwipes = {
+            UserDefaults.standard.bool(
+                forKey: BangBarSettings.Key.clipboardSwipeNavigationEnabled
+            )
+        }
+        contentView.onSwipeDown = { [weak self] in
+            self?.handleClipboardSwipe(isDownward: true)
+        }
+        contentView.onSwipeUp = { [weak self] in
+            self?.handleClipboardSwipe(isDownward: false)
+        }
         contentView.wantsLayer = true
         self.contentView = contentView
 
@@ -148,6 +163,31 @@ class HoverPanel: NSPanel {
     override func orderOut(_ sender: Any?) {
         TooltipManager.shared.hide()
         super.orderOut(sender)
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .scrollWheel,
+           let scrollHandler = contentView as? PanelScrollHandling,
+           scrollHandler.handlePanelScrollWheel(event) {
+            return
+        }
+
+        super.sendEvent(event)
+    }
+
+    private func handleClipboardSwipe(isDownward: Bool) {
+        guard state.isExpanded, state.contentVisible else { return }
+
+        let isInverted = UserDefaults.standard.bool(
+            forKey: BangBarSettings.Key.clipboardSwipeNavigationInverted
+        )
+        let shouldShowClipboard = isDownward != isInverted
+        guard state.showsClipboardHistory != shouldShowClipboard else { return }
+
+        TooltipManager.shared.hide()
+        withAnimation(.easeOut(duration: 0.16)) {
+            state.showsClipboardHistory = shouldShowClipboard
+        }
     }
 
     // MARK: - Animation
@@ -562,9 +602,15 @@ class HoverPanel: NSPanel {
     }
 }
 
-final class HoverHostingView<Content: View>: NSHostingView<Content> {
+final class HoverHostingView<Content: View>: NSHostingView<Content>, PanelScrollHandling {
     var onHoverEvent: ((NSEvent) -> Void)?
+    var shouldHandleVerticalSwipes: (() -> Bool)?
+    var onSwipeDown: (() -> Void)?
+    var onSwipeUp: (() -> Void)?
     private var hoverTrackingArea: NSTrackingArea?
+    private var verticalSwipeDistance: CGFloat = 0
+    private var didTriggerVerticalSwipe = false
+    private let swipeActivationDistance: CGFloat = 42
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
@@ -601,5 +647,83 @@ final class HoverHostingView<Content: View>: NSHostingView<Content> {
     override func mouseMoved(with event: NSEvent) {
         onHoverEvent?(event)
         super.mouseMoved(with: event)
+    }
+
+    func handlePanelScrollWheel(_ event: NSEvent) -> Bool {
+        guard event.hasPreciseScrollingDeltas,
+              event.momentumPhase.isEmpty,
+              shouldHandleVerticalSwipes?() == true,
+              !containsSwipeExclusion(at: event.locationInWindow),
+              !isInsideVerticalScrollView(at: event.locationInWindow) else {
+            resetSwipeTrackingIfNeeded(for: event)
+            return false
+        }
+
+        if event.phase.contains(.began) {
+            verticalSwipeDistance = 0
+            didTriggerVerticalSwipe = false
+        }
+
+        guard abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) else {
+            resetSwipeTrackingIfNeeded(for: event)
+            return false
+        }
+
+        let deviceNormalizedDelta = event.isDirectionInvertedFromDevice
+            ? -event.scrollingDeltaY
+            : event.scrollingDeltaY
+        verticalSwipeDistance += deviceNormalizedDelta
+
+        if !didTriggerVerticalSwipe,
+           verticalSwipeDistance >= swipeActivationDistance {
+            didTriggerVerticalSwipe = true
+            onSwipeDown?()
+        } else if !didTriggerVerticalSwipe,
+                  verticalSwipeDistance <= -swipeActivationDistance {
+            didTriggerVerticalSwipe = true
+            onSwipeUp?()
+        }
+
+        resetSwipeTrackingIfNeeded(for: event)
+        return true
+    }
+
+    private func isInsideVerticalScrollView(at windowPoint: NSPoint) -> Bool {
+        var view = hitTest(convert(windowPoint, from: nil))
+
+        while let currentView = view {
+            if let scrollView = currentView as? NSScrollView {
+                return scrollView.hasVerticalScroller
+            }
+            view = currentView.superview
+        }
+
+        return false
+    }
+
+    private func containsSwipeExclusion(at windowPoint: NSPoint) -> Bool {
+        containsSwipeExclusion(in: self, at: windowPoint)
+    }
+
+    private func containsSwipeExclusion(in view: NSView, at windowPoint: NSPoint) -> Bool {
+        for subview in view.subviews {
+            if subview is PanelSwipeExclusionView,
+               subview.bounds.contains(subview.convert(windowPoint, from: nil)) {
+                return true
+            }
+
+            if containsSwipeExclusion(in: subview, at: windowPoint) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func resetSwipeTrackingIfNeeded(for event: NSEvent) {
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            verticalSwipeDistance = 0
+            didTriggerVerticalSwipe = false
+        }
     }
 }

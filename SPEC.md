@@ -131,7 +131,7 @@ Album artwork should read visually as one continuous element between compact and
   - `MirrorWidget`: 94×94
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
-  - `HabitsWidget`: 240×110
+  - `HabitsWidget`: 220×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -151,6 +151,7 @@ Album artwork should read visually as one continuous element between compact and
 
 - Clipboard history is a panel-level surface, not an item in the reorderable widget row.
 - The clipboard button in `PanelTopBar` switches the expanded panel between widgets and history.
+- Optional two-finger trackpad swipe navigation can be configured in Settings → Clipboard → Gestures. By default, a downward swipe over non-scrollable expanded-panel content opens Clipboard History and an upward swipe returns to the normal widget surface; an inversion toggle swaps those directions. When disabled, scroll events are not intercepted. The entire Habits widget is an explicit navigation-swipe exclusion region, so its header and vertical list never switch panel surfaces. Gesture routing happens at the panel-window level so vertical navigation continues to work while the pointer is directly over Clipboard cards; horizontal deltas still pass through to the card scroller.
 - History has `All`, `Text`, and `Images` filters. Image groups appear in `All` and `Images`, but not in `Text`.
 - The top bar retains the Settings button and, while history is open, also provides Clear History and image-group collection controls.
 - Text and image cards are shown in a horizontally scrolling row. Clicking a card writes it back to the system pasteboard; hover and context-menu actions allow individual deletion.
@@ -526,7 +527,7 @@ Today  Buy milk
 - A newly created habit is incomplete for the current day. Renaming or reordering a habit preserves its identity and history.
 
 **Layout and interaction:**
-- Fixed `240×110` expanded widget, implemented in `HabitsWidget.swift`.
+- Fixed `220×110` expanded widget, implemented in `HabitsWidget.swift`.
 - Header shows a Monday–Sunday completion strip: each dot fills from bottom to top in proportion to that day's eligible habits completed, future or ineligible days remain faint, and the current local day is outlined in the accent color. Hovering a dot shows the exact daily count. A compact circular accent progress ring contains today's completion value such as `3/5`.
 - The header reserves only the height required by its visible content; it must not leave a large blank band between the weekday dots and the first habit row.
 - Each habit row shows seven compact history dots for the trailing seven local calendar days and the current streak in days. Accent dots mean complete, neutral dots mean incomplete, and very faint dots mean the habit did not exist yet.
@@ -589,7 +590,7 @@ Today  Buy milk
 1. The user can add, rename, delete, and reorder habits in Settings, and the widget reflects every change without relaunching.
 2. Clicking an incomplete habit marks it complete; it stays in place, becomes dim white, and gains a strikethrough and checkmark.
 3. Clicking a completed habit returns it to the near-white title and accent-ring incomplete state.
-4. More habits than fit in `240×110` can be reached by vertical scrolling without expanding or overlapping the panel.
+4. More habits than fit in `220×110` can be reached by vertical scrolling without expanding or overlapping the panel.
 5. Reopening the app on the same date restores that day's states; opening it on a later local date shows all eligible habits incomplete while retaining prior history.
 6. Seven-day, 30-day, per-habit streak, and 30-day history values follow the definitions above and update after every toggle.
 7. Widget enablement, ordering, and panel width budgeting behave like existing optional widgets.
@@ -598,7 +599,7 @@ Today  Buy milk
 **Implementation plan:**
 1. Add persisted models and pure date/statistics helpers, then cover rollover, streak, denominator, retention, and migration behavior with focused tests.
 2. Implement `HabitService` CRUD, ordering, current-day toggling, `UserDefaults` persistence, pruning, and date-change observation.
-3. Build the `240×110` widget with the approved row states, weekday strip, circular progress, seven-day history dots, current streak, scrolling, tooltip, and empty state.
+3. Build the `220×110` widget with the approved row states, weekday strip, circular progress, seven-day history dots, current streak, scrolling, tooltip, and empty state.
 4. Add `.habits` to widget metadata, settings keys/defaults, panel rendering, ordering, and width-budget calculations.
 5. Build Settings → Widgets → Habits management, delete confirmation, 7/30-day summary, per-habit streaks, and 30-day history.
 6. Add the matching widget icon asset and accessibility labels for toggle rows, completion controls, progress, and statistics.

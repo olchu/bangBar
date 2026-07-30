@@ -37,6 +37,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.pomodoroRounds) private var pomodoroRounds = 4
     @AppStorage(BangBarSettings.Key.clipboardStorageLimitMB) private var clipboardStorageLimitMB = 100
     @AppStorage(BangBarSettings.Key.clipboardButtonPosition) private var clipboardButtonPositionRaw = ClipboardButtonPosition.nearNotch.rawValue
+    @AppStorage(BangBarSettings.Key.clipboardSwipeNavigationEnabled) private var clipboardSwipeNavigationEnabled = true
+    @AppStorage(BangBarSettings.Key.clipboardSwipeNavigationInverted) private var clipboardSwipeNavigationInverted = false
     @AppStorage(BangBarSettings.Key.clipboardIgnoreTransientChanges) private var clipboardIgnoreTransientChanges = true
     @AppStorage(BangBarSettings.Key.clipboardTransientDelayMS) private var clipboardTransientDelayMS = 1000
     @AppStorage(BangBarSettings.Key.clipboardIgnoreShortcutEnabled) private var clipboardIgnoreShortcutEnabled = false
@@ -151,6 +153,10 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         SettingsSectionLabel("APPEARANCE")
                         clipboardAppearanceCard(accentColor: accentColor)
+                    }
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("GESTURES")
+                        clipboardGesturesCard(accentColor: accentColor)
                     }
                     VStack(alignment: .leading, spacing: 14) {
                         SettingsSectionLabel("STORAGE")
@@ -744,6 +750,29 @@ struct SettingsView: View {
                         .disabled(clipboardHistory.items.isEmpty)
                 }
                 .frame(minHeight: 72)
+            }
+        }
+    }
+
+    private func clipboardGesturesCard(accentColor: Color) -> some View {
+        SettingsCard {
+            VStack(spacing: 0) {
+                SettingsToggleRow(
+                    title: "Swipe navigation",
+                    subtitle: "Swipe down with two fingers to open Clipboard and up to return to widgets.",
+                    isOn: $clipboardSwipeNavigationEnabled,
+                    accentColor: accentColor
+                )
+
+                if clipboardSwipeNavigationEnabled {
+                    SettingsDivider()
+                    SettingsToggleRow(
+                        title: "Invert swipe direction",
+                        subtitle: "Swipe up to open Clipboard and down to return to widgets.",
+                        isOn: $clipboardSwipeNavigationInverted,
+                        accentColor: accentColor
+                    )
+                }
             }
         }
     }

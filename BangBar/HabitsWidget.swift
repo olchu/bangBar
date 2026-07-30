@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct HabitsWidget: View {
@@ -45,6 +46,9 @@ struct HabitsWidget: View {
             height: PanelLayout.nowPlayingWidgetHeight,
             alignment: .topLeading
         )
+        .background {
+            PanelSwipeExclusionRegion()
+        }
         .onAppear {
             service.refreshDay()
         }
@@ -192,6 +196,20 @@ struct HabitsWidget: View {
         Calendar.autoupdatingCurrent.isDateInToday(date)
     }
 
+}
+
+struct PanelSwipeExclusionRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> PanelSwipeExclusionView {
+        PanelSwipeExclusionView()
+    }
+
+    func updateNSView(_ nsView: PanelSwipeExclusionView, context: Context) {}
+}
+
+final class PanelSwipeExclusionView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
 }
 
 private struct WeeklyCompletionDot: View {

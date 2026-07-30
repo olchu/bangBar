@@ -63,6 +63,9 @@ struct PanelTopBar: View {
                             Label("Clear", systemImage: "trash")
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(accentColor.opacity(0.9))
+                                .padding(.horizontal, 7)
+                                .frame(height: 20)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(isClearDisabled)

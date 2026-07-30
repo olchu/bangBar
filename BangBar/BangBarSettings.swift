@@ -156,6 +156,8 @@ enum BangBarSettings {
         static let pomodoroRounds = "pomodoroRounds"
         static let clipboardStorageLimitMB = "clipboardStorageLimitMB"
         static let clipboardButtonPosition = "clipboardButtonPosition"
+        static let clipboardSwipeNavigationEnabled = "clipboardSwipeNavigationEnabled"
+        static let clipboardSwipeNavigationInverted = "clipboardSwipeNavigationInverted"
         static let clipboardIgnoreTransientChanges = "clipboardIgnoreTransientChanges"
         static let clipboardTransientDelayMS = "clipboardTransientDelayMS"
         static let clipboardIgnoreShortcutEnabled = "clipboardIgnoreShortcutEnabled"
@@ -197,6 +199,8 @@ enum BangBarSettings {
             Key.pomodoroRounds: 4,
             Key.clipboardStorageLimitMB: 100,
             Key.clipboardButtonPosition: ClipboardButtonPosition.nearNotch.rawValue,
+            Key.clipboardSwipeNavigationEnabled: true,
+            Key.clipboardSwipeNavigationInverted: false,
             Key.clipboardIgnoreTransientChanges: true,
             Key.clipboardTransientDelayMS: 1000,
             Key.clipboardIgnoreShortcutEnabled: false,
