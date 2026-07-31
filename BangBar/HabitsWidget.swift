@@ -38,6 +38,15 @@ struct HabitsWidget: View {
                         alignment: .top
                     )
                     .clipped()
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.82)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 20)
+                        .allowsHitTesting(false)
+                    }
                 }
             }
         }
