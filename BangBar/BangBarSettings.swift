@@ -149,6 +149,10 @@ enum BangBarSettings {
         static let showRemindersWidget = "showRemindersWidget"
         static let reminderListId = "reminderListId"
         static let selectedCalendarIds = "selectedCalendarIds"
+        static let calendarAlertsEnabled = "calendarAlertsEnabled"
+        static let calendarAlertLeadMinutes = "calendarAlertLeadMinutes"
+        static let calendarAlertBackgroundOpacity = "calendarAlertBackgroundOpacity"
+        static let calendarAlertBlurIntensity = "calendarAlertBlurIntensity"
         static let widgetOrder = "widgetOrder"
         static let pomodoroWorkMinutes = "pomodoroWorkMinutes"
         static let pomodoroShortBreakMinutes = "pomodoroShortBreakMinutes"
@@ -192,6 +196,10 @@ enum BangBarSettings {
             Key.panelActivationThreshold: 0,
             Key.showPomodoroWidget: true,
             Key.showRemindersWidget: true,
+            Key.calendarAlertsEnabled: false,
+            Key.calendarAlertLeadMinutes: 0,
+            Key.calendarAlertBackgroundOpacity: 62,
+            Key.calendarAlertBlurIntensity: 100,
             Key.widgetOrder: defaultWidgetOrderRaw,
             Key.pomodoroWorkMinutes: 25,
             Key.pomodoroShortBreakMinutes: 5,

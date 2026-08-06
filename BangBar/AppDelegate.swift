@@ -6,6 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var hoverPanel: HoverPanel?
     var mouseMonitor: Any?
     private var settingsWindow: NSWindow?
+    private let calendarAlerts = CalendarAlertService()
     private var compactExpansionGraceUntil: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -14,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusBar()
         setupHoverPanel()
         startMouseTracking()
+        calendarAlerts.start()
     }
 
     // MARK: - Status Bar

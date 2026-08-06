@@ -27,6 +27,12 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
     @AppStorage(BangBarSettings.Key.selectedCalendarIds) private var selectedCalendarIdsRaw = ""
+    @AppStorage(BangBarSettings.Key.calendarAlertsEnabled) private var calendarAlertsEnabled = false
+    @AppStorage(BangBarSettings.Key.calendarAlertLeadMinutes) private var calendarAlertLeadMinutes = 0
+    @AppStorage(BangBarSettings.Key.calendarAlertBackgroundOpacity)
+    private var calendarAlertBackgroundOpacity = 62
+    @AppStorage(BangBarSettings.Key.calendarAlertBlurIntensity)
+    private var calendarAlertBlurIntensity = 100
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.panelActivationThreshold) private var panelActivationThreshold = 0
@@ -122,6 +128,11 @@ struct SettingsView: View {
                     }
                 }
                 .frame(width: 884)
+            }
+        case .calendar:
+            singleColumnContent(title: "CALENDAR", accentColor: accentColor) {
+                calendarAlertSettings(accentColor: accentColor)
+                    .frame(width: 884)
             }
         case .appearance:
             singleColumnContent(title: "APPEARANCE", accentColor: accentColor) {
@@ -417,8 +428,105 @@ struct SettingsView: View {
         ) {
             CalendarListPickerCard(
                 selectedCalendarIdsRaw: $selectedCalendarIdsRaw,
-                accentColor: accentColor
+                accentColor: accentColor,
+                selectionLabel: "Shown in widget"
             )
+        }
+    }
+
+    private func calendarAlertSettings(accentColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("FULL-SCREEN ALERT")
+
+                SettingsCard {
+                    VStack(spacing: 0) {
+                        SettingsToggleRow(
+                            title: "Meeting alerts",
+                            subtitle: "Cover the screen with a focused reminder when a calendar event is about to begin.",
+                            isOn: $calendarAlertsEnabled,
+                            accentColor: accentColor
+                        )
+
+                        SettingsDivider()
+
+                        CalendarAlertTimingRow(
+                            leadMinutes: $calendarAlertLeadMinutes,
+                            accentColor: accentColor
+                        )
+
+                        SettingsDivider()
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("Preview")
+                                    .font(SettingsTheme.rowFont)
+                                    .foregroundStyle(SettingsTheme.primaryText)
+                                Text("See how the alert looks without waiting for an event.")
+                                    .font(SettingsTheme.descriptionFont)
+                                    .foregroundStyle(SettingsTheme.secondaryText)
+                            }
+
+                            Spacer()
+
+                            Button("Show preview") {
+                                NotificationCenter.default.post(
+                                    name: .bangBarPreviewCalendarAlert,
+                                    object: nil
+                                )
+                            }
+                            .buttonStyle(SettingsOutlineButtonStyle())
+                        }
+                        .padding(.vertical, 14)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("BACKGROUND")
+
+                SettingsCard {
+                    VStack(spacing: 0) {
+                        SettingsStepperRow(
+                            title: "Darkness",
+                            value: $calendarAlertBackgroundOpacity,
+                            range: 0...90,
+                            step: 5,
+                            unit: "%",
+                            resetValue: 62,
+                            accentColor: accentColor
+                        )
+
+                        SettingsDivider()
+
+                        SettingsStepperRow(
+                            title: "Blur",
+                            value: $calendarAlertBlurIntensity,
+                            range: 0...100,
+                            step: 5,
+                            unit: "%",
+                            resetValue: 100,
+                            accentColor: accentColor
+                        )
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("CALENDARS")
+                CalendarListPickerCard(
+                    selectedCalendarIdsRaw: $selectedCalendarIdsRaw,
+                    accentColor: accentColor,
+                    selectionLabel: "Used for alerts"
+                )
+            }
+        }
+        .onChange(of: calendarAlertsEnabled) { _, isEnabled in
+            guard isEnabled,
+                  EKEventStore.authorizationStatus(for: .event) == .notDetermined else {
+                return
+            }
+            EKEventStore().requestFullAccessToEvents { _, _ in }
         }
     }
 
@@ -904,6 +1012,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
 private enum SettingsTab: CaseIterable, Identifiable {
     case widgets
     case permissions
+    case calendar
     case appearance
     case clipboard
     case about
@@ -916,6 +1025,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "WIDGETS"
         case .permissions:
             return "PERMISSIONS"
+        case .calendar:
+            return "CALENDAR"
         case .appearance:
             return "APPEARANCE"
         case .clipboard:
@@ -931,6 +1042,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "sidebarWidgets"
         case .permissions:
             return "sidebarPermissions"
+        case .calendar:
+            return "widgetCalendar"
         case .appearance:
             return "sidebarAppearance"
         case .clipboard:
@@ -1994,9 +2107,69 @@ private struct RemindersListPickerRow: View {
     }
 }
 
+private struct CalendarAlertTimingRow: View {
+    @Binding var leadMinutes: Int
+    let accentColor: Color
+
+    private let options = [0, 1, 5, 10, 15]
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Show alert")
+                    .font(SettingsTheme.rowFont)
+                    .foregroundStyle(SettingsTheme.primaryText)
+
+                Text("Choose how early the full-screen reminder appears.")
+                    .font(SettingsTheme.descriptionFont)
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
+
+            Spacer()
+
+            Menu {
+                ForEach(options, id: \.self) { minutes in
+                    Button(label(for: minutes)) {
+                        leadMinutes = minutes
+                    }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Text(label(for: leadMinutes))
+                        .font(SettingsTheme.captionFont)
+                        .foregroundStyle(SettingsTheme.primaryText)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(accentColor)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(SettingsTheme.border.opacity(0.45))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(SettingsTheme.border, lineWidth: 1)
+                        )
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.vertical, 14)
+    }
+
+    private func label(for minutes: Int) -> String {
+        minutes == 0 ? "At start time" : "\(minutes) min before"
+    }
+}
+
 private struct CalendarListPickerCard: View {
     @Binding var selectedCalendarIdsRaw: String
     let accentColor: Color
+    let selectionLabel: String
 
     @State private var calendars: [(id: String, title: String, color: NSColor)] = []
     @State private var authorizationStatus = EKEventStore.authorizationStatus(for: .event)
@@ -2037,7 +2210,7 @@ private struct CalendarListPickerCard: View {
 
     private var calendarActionsRow: some View {
         HStack(spacing: 10) {
-            Text("Shown in widget")
+            Text(selectionLabel)
                 .font(SettingsTheme.captionFont)
                 .foregroundStyle(SettingsTheme.secondaryText)
 
