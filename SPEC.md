@@ -92,7 +92,7 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Widget Settings
 
-- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, and Habits.
+- The Widgets settings screen has a centered secondary tab bar: General, Calendar, Moon, Reminders, Focus Timer, GitHub, and Habits. Calendar selection and meeting-alert configuration live together in the Calendar tab; there is no separate Calendar sidebar destination.
 - Widgets without additional settings do not get an empty secondary tab.
 - General owns widget enable/disable controls and drag-and-drop ordering.
 - Calendar owns calendar selection, Moon owns location selection, Reminders owns reminder-list selection, Focus Timer owns session-duration and round settings, GitHub owns the public username, and Habits owns habit management and statistics.

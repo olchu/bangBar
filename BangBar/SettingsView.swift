@@ -130,11 +130,6 @@ struct SettingsView: View {
                 }
                 .frame(width: 884)
             }
-        case .calendar:
-            singleColumnContent(title: "CALENDAR", accentColor: accentColor) {
-                calendarAlertSettings(accentColor: accentColor)
-                    .frame(width: 884)
-            }
         case .appearance:
             singleColumnContent(title: "APPEARANCE", accentColor: accentColor) {
                 VStack(alignment: .leading, spacing: 28) {
@@ -425,13 +420,20 @@ struct SettingsView: View {
     private func calendarWidgetSettings(accentColor: Color) -> some View {
         widgetSpecificSettings(
             widget: .clock,
-            description: "Choose which calendars are shown in the widget."
+            description: "Choose calendars for the widget and configure meeting alerts."
         ) {
-            CalendarListPickerCard(
-                selectedCalendarIdsRaw: $selectedCalendarIdsRaw,
-                accentColor: accentColor,
-                selectionLabel: "Shown in widget"
-            )
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 14) {
+                    SettingsSectionLabel("CALENDARS")
+                    CalendarListPickerCard(
+                        selectedCalendarIdsRaw: $selectedCalendarIdsRaw,
+                        accentColor: accentColor,
+                        selectionLabel: "Shown in widget and used for alerts"
+                    )
+                }
+
+                calendarAlertSettings(accentColor: accentColor)
+            }
         }
     }
 
@@ -513,14 +515,6 @@ struct SettingsView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsSectionLabel("CALENDARS")
-                CalendarListPickerCard(
-                    selectedCalendarIdsRaw: $selectedCalendarIdsRaw,
-                    accentColor: accentColor,
-                    selectionLabel: "Used for alerts"
-                )
-            }
         }
         .onChange(of: calendarAlertsEnabled) { _, isEnabled in
             guard isEnabled,
@@ -1015,7 +1009,6 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
 private enum SettingsTab: CaseIterable, Identifiable {
     case widgets
     case permissions
-    case calendar
     case appearance
     case clipboard
     case about
@@ -1028,8 +1021,6 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "WIDGETS"
         case .permissions:
             return "PERMISSIONS"
-        case .calendar:
-            return "CALENDAR"
         case .appearance:
             return "APPEARANCE"
         case .clipboard:
@@ -1045,8 +1036,6 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "sidebarWidgets"
         case .permissions:
             return "sidebarPermissions"
-        case .calendar:
-            return "widgetCalendar"
         case .appearance:
             return "sidebarAppearance"
         case .clipboard:
