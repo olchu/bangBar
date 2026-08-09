@@ -262,8 +262,10 @@ private struct ClipboardTextRow: View {
     let onRemove: () -> Void
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var isHovering = false
+    @State private var copyFeedbackID: UUID?
 
     private var accentColor: Color { Color(hex: accentColorHex) }
+    private var didCopy: Bool { copyFeedbackID != nil }
 
     var body: some View {
         HStack(spacing: 9) {
@@ -285,7 +287,12 @@ private struct ClipboardTextRow: View {
                 }
             }
 
-            if item.isPinned || isHovering {
+            if didCopy {
+                Label("COPIED", systemImage: "checkmark")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(accentColor)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            } else if item.isPinned || isHovering {
                 actions
                     .transition(.opacity)
             }
@@ -308,20 +315,39 @@ private struct ClipboardTextRow: View {
                 if isHovering && !item.isPinned {
                     Color.white.opacity(0.04)
                 }
+
+                if didCopy {
+                    accentColor.opacity(0.11)
+                }
             }
         }
-        .onTapGesture(perform: onCopy)
+        .onTapGesture(perform: copyWithFeedback)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
             }
         }
         .contextMenu {
-            Button("Copy", action: onCopy)
+            Button("Copy", action: copyWithFeedback)
             Button(item.isPinned ? "Unpin" : "Pin", action: onTogglePin)
             Button("Delete", role: .destructive, action: onRemove)
         }
         .help(item.text ?? "Click to copy")
+    }
+
+    private func copyWithFeedback() {
+        onCopy()
+        let feedbackID = UUID()
+        withAnimation(.easeOut(duration: 0.12)) {
+            copyFeedbackID = feedbackID
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(850))
+            guard copyFeedbackID == feedbackID else { return }
+            withAnimation(.easeOut(duration: 0.18)) {
+                copyFeedbackID = nil
+            }
+        }
     }
 
     private var actions: some View {
@@ -503,6 +529,7 @@ private struct ClipboardHistoryCard: View {
     let onRemove: () -> Void
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var isHovering = false
+    @State private var copyFeedbackID: UUID?
 
     private var accentColor: Color {
         Color(hex: accentColorHex)
@@ -510,7 +537,7 @@ private struct ClipboardHistoryCard: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Button(action: onCopy) {
+            Button(action: copyWithFeedback) {
                 cardContent
                 .frame(
                     width: item.kind == .image ? 150 : 180,
@@ -527,6 +554,22 @@ private struct ClipboardHistoryCard: View {
                             isHovering ? accentColor.opacity(0.9) : Color.white.opacity(0.13),
                             lineWidth: isHovering ? 1.5 : 1
                         )
+                }
+                .overlay {
+                    if copyFeedbackID != nil {
+                        ZStack {
+                            Color.black.opacity(0.58)
+
+                            VStack(spacing: 5) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 22, weight: .semibold))
+                                Text("COPIED")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundStyle(accentColor)
+                        }
+                        .transition(.opacity)
+                    }
                 }
                 .contentShape(.rect)
             }
@@ -576,11 +619,26 @@ private struct ClipboardHistoryCard: View {
             }
         }
         .contextMenu {
-            Button("Copy", action: onCopy)
+            Button("Copy", action: copyWithFeedback)
             Button(item.isPinned ? "Unpin" : "Pin", action: onTogglePin)
             Button("Delete", role: .destructive, action: onRemove)
         }
         .help("Click to copy")
+    }
+
+    private func copyWithFeedback() {
+        onCopy()
+        let feedbackID = UUID()
+        withAnimation(.easeOut(duration: 0.12)) {
+            copyFeedbackID = feedbackID
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(850))
+            guard copyFeedbackID == feedbackID else { return }
+            withAnimation(.easeOut(duration: 0.18)) {
+                copyFeedbackID = nil
+            }
+        }
     }
 
     private func elapsedTime(at date: Date) -> String {
