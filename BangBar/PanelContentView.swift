@@ -15,6 +15,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
     @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
+    @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
@@ -235,6 +236,8 @@ struct PanelContentView: View {
                         service: habits,
                         isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
                     )
+                case .translator:
+                    TranslatorWidget()
                 }
             }
         }
@@ -270,6 +273,8 @@ struct PanelContentView: View {
             return false
         case .habits:
             return showHabitsWidget
+        case .translator:
+            return showTranslatorWidget
         }
     }
 }

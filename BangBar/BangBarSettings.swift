@@ -26,6 +26,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case github
     case companion
     case habits
+    case translator
 
     var id: String { rawValue }
 
@@ -55,6 +56,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Companion"
         case .habits:
             return "Habits"
+        case .translator:
+            return "Translator"
         }
     }
 
@@ -80,6 +83,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "A calm desktop pet that grows with active use"
         case .habits:
             return "Track daily routines and consistency"
+        case .translator:
+            return "Translate between Russian and English"
         }
     }
 
@@ -105,6 +110,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetCompanion"
         case .habits:
             return "widgetHabits"
+        case .translator:
+            return "widgetTranslator"
         }
     }
 
@@ -120,6 +127,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         case .github: PanelLayout.githubWidgetWidth
         case .companion: PanelLayout.companionWidgetWidth
         case .habits: PanelLayout.habitsWidgetWidth
+        case .translator: PanelLayout.translatorWidgetWidth
         }
     }
 }
@@ -134,6 +142,8 @@ enum BangBarSettings {
         static let showGitHubWidget = "showGitHubWidget"
         static let showCompanionWidget = "showCompanionWidget"
         static let showHabitsWidget = "showHabitsWidget"
+        static let showTranslatorWidget = "showTranslatorWidget"
+        static let translatorSourceIsRussian = "translatorSourceIsRussian"
         static let habitsData = "habitsData"
         static let githubUsername = "githubUsername"
         static let moonUsesCurrentLocation = "moonUsesCurrentLocation"
@@ -184,6 +194,8 @@ enum BangBarSettings {
             Key.showGitHubWidget: false,
             Key.showCompanionWidget: false,
             Key.showHabitsWidget: false,
+            Key.showTranslatorWidget: false,
+            Key.translatorSourceIsRussian: true,
             Key.githubUsername: "",
             Key.moonUsesCurrentLocation: true,
             Key.moonLocationName: "Istanbul",
@@ -296,6 +308,10 @@ enum BangBarSettings {
 
     static var showHabitsWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showHabitsWidget) as? Bool ?? false
+    }
+
+    static var showTranslatorWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showTranslatorWidget) as? Bool ?? false
     }
 
     static var showPomodoroWidget: Bool {

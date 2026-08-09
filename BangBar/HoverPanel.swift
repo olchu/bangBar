@@ -7,6 +7,8 @@ private protocol PanelScrollHandling: AnyObject {
 }
 
 class HoverPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+
     var isHiding = false
     var onHoverEvent: ((NSEvent) -> Void)?
     var onOpenSettings: (() -> Void)?

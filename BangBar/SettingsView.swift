@@ -20,6 +20,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
     @AppStorage(BangBarSettings.Key.showCompanionWidget) private var showCompanionWidget = false
     @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
+    @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
     @AppStorage(BangBarSettings.Key.githubUsername) private var githubUsername = ""
     @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var moonUsesCurrentLocation = true
     @AppStorage(BangBarSettings.Key.moonLocationName) private var moonLocationName = "Istanbul"
@@ -701,6 +702,8 @@ struct SettingsView: View {
             return $showCompanionWidget
         case .habits:
             return $showHabitsWidget
+        case .translator:
+            return $showTranslatorWidget
         }
     }
 
@@ -1733,6 +1736,8 @@ private extension BangBarWidget {
         case .companion:
             return 176
         case .habits:
+            return 190
+        case .translator:
             return 190
         }
     }

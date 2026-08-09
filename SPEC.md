@@ -132,6 +132,7 @@ Album artwork should read visually as one continuous element between compact and
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
   - `HabitsWidget`: 220×110
+  - `TranslatorWidget`: 240×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -583,6 +584,16 @@ Today  Buy milk
 - `HabitsWidget.swift` contains the widget and focused row/progress subviews.
 - `SettingsView` owns the management and statistics surface but does not duplicate storage logic.
 - `PanelContentView` receives or owns the shared service according to its existing service-lifetime pattern and only wires `HabitsWidget` into the ordered widget row.
+
+### TranslatorWidget
+
+- Fixed `240×110` widget implemented in `TranslatorWidget.swift`.
+- Translates Russian to English and English to Russian with Apple's system Translation framework; no API key or remote service is required.
+- The direction button swaps RU/EN. If a translation exists, the result becomes the new source text.
+- Translation starts with Return or the submit button. The result can be copied to the clipboard.
+- An expand button opens a resizable two-pane translator window for long messages, with scrollable source and result editors, clear/copy actions, and Command-Return translation.
+- The selected direction persists in `UserDefaults`.
+- Enabled/disabled through a `Translator` toggle in Widgets → General and included in drag-and-drop ordering as `BangBarWidget.translator`.
 - Add `.habits` to `BangBarWidget`, use `PanelLayout.habitsWidgetWidth`, and extend enablement, ordering, width-budget validation, labels, and icon mapping without adding a separate panel-width constant.
 - Add a dedicated settings asset (proposed name `widgetHabits`) consistent with the existing monochrome widget icon set.
 
