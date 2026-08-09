@@ -37,6 +37,20 @@ private enum ClipboardHistoryEntry: Identifiable {
     }
 }
 
+private enum ClipboardHistoryDisplayEntry: Identifiable {
+    case group(ClipboardImageGroup)
+    case image(ClipboardHistoryItem)
+    case textColumn([ClipboardHistoryItem])
+
+    var id: String {
+        switch self {
+        case .group(let group): "group-\(group.id)"
+        case .image(let item): "image-\(item.id)"
+        case .textColumn(let items): "text-column-\(items.first?.id.uuidString ?? "empty")"
+        }
+    }
+}
+
 struct ClipboardHistoryView: View {
     @ObservedObject var service: ClipboardHistoryService
     let filter: ClipboardHistoryFilter
@@ -72,6 +86,39 @@ struct ClipboardHistoryView: View {
             }
     }
 
+    private var displayEntries: [ClipboardHistoryDisplayEntry] {
+        var result: [ClipboardHistoryDisplayEntry] = []
+        var textBuffer: [ClipboardHistoryItem] = []
+
+        func flushTextBuffer() {
+            guard !textBuffer.isEmpty else { return }
+            result.append(.textColumn(textBuffer))
+            textBuffer.removeAll(keepingCapacity: true)
+        }
+
+        for entry in historyEntries {
+            switch entry {
+            case .group(let group):
+                flushTextBuffer()
+                result.append(.group(group))
+            case .item(let item) where item.kind == .text:
+                if let first = textBuffer.first, first.isPinned != item.isPinned {
+                    flushTextBuffer()
+                }
+                textBuffer.append(item)
+                if textBuffer.count == 3 {
+                    flushTextBuffer()
+                }
+            case .item(let item):
+                flushTextBuffer()
+                result.append(.image(item))
+            }
+        }
+
+        flushTextBuffer()
+        return result
+    }
+
     var body: some View {
         Group {
             if let selectedGroup {
@@ -81,7 +128,7 @@ struct ClipboardHistoryView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 12) {
-                        ForEach(historyEntries) { entry in
+                        ForEach(displayEntries) { entry in
                             switch entry {
                             case .group(let group):
                                 ClipboardGroupCard(
@@ -97,13 +144,20 @@ struct ClipboardHistoryView: View {
                                     onRename: { service.rename(group, to: $0) },
                                     onDelete: { service.delete(group) }
                                 )
-                            case .item(let item):
+                            case .image(let item):
                                 ClipboardHistoryCard(
                                     item: item,
                                     image: service.image(for: item),
                                     onCopy: { service.copy(item) },
                                     onTogglePin: { service.togglePin(item) },
                                     onRemove: { service.remove(item) }
+                                )
+                            case .textColumn(let items):
+                                ClipboardTextColumn(
+                                    items: items,
+                                    onCopy: service.copy,
+                                    onTogglePin: service.togglePin,
+                                    onRemove: service.remove
                                 )
                             }
                         }
@@ -173,6 +227,133 @@ struct ClipboardHistoryView: View {
         }
         .foregroundStyle(.white.opacity(0.4))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ClipboardTextColumn: View {
+    let items: [ClipboardHistoryItem]
+    let onCopy: (ClipboardHistoryItem) -> Void
+    let onTogglePin: (ClipboardHistoryItem) -> Void
+    let onRemove: (ClipboardHistoryItem) -> Void
+
+    var body: some View {
+        VStack(spacing: 3) {
+            ForEach(items) { item in
+                ClipboardTextRow(
+                    item: item,
+                    onCopy: { onCopy(item) },
+                    onTogglePin: { onTogglePin(item) },
+                    onRemove: { onRemove(item) }
+                )
+            }
+
+            if items.count < 3 {
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(width: 230, height: clipboardCardHeight, alignment: .top)
+    }
+}
+
+private struct ClipboardTextRow: View {
+    let item: ClipboardHistoryItem
+    let onCopy: () -> Void
+    let onTogglePin: () -> Void
+    let onRemove: () -> Void
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
+    @State private var isHovering = false
+
+    private var accentColor: Color { Color(hex: accentColorHex) }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(accentColor.opacity(isHovering ? 1 : 0.72))
+                .frame(width: 3, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.text ?? "")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.84))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(elapsedTime(at: context.date))
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(accentColor.opacity(0.78))
+                }
+            }
+
+            if item.isPinned || isHovering {
+                actions
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(height: (clipboardCardHeight - 6) / 3)
+        .contentShape(.rect)
+        .background {
+            ZStack {
+                if item.isPinned {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(clipboardPinColor.opacity(0.064))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(clipboardPinColor.opacity(0.1), lineWidth: 0.75)
+                        }
+                        .shadow(color: clipboardPinColor.opacity(0.17), radius: 7)
+                }
+
+                if isHovering && !item.isPinned {
+                    Color.white.opacity(0.04)
+                }
+            }
+        }
+        .onTapGesture(perform: onCopy)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.1)) {
+                isHovering = hovering
+            }
+        }
+        .contextMenu {
+            Button("Copy", action: onCopy)
+            Button(item.isPinned ? "Unpin" : "Pin", action: onTogglePin)
+            Button("Delete", role: .destructive, action: onRemove)
+        }
+        .help(item.text ?? "Click to copy")
+    }
+
+    private var actions: some View {
+        HStack(spacing: 3) {
+            Button(action: onTogglePin) {
+                Image(systemName: item.isPinned ? "pin.fill" : "pin")
+                    .foregroundStyle(clipboardPinColor)
+            }
+            .help(item.isPinned ? "Unpin" : "Pin")
+
+            if isHovering {
+                Button(action: onRemove) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(accentColor)
+                }
+                .help("Delete")
+            }
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .buttonStyle(.plain)
+    }
+
+    private func elapsedTime(at date: Date) -> String {
+        let seconds = max(Int(date.timeIntervalSince(item.createdAt)), 0)
+        if seconds < 60 { return "\(seconds) sec" }
+
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes) min" }
+
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours) hr" }
+        return "\(hours / 24) d"
     }
 }
 
