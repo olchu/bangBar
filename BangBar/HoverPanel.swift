@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import SwiftUI
 
 private protocol PanelScrollHandling: AnyObject {
@@ -7,6 +8,7 @@ private protocol PanelScrollHandling: AnyObject {
 }
 
 class HoverPanel: NSPanel {
+    private let logger = Logger(subsystem: "BangBar", category: "HoverPanel")
     override var canBecomeKey: Bool { true }
 
     var isHiding = false
@@ -194,8 +196,11 @@ class HoverPanel: NSPanel {
 
     // MARK: - Animation
 
-    func slideIn() {
-        guard !isAnimatingFrame else { return }
+    func slideIn(on preferredScreen: NSScreen? = nil) {
+        guard !isAnimatingFrame else {
+            logger.warning("Ignored slideIn because a frame animation is still registered")
+            return
+        }
         TooltipManager.shared.suppressShowing(for: 0.7)
         isHiding = false
         openedAt = Date()
@@ -207,7 +212,10 @@ class HoverPanel: NSPanel {
         state.compactIndicatorRevealAllowed = true
         state.compactArtworkRevealAnimated = true
 
-        guard let screen = NSScreen.main else { return }
+        guard let screen = preferredScreen ?? screen ?? NSScreen.main else {
+            logger.error("Cannot show panel because no screen is available")
+            return
+        }
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         if clipboardHistory.isCollectingImages {
             state.showsClipboardHistory = true
@@ -270,6 +278,37 @@ class HoverPanel: NSPanel {
                 self.state.contentVisible = true
             }
         }
+    }
+
+    func recoverAfterSystemTransition(on preferredScreen: NSScreen?) {
+        frameAnimationTimer?.invalidate()
+        frameAnimationTimer = nil
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+        artworkHeroCleanupWorkItem?.cancel()
+        artworkHeroCleanupWorkItem = nil
+        isHiding = false
+
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+
+        guard let targetScreen = preferredScreen ?? screen ?? NSScreen.main else {
+            logger.error("Panel recovery could not find a screen")
+            return
+        }
+
+        if isVisible, state.isCompact {
+            setFrame(compactFrame(on: targetScreen), display: true)
+            orderFrontRegardless()
+        } else if isVisible, state.isExpanded {
+            state.contentVisible = true
+            setFrame(expandedFrame(on: targetScreen), display: true)
+            orderFrontRegardless()
+        } else if isVisible {
+            orderOut(nil)
+        }
+
+        logger.notice("Panel recovered; visible=\(self.isVisible) compact=\(self.state.isCompact)")
     }
 
     func slideOut() {

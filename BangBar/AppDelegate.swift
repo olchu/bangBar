@@ -1,10 +1,15 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private let logger = Logger(subsystem: "BangBar", category: "PanelLifecycle")
     var statusItem: NSStatusItem?
     var hoverPanel: HoverPanel?
-    var mouseMonitor: Any?
+    private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var applicationObservers: [NSObjectProtocol] = []
     private var settingsWindow: NSWindow?
     private let calendarAlerts = CalendarAlertService()
     private var compactExpansionGraceUntil: Date = .distantPast
@@ -15,7 +20,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusBar()
         setupHoverPanel()
         startMouseTracking()
+        startWorkspaceTracking()
         calendarAlerts.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        stopMouseTracking()
+        workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+        workspaceObservers.removeAll()
+        applicationObservers.forEach(NotificationCenter.default.removeObserver)
+        applicationObservers.removeAll()
     }
 
     // MARK: - Status Bar
@@ -61,18 +75,62 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Mouse Tracking
 
     func startMouseTracking() {
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .mouseEntered]) { [weak self] event in
+        stopMouseTracking()
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .mouseEntered]) { [weak self] event in
             self?.handleMouseMove(event)
         }
-        NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
             self?.handleMouseMove(event)
             return event
         }
+        logger.info("Mouse tracking started")
+    }
+
+    private func stopMouseTracking() {
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+            self.globalMouseMonitor = nil
+        }
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
+            self.localMouseMonitor = nil
+        }
+    }
+
+    private func startWorkspaceTracking() {
+        let center = NSWorkspace.shared.notificationCenter
+        workspaceObservers.append(center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.recoverPanel(reason: "wake")
+        })
+        workspaceObservers.append(center.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.recoverPanel(reason: "active-space-changed")
+        })
+        applicationObservers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.recoverPanel(reason: "screen-parameters-changed")
+        })
+    }
+
+    private func recoverPanel(reason: String) {
+        logger.notice("Recovering panel after \(reason, privacy: .public)")
+        startMouseTracking()
+        hoverPanel?.recoverAfterSystemTransition(on: screenContainingMouse())
     }
 
     func handleMouseMove(_ event: NSEvent) {
-        guard let screen = NSScreen.main else { return }
         let mouseLocation = NSEvent.mouseLocation
+        guard let screen = screenContainingMouse() else { return }
         let screenFrame = screen.frame
         let menuBarHeight = NSStatusBar.system.thickness
 
@@ -122,7 +180,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if panel.isCompactMode {
                     compactExpansionGraceUntil = Date().addingTimeInterval(0.85)
                 }
-                panel.slideIn()
+                logger.debug("Opening panel from hover; visible=\(panel.isVisible) hiding=\(panel.isHiding) compact=\(panel.isCompactMode)")
+                panel.slideIn(on: screen)
             }
         } else {
             if let panel = hoverPanel, panel.isVisible, !panel.isHiding {
@@ -143,7 +202,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Actions
 
     @objc func showPanel() {
-        hoverPanel?.slideIn()
+        logger.info("Opening panel from status menu")
+        hoverPanel?.slideIn(on: screenContainingMouse())
+    }
+
+    private func screenContainingMouse() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+            ?? NSScreen.main
     }
 
     @objc func openSettings() {
