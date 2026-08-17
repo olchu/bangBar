@@ -14,6 +14,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
+    @AppStorage(BangBarSettings.Key.showAIUsageWidget) private var showAIUsageWidget = false
     @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
     @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
@@ -23,6 +24,7 @@ struct PanelContentView: View {
     @StateObject private var calendarEvents = CalendarEventService()
     @StateObject private var reminders = ReminderService()
     @StateObject private var githubContributions = GitHubContributionsService()
+    @StateObject private var aiUsage = AIUsageService()
     @StateObject private var habits = HabitService.shared
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -229,6 +231,8 @@ struct PanelContentView: View {
                     SystemWidget()
                 case .github:
                     GitHubWidget(contributions: githubContributions)
+                case .aiUsage:
+                    AIUsageWidget(service: aiUsage)
                 case .companion:
                     EmptyView()
                 case .habits:
@@ -269,6 +273,8 @@ struct PanelContentView: View {
             return showSystemWidget
         case .github:
             return showGitHubWidget
+        case .aiUsage:
+            return showAIUsageWidget
         case .companion:
             return false
         case .habits:

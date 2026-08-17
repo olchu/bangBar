@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
     @AppStorage(BangBarSettings.Key.showSystemWidget) private var showSystemWidget = false
     @AppStorage(BangBarSettings.Key.showGitHubWidget) private var showGitHubWidget = false
+    @AppStorage(BangBarSettings.Key.showAIUsageWidget) private var showAIUsageWidget = false
     @AppStorage(BangBarSettings.Key.showCompanionWidget) private var showCompanionWidget = false
     @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
     @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
@@ -692,6 +693,8 @@ struct SettingsView: View {
             return $showSystemWidget
         case .github:
             return $showGitHubWidget
+        case .aiUsage:
+            return $showAIUsageWidget
         case .companion:
             return $showCompanionWidget
         case .habits:
@@ -1642,6 +1645,9 @@ private struct WidgetIcon: View {
             if widget == .github {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
                     .font(.system(size: size * 0.72, weight: .semibold))
+            } else if widget == .aiUsage {
+                Image(systemName: "gauge.with.dots.needle.67percent")
+                    .font(.system(size: size * 0.72, weight: .semibold))
             } else {
                 Image(widget.iconAsset)
                     .renderingMode(.template)
@@ -1722,6 +1728,8 @@ private extension BangBarWidget {
             return 160
         case .github:
             return 160
+        case .aiUsage:
+            return 190
         case .companion:
             return 176
         case .habits:

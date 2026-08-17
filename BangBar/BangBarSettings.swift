@@ -24,6 +24,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case mirror
     case system
     case github
+    case aiUsage
     case companion
     case habits
     case translator
@@ -52,6 +53,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "System"
         case .github:
             return "GitHub"
+        case .aiUsage:
+            return "AI Usage"
         case .companion:
             return "Companion"
         case .habits:
@@ -79,6 +82,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "CPU, memory, battery and local IP"
         case .github:
             return "Public contributions from the last four months"
+        case .aiUsage:
+            return "Codex and Claude Code quota, session and weekly"
         case .companion:
             return "A calm desktop pet that grows with active use"
         case .habits:
@@ -106,6 +111,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetSystem"
         case .github:
             return "widgetGitHub"
+        case .aiUsage:
+            return "widgetAIUsage"
         case .companion:
             return "widgetCompanion"
         case .habits:
@@ -125,6 +132,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         case .mirror: PanelLayout.mirrorWidgetWidth
         case .system: PanelLayout.systemWidgetWidth
         case .github: PanelLayout.githubWidgetWidth
+        case .aiUsage: PanelLayout.aiUsageWidgetWidth
         case .companion: PanelLayout.companionWidgetWidth
         case .habits: PanelLayout.habitsWidgetWidth
         case .translator: PanelLayout.translatorWidgetWidth
@@ -140,6 +148,7 @@ enum BangBarSettings {
         static let showMirrorWidget = "showMirrorWidget"
         static let showSystemWidget = "showSystemWidget"
         static let showGitHubWidget = "showGitHubWidget"
+        static let showAIUsageWidget = "showAIUsageWidget"
         static let showCompanionWidget = "showCompanionWidget"
         static let showHabitsWidget = "showHabitsWidget"
         static let showTranslatorWidget = "showTranslatorWidget"
@@ -192,6 +201,7 @@ enum BangBarSettings {
             Key.showMirrorWidget: true,
             Key.showSystemWidget: false,
             Key.showGitHubWidget: false,
+            Key.showAIUsageWidget: false,
             Key.showCompanionWidget: false,
             Key.showHabitsWidget: false,
             Key.showTranslatorWidget: false,
@@ -300,6 +310,10 @@ enum BangBarSettings {
 
     static var showGitHubWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showGitHubWidget) as? Bool ?? false
+    }
+
+    static var showAIUsageWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showAIUsageWidget) as? Bool ?? false
     }
 
     static var showCompanionWidget: Bool {

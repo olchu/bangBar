@@ -290,7 +290,7 @@ class HoverPanel: NSPanel {
         isHiding = false
 
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        reassertAllSpacesMembership()
 
         guard let targetScreen = preferredScreen ?? screen ?? NSScreen.main else {
             logger.error("Panel recovery could not find a screen")
@@ -306,9 +306,35 @@ class HoverPanel: NSPanel {
             orderFrontRegardless()
         } else if isVisible {
             orderOut(nil)
+        } else {
+            refreshSpaceMembershipWhileHidden(on: targetScreen)
         }
 
         logger.notice("Panel recovered; visible=\(self.isVisible) compact=\(self.state.isCompact)")
+    }
+
+    /// WindowServer can silently drop a `.canJoinAllSpaces` window's cross-space membership across
+    /// display sleep/wake, after which the window only shows on whichever Space was active at wake time.
+    /// Re-assigning the same collectionBehavior value is a no-op to AppKit, so it must be cleared first
+    /// to force WindowServer to recompute membership on the next reassignment.
+    private func reassertAllSpacesMembership() {
+        collectionBehavior = []
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+    }
+
+    /// When the panel is hidden, `reassertAllSpacesMembership()` alone doesn't force WindowServer to
+    /// recompute membership because the window isn't on screen. Briefly ordering it front at zero alpha
+    /// (then back out) forces that recomputation without a visible flash, so the next hover-triggered
+    /// `slideIn` shows the panel on whatever Space the user is actually on.
+    private func refreshSpaceMembershipWhileHidden(on screen: NSScreen) {
+        let restoreFrame = frame
+        let previousAlpha = alphaValue
+        alphaValue = 0
+        setFrame(concealedCompactFrame(on: screen), display: false)
+        orderFrontRegardless()
+        orderOut(nil)
+        setFrame(restoreFrame, display: false)
+        alphaValue = previousAlpha
     }
 
     func slideOut() {

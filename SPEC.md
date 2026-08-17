@@ -131,6 +131,7 @@ Album artwork should read visually as one continuous element between compact and
   - `MirrorWidget`: 94×94
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
+  - `AIUsageWidget`: 190×110
   - `HabitsWidget`: 220×110
   - `TranslatorWidget`: 240×110
   - divider: 1×60
@@ -976,6 +977,83 @@ struct NotionTask: Identifiable {
 - Public Notion API only; the only secret is the user's own token, held in Keychain, never committed.
 - No third-party dependencies; `URLSession` + `Codable` only.
 - Enabled/disabled via a "Notion" toggle in Settings and included in widget ordering (`BangBarWidget.notion`).
+
+---
+
+### AIUsageWidget
+
+**Goal:** Show how much of the Codex and Claude Code subscription rate limits have been used, mirroring the always-on-menu-bar UX of [CodexBar](https://codexbar.app) but scoped to the two providers the user actually uses. Fully automatic — no API key entry, no settings beyond the enable toggle.
+
+**Concept:** BangBar reuses the OAuth session each CLI already created on this Mac (the same approach CodexBar documents in its own provider guides) and calls the same usage endpoints the official `codex` and `claude` CLIs call. It never logs in, never stores a password, and never writes back to either CLI's credential file.
+
+**Codex data source:**
+- Reads `~/.codex/auth.json` (or `$CODEX_HOME/auth.json` when set). Shape:
+  ```json
+  {
+    "OPENAI_API_KEY": null,
+    "tokens": { "id_token": "...", "access_token": "...", "refresh_token": "...", "account_id": "..." },
+    "last_refresh": "2026-08-01T12:00:00Z"
+  }
+  ```
+- Calls `GET https://chatgpt.com/backend-api/wham/usage` with headers `Authorization: Bearer <tokens.access_token>`, `ChatGPT-Account-Id: <tokens.account_id>`, `User-Agent: BangBar`.
+- Response:
+  ```json
+  {
+    "plan_type": "pro",
+    "rate_limit": {
+      "primary_window": { "used_percent": 15, "reset_at": 1735401600, "limit_window_seconds": 18000 },
+      "secondary_window": { "used_percent": 5, "reset_at": 1735920000, "limit_window_seconds": 604800 }
+    }
+  }
+  ```
+  `primary_window` and `secondary_window` do **not** reliably mean "5h" and "7d" — some ChatGPT plans expose only one pooled window (e.g. a weekly-only limit shared across Codex/Work/Workspace Agents), which still arrives as `primary_window`. The displayed duration label (`5h`, `36h`, `7d`, …) is derived from that window's own `limit_window_seconds`, never assumed from its position in the response. `reset_at` is Unix seconds.
+- BangBar is read-only: it never redeems `refresh_token` or rewrites `auth.json`. Token refresh remains owned by the Codex CLI.
+
+**Claude data source:**
+- Credential lookup order:
+  1. `~/.claude/.credentials.json` → `.claudeAiOauth.accessToken`.
+  2. macOS Keychain generic-password item named `Claude Code-credentials` (the item Claude Code itself creates), read via `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w` through `Process` — the same `Process`-based system-call pattern already used for `osascript` elsewhere in this app. The JSON payload is parsed for `.claudeAiOauth.accessToken`; an item containing only `.mcpOAuth` (no `claudeAiOauth`) is treated as Claude being unavailable.
+  - The first Keychain read triggers a normal macOS access prompt naming BangBar; choosing "Always Allow" stops future prompts. A "Deny" is treated the same as "Claude not signed in" (row hidden), never surfaced as an error.
+- Calls `GET https://api.anthropic.com/api/oauth/usage` with headers `Authorization: Bearer <accessToken>`, `anthropic-beta: oauth-2025-04-20`.
+- Response fields used: `five_hour.utilization` / `five_hour.resets_at` (labeled `5h`), `seven_day.utilization` / `seven_day.resets_at` (labeled `7d`) — these labels are fixed because Anthropic's field names are a stable contract, unlike Codex's positional windows. Model-scoped windows (`seven_day_sonnet`, `seven_day_opus`) and `extra_usage` are ignored in v1.
+
+**Availability and error handling:**
+- A provider with no readable credentials is treated as "not in use" and its row is omitted entirely — no error state, no empty placeholder for that provider alone.
+- `401`/`403` on either endpoint also means "not signed in" for display purposes (token expired/revoked) and hides the row the same way.
+- A transient failure (network error, 5xx, decode failure) for a provider that previously loaded successfully keeps showing its last good snapshot rather than disappearing; no explicit "stale" marker in v1.
+- When neither provider has usable credentials, the widget shows one quiet empty state: a gauge icon and "Sign in with `codex` or `claude` in Terminal".
+
+**Service:** `AIUsageService: ObservableObject`
+- `@Published private(set) var codex: ProviderUsage?` and `@Published private(set) var claude: ProviderUsage?`, each `nil` when that provider is unavailable.
+  ```swift
+  struct ProviderUsage {
+      let planLabel: String?
+      let primary: UsageWindow?    // Codex: primary_window; Claude: five_hour
+      let secondary: UsageWindow?  // Codex: secondary_window; Claude: seven_day
+  }
+  struct UsageWindow {
+      let label: String   // e.g. "5h", "36h", "7d" — derived from the window's own duration for Codex, fixed for Claude
+      let usedPercent: Int
+      let resetsAt: Date?
+  }
+  ```
+- Polls both providers independently every 5 minutes while the widget is visible, matching `GitHubContributionsService`'s `.task(id:)` + `Task.sleep` loop; publishes on the main actor.
+- All file, Keychain, and network work happens off the main thread; only the published snapshot hops to `DispatchQueue.main` / `@MainActor`, per the project's service convention.
+
+**Display:**
+- Fixed 190×110 surface, no scrolling.
+- Header row: small gauge SF Symbol + "AI Usage" label.
+- One block per available provider, in fixed order Codex then Claude: provider name + plan label (right-aligned, e.g. "Pro", "Max"), then one thin capsule progress bar per available window (primary, then secondary — Codex plans without a separate weekly cap show only one bar), each labeled with its actual duration and, trailing the bar on the same line, the used percentage plus a short countdown to when it unlocks (e.g. `100% ·3d`, `22% ·14h`, `4% ·22m`, or `·now` once the reset time has passed). A window at ≥90% used switches its bar and percentage to orange; the countdown stays dim regardless. The countdown is computed at render time from the window's `resetsAt`, so it advances on each 5-minute refresh rather than ticking live.
+- Only one block renders when just one provider is signed in; the block fills the widget's vertical space instead of leaving a gap.
+- No manual refresh control in v1.
+
+**Settings:**
+- Single "AI Usage" toggle in Settings → Widgets → General (`BangBarSettings.Key.showAIUsageWidget`, default off, like GitHub/System/Habits/Translator). No dedicated settings sub-tab — there is nothing to configure.
+
+**Constraints:**
+- Only calls the same public-facing endpoints the official CLIs call, using the user's own already-authorized session; no API key is ever entered or committed.
+- No third-party dependencies; `URLSession` + `Codable` + `Process` (for the Keychain read) only.
+- Included in widget ordering as `BangBarWidget.aiUsage`.
 
 ---
 
