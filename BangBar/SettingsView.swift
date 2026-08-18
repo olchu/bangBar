@@ -39,6 +39,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.panelActivationThreshold) private var panelActivationThreshold = 0
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
+    @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
+    @AppStorage(BangBarSettings.Key.pageSwipeInverted) private var pageSwipeInverted = false
     @AppStorage(BangBarSettings.Key.pomodoroWorkMinutes) private var pomodoroWorkMinutes = 25
     @AppStorage(BangBarSettings.Key.pomodoroShortBreakMinutes) private var pomodoroShortBreakMinutes = 5
     @AppStorage(BangBarSettings.Key.pomodoroLongBreakMinutes) private var pomodoroLongBreakMinutes = 15
@@ -57,6 +59,7 @@ struct SettingsView: View {
     @State private var selectedSettingsTab = SettingsTab.widgets
     @State private var selectedWidgetTab = WidgetConfigurationTab.general
     @State private var widgetOrder = BangBarWidget.visibleCases
+    @State private var widgetPages: [String: Int] = [:]
     @State private var draggedWidget: BangBarWidget?
     @StateObject private var habits = HabitService.shared
 
@@ -93,9 +96,13 @@ struct SettingsView: View {
         .ignoresSafeArea(.container, edges: .top)
         .onAppear {
             loadWidgetOrder()
+            loadWidgetPages()
         }
         .onChange(of: widgetOrderRaw) { _, _ in
             loadWidgetOrder()
+        }
+        .onChange(of: widgetPagesRaw) { _, _ in
+            loadWidgetPages()
         }
         .onReceive(NotificationCenter.default.publisher(for: .bangBarSettingsWillOpen)) { _ in
             selectedSettingsTab = .widgets
@@ -347,6 +354,22 @@ struct SettingsView: View {
                 SettingsSectionLabel("AVAILABLE WIDGETS")
                 widgetsCard(accentColor: accentColor)
             }
+
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("PAGE SWIPE")
+                pageSwipeCard(accentColor: accentColor)
+            }
+        }
+    }
+
+    private func pageSwipeCard(accentColor: Color) -> some View {
+        SettingsCard {
+            SettingsToggleRow(
+                title: "Invert page swipe direction",
+                subtitle: "Swaps which two-finger swipe direction moves to the next page.",
+                isOn: $pageSwipeInverted,
+                accentColor: accentColor
+            )
         }
     }
 
@@ -651,6 +674,9 @@ struct SettingsView: View {
                         widget: widget,
                         isEnabled: toggleBinding(for: widget),
                         canEnable: canEnableWidget(widget),
+                        fitsCurrentPage: widgetFitsCurrentPage(widget),
+                        page: pageBinding(for: widget),
+                        canAssignToPage: { canAssign(widget, toPage: $0) },
                         accentColor: accentColor
                     )
                     .onDrag {
@@ -708,13 +734,66 @@ struct SettingsView: View {
         toggleBinding(for: widget).wrappedValue
     }
 
+    private func widgetPage(for widget: BangBarWidget) -> Int {
+        widgetPages[widget.rawValue] ?? 0
+    }
+
+    private func page0EnabledWidgets(excluding excluded: BangBarWidget? = nil) -> [BangBarWidget] {
+        widgetOrder.filter { $0 != excluded && isWidgetEnabled($0) && widgetPage(for: $0) == 0 }
+    }
+
+    private func page1EnabledWidgets(excluding excluded: BangBarWidget? = nil) -> [BangBarWidget] {
+        widgetOrder.filter { $0 != excluded && isWidgetEnabled($0) && widgetPage(for: $0) == 1 }
+    }
+
     private func canEnableWidget(_ widget: BangBarWidget) -> Bool {
         if isWidgetEnabled(widget) { return true }
 
-        let enabledWidgets = widgetOrder.filter(isWidgetEnabled)
-        let proposedWidgets = widgetOrder.filter { enabledWidgets.contains($0) || $0 == widget }
-        return PanelLayout.expandedWidth(for: proposedWidgets)
-            <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        if widgetPage(for: widget) == 0 {
+            let proposedWidgets = page0EnabledWidgets() + [widget]
+            return PanelLayout.expandedWidth(for: proposedWidgets)
+                <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        } else {
+            let proposedWidgets = page1EnabledWidgets() + [widget]
+            let page0Width = PanelLayout.expandedWidth(for: page0EnabledWidgets())
+            return PanelLayout.expandedWidth(for: proposedWidgets) <= page0Width
+        }
+    }
+
+    private func canAssign(_ widget: BangBarWidget, toPage targetPage: Int) -> Bool {
+        guard isWidgetEnabled(widget) else { return true }
+
+        if targetPage == 0 {
+            let newPage0 = page0EnabledWidgets(excluding: widget) + [widget]
+            return PanelLayout.expandedWidth(for: newPage0)
+                <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        } else {
+            let newPage0Width = PanelLayout.expandedWidth(for: page0EnabledWidgets(excluding: widget))
+            let newPage1 = page1EnabledWidgets(excluding: widget) + [widget]
+            return PanelLayout.expandedWidth(for: newPage1) <= newPage0Width
+        }
+    }
+
+    private func widgetFitsCurrentPage(_ widget: BangBarWidget) -> Bool {
+        guard isWidgetEnabled(widget) else { return true }
+
+        if widgetPage(for: widget) == 0 {
+            let maxWidth = PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+            return PanelLayout.widgetsThatFit(page0EnabledWidgets(), maximumWidth: maxWidth).contains(widget)
+        } else {
+            let page0Width = PanelLayout.expandedWidth(for: page0EnabledWidgets())
+            return PanelLayout.widgetsThatFit(page1EnabledWidgets(), maximumWidth: page0Width).contains(widget)
+        }
+    }
+
+    private func pageBinding(for widget: BangBarWidget) -> Binding<Int> {
+        Binding(
+            get: { widgetPage(for: widget) },
+            set: { newPage in
+                widgetPages[widget.rawValue] = newPage
+                persistWidgetPages()
+            }
+        )
     }
 
     private func loadWidgetOrder() {
@@ -727,6 +806,17 @@ struct SettingsView: View {
         let normalizedOrder = BangBarSettings.widgetOrderRaw(from: widgetOrder)
         if widgetOrderRaw != normalizedOrder {
             widgetOrderRaw = normalizedOrder
+        }
+    }
+
+    private func loadWidgetPages() {
+        widgetPages = BangBarSettings.widgetPages(from: widgetPagesRaw)
+    }
+
+    private func persistWidgetPages() {
+        let normalizedPages = BangBarSettings.widgetPagesRaw(from: widgetPages)
+        if widgetPagesRaw != normalizedPages {
+            widgetPagesRaw = normalizedPages
         }
     }
 
@@ -1607,7 +1697,20 @@ private struct WidgetSettingsRow: View {
     let widget: BangBarWidget
     @Binding var isEnabled: Bool
     let canEnable: Bool
+    let fitsCurrentPage: Bool
+    @Binding var page: Int
+    let canAssignToPage: (Int) -> Bool
     let accentColor: Color
+
+    private var spaceWarning: String? {
+        if !canEnable {
+            return "Not enough panel space — disable another widget"
+        }
+        if isEnabled, !fitsCurrentPage {
+            return "Not enough room on this page — free up space to show it"
+        }
+        return nil
+    }
 
     var body: some View {
         HStack(spacing: 18) {
@@ -1620,12 +1723,23 @@ private struct WidgetSettingsRow: View {
                     .font(SettingsTheme.rowFont)
                     .foregroundStyle(SettingsTheme.primaryText)
 
-                Text(canEnable ? widget.subtitle : "Not enough panel space — disable another widget")
+                Text(spaceWarning ?? widget.subtitle)
                     .font(SettingsTheme.captionFont)
-                    .foregroundStyle(canEnable ? SettingsTheme.secondaryText : accentColor.opacity(0.8))
+                    .foregroundStyle(spaceWarning == nil ? SettingsTheme.secondaryText : accentColor.opacity(0.8))
             }
 
             Spacer()
+
+            if isEnabled {
+                Picker("", selection: $page) {
+                    Text("Page 1").tag(0).disabled(!canAssignToPage(0))
+                    Text("Page 2").tag(1).disabled(!canAssignToPage(1))
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 90)
+                .tint(accentColor)
+            }
 
             Toggle("", isOn: $isEnabled)
                 .labelsHidden()

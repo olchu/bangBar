@@ -108,6 +108,23 @@ enum PanelLayout {
         return min(maximumExpandedWidth, screen.visibleFrame.width - expandedScreenEdgeInset * 2)
     }
 
+    static func widgetPage(for widget: BangBarWidget) -> Int {
+        let raw = UserDefaults.standard.string(forKey: BangBarSettings.Key.widgetPages) ?? "{}"
+        return BangBarSettings.widgetPages(from: raw)[widget.rawValue] ?? 0
+    }
+
+    static func enabledWidgets(forPage page: Int) -> [BangBarWidget] {
+        enabledWidgets.filter { widgetPage(for: $0) == page }
+    }
+
+    static func primaryPageWidth(on screen: NSScreen?) -> CGFloat {
+        expandedWidth(for: widgetsThatFit(enabledWidgets(forPage: 0), maximumWidth: maximumExpandedWidth(on: screen)))
+    }
+
+    static func fittedSecondaryWidgets(on screen: NSScreen?) -> [BangBarWidget] {
+        widgetsThatFit(enabledWidgets(forPage: 1), maximumWidth: primaryPageWidth(on: screen))
+    }
+
     static func expandedWidth(for widgets: [BangBarWidget]) -> CGFloat {
         guard !widgets.isEmpty else {
             return expandedHorizontalPadding * 2 + emptyWidgetWidth
@@ -209,4 +226,5 @@ final class PanelState: ObservableObject {
     @Published var showsClipboardHistory = false
     @Published var clipboardFilter: ClipboardHistoryFilter = .all
     @Published var topSafeInset = PanelLayout.topBarHeight
+    @Published var currentPage = 0
 }

@@ -20,6 +20,8 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
+    @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
+    @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @StateObject private var mirror = MirrorCameraService()
     @StateObject private var calendarEvents = CalendarEventService()
     @StateObject private var reminders = ReminderService()
@@ -47,15 +49,10 @@ struct PanelContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     ZStack {
-                        HStack(spacing: PanelLayout.expandedWidgetSpacing) {
-                            expandedWidgets(hideExpandedArtwork: hideExpandedArtwork)
-                        }
-                        .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
-                        .padding(.top, state.topSafeInset)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .opacity(state.showsClipboardHistory ? 0 : 1)
-                        .allowsHitTesting(!state.showsClipboardHistory)
-                        .accessibilityHidden(state.showsClipboardHistory)
+                        pagedWidgets(hideExpandedArtwork: hideExpandedArtwork, containerWidth: geo.size.width)
+                            .opacity(state.showsClipboardHistory ? 0 : 1)
+                            .allowsHitTesting(!state.showsClipboardHistory)
+                            .accessibilityHidden(state.showsClipboardHistory)
 
                         ClipboardHistoryView(
                             service: clipboardHistory,
@@ -65,6 +62,11 @@ struct PanelContentView: View {
                         .opacity(state.showsClipboardHistory ? 1 : 0)
                         .allowsHitTesting(state.showsClipboardHistory)
                         .accessibilityHidden(!state.showsClipboardHistory)
+
+                        if !state.showsClipboardHistory, !activeWidgets(forPage: 1).isEmpty {
+                            pageIndicator
+                                .allowsHitTesting(false)
+                        }
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.10), value: state.contentVisible)
@@ -170,17 +172,58 @@ struct PanelContentView: View {
     }
 
     @ViewBuilder
-    private func expandedWidgets(hideExpandedArtwork: Bool) -> some View {
-        let widgets = activeWidgets
+    private func pagedWidgets(hideExpandedArtwork: Bool, containerWidth: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            widgetRow(for: activeWidgets(forPage: 0), hideExpandedArtwork: hideExpandedArtwork)
+                .offset(x: CGFloat(0 - state.currentPage) * containerWidth)
 
-        if widgets.isEmpty {
-            EmptyWidgetsView()
-                .frame(
-                    width: PanelLayout.emptyWidgetWidth,
-                    height: PanelLayout.nowPlayingWidgetHeight,
-                    alignment: .center
-                )
-        } else {
+            let secondPageWidgets = activeWidgets(forPage: 1)
+            if !secondPageWidgets.isEmpty {
+                widgetRow(for: secondPageWidgets, hideExpandedArtwork: hideExpandedArtwork)
+                    .offset(x: CGFloat(1 - state.currentPage) * containerWidth)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .clipped()
+        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.currentPage)
+    }
+
+    private var pageIndicator: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<2, id: \.self) { page in
+                Circle()
+                    .fill(page == state.currentPage ? Color(hex: accentColorHex) : Color.white.opacity(0.25))
+                    .frame(width: 5, height: 5)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func widgetRow(for widgets: [BangBarWidget], hideExpandedArtwork: Bool) -> some View {
+        Group {
+            if widgets.isEmpty {
+                EmptyWidgetsView()
+                    .frame(
+                        width: PanelLayout.emptyWidgetWidth,
+                        height: PanelLayout.nowPlayingWidgetHeight,
+                        alignment: .center
+                    )
+            } else {
+                HStack(spacing: PanelLayout.expandedWidgetSpacing) {
+                    widgetContent(for: widgets, hideExpandedArtwork: hideExpandedArtwork)
+                }
+            }
+        }
+        .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
+        .padding(.top, state.topSafeInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func widgetContent(for widgets: [BangBarWidget], hideExpandedArtwork: Bool) -> some View {
+        Group {
             ForEach(Array(widgets.enumerated()), id: \.element) { index, widget in
                 if index > 0 {
                     Divider()
@@ -250,12 +293,15 @@ struct PanelContentView: View {
         }
     }
 
-    private var activeWidgets: [BangBarWidget] {
-        let enabledWidgets = BangBarSettings.widgetOrder(from: widgetOrderRaw).filter(isWidgetVisible)
-        return PanelLayout.widgetsThatFit(
-            enabledWidgets,
-            maximumWidth: PanelLayout.maximumExpandedWidth(on: NSScreen.main)
-        )
+    private func activeWidgets(forPage page: Int) -> [BangBarWidget] {
+        let pageAssignments = BangBarSettings.widgetPages(from: widgetPagesRaw)
+        let enabledWidgets = BangBarSettings.widgetOrder(from: widgetOrderRaw)
+            .filter(isWidgetVisible)
+            .filter { (pageAssignments[$0.rawValue] ?? 0) == page }
+        let maximumWidth = page == 0
+            ? PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+            : PanelLayout.expandedWidth(for: activeWidgets(forPage: 0))
+        return PanelLayout.widgetsThatFit(enabledWidgets, maximumWidth: maximumWidth)
     }
 
     private func isWidgetVisible(_ widget: BangBarWidget) -> Bool {

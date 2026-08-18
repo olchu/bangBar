@@ -173,6 +173,8 @@ enum BangBarSettings {
         static let calendarAlertBackgroundOpacity = "calendarAlertBackgroundOpacity"
         static let calendarAlertBlurIntensity = "calendarAlertBlurIntensity"
         static let widgetOrder = "widgetOrder"
+        static let widgetPages = "widgetPages"
+        static let pageSwipeInverted = "pageSwipeInverted"
         static let pomodoroWorkMinutes = "pomodoroWorkMinutes"
         static let pomodoroShortBreakMinutes = "pomodoroShortBreakMinutes"
         static let pomodoroLongBreakMinutes = "pomodoroLongBreakMinutes"
@@ -223,6 +225,8 @@ enum BangBarSettings {
             Key.calendarAlertBackgroundOpacity: 62,
             Key.calendarAlertBlurIntensity: 100,
             Key.widgetOrder: defaultWidgetOrderRaw,
+            Key.widgetPages: "{}",
+            Key.pageSwipeInverted: false,
             Key.pomodoroWorkMinutes: 25,
             Key.pomodoroShortBreakMinutes: 5,
             Key.pomodoroLongBreakMinutes: 15,
@@ -260,6 +264,22 @@ enum BangBarSettings {
 
     static func widgetOrderRaw(from widgets: [BangBarWidget]) -> String {
         widgets.map(\.rawValue).joined(separator: ",")
+    }
+
+    static func widgetPages(from rawValue: String) -> [String: Int] {
+        guard let data = rawValue.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String: Int].self, from: data) else {
+            return [:]
+        }
+        return decoded
+    }
+
+    static func widgetPagesRaw(from pages: [String: Int]) -> String {
+        guard let data = try? JSONEncoder().encode(pages),
+              let raw = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return raw
     }
 
     static func selectedCalendarIds(from rawValue: String) -> [String]? {

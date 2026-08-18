@@ -61,7 +61,7 @@ class HoverPanel: NSPanel {
         let screen = NSScreen.main!
         let expandedWidth = PanelLayout.expandedWidth(
             for: PanelLayout.widgetsThatFit(
-                PanelLayout.enabledWidgets,
+                PanelLayout.enabledWidgets(forPage: 0),
                 maximumWidth: PanelLayout.maximumExpandedWidth(on: screen)
             )
         )
@@ -116,6 +116,19 @@ class HoverPanel: NSPanel {
         }
         contentView.onSwipeUp = { [weak self] in
             self?.handleClipboardSwipe(isDownward: false)
+        }
+        contentView.shouldHandlePageSwipes = { [weak self] in
+            guard let self else { return false }
+            return self.state.isExpanded
+                && !self.state.isCompact
+                && !self.state.showsClipboardHistory
+                && !PanelLayout.fittedSecondaryWidgets(on: self.screen).isEmpty
+        }
+        contentView.onPageSwipeNext = { [weak self] in
+            self?.handlePageSwipe(isNext: true)
+        }
+        contentView.onPageSwipePrevious = { [weak self] in
+            self?.handlePageSwipe(isNext: false)
         }
         contentView.wantsLayer = true
         self.contentView = contentView
@@ -191,6 +204,22 @@ class HoverPanel: NSPanel {
         TooltipManager.shared.hide()
         withAnimation(.easeOut(duration: 0.16)) {
             state.showsClipboardHistory = shouldShowClipboard
+        }
+    }
+
+    private func handlePageSwipe(isNext: Bool) {
+        let isInverted = UserDefaults.standard.bool(forKey: BangBarSettings.Key.pageSwipeInverted)
+        advancePage(by: (isNext != isInverted) ? 1 : -1)
+    }
+
+    private func advancePage(by delta: Int) {
+        let pageCount = PanelLayout.fittedSecondaryWidgets(on: screen).isEmpty ? 1 : 2
+        let newPage = state.currentPage + delta
+        guard newPage >= 0, newPage < pageCount else { return }
+
+        TooltipManager.shared.suppressShowing(for: 0.5)
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+            state.currentPage = newPage
         }
     }
 
@@ -344,6 +373,7 @@ class HoverPanel: NSPanel {
         isHiding = true
         state.contentVisible = false
         state.showsClipboardHistory = false
+        state.currentPage = 0
 
         if clipboardHistory.isCollectingImages || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
             enterCompactMode()
@@ -371,7 +401,7 @@ class HoverPanel: NSPanel {
     private func expandedFrame(on screen: NSScreen) -> NSRect {
         let width = PanelLayout.expandedWidth(
             for: PanelLayout.widgetsThatFit(
-                PanelLayout.enabledWidgets,
+                PanelLayout.enabledWidgets(forPage: 0),
                 maximumWidth: PanelLayout.maximumExpandedWidth(on: screen)
             )
         )
@@ -674,9 +704,14 @@ final class HoverHostingView<Content: View>: NSHostingView<Content>, PanelScroll
     var shouldHandleVerticalSwipes: (() -> Bool)?
     var onSwipeDown: (() -> Void)?
     var onSwipeUp: (() -> Void)?
+    var shouldHandlePageSwipes: (() -> Bool)?
+    var onPageSwipeNext: (() -> Void)?
+    var onPageSwipePrevious: (() -> Void)?
     private var hoverTrackingArea: NSTrackingArea?
     private var verticalSwipeDistance: CGFloat = 0
     private var didTriggerVerticalSwipe = false
+    private var horizontalSwipeDistance: CGFloat = 0
+    private var didTriggerHorizontalSwipe = false
     private let swipeActivationDistance: CGFloat = 42
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
@@ -717,9 +752,12 @@ final class HoverHostingView<Content: View>: NSHostingView<Content>, PanelScroll
     }
 
     func handlePanelScrollWheel(_ event: NSEvent) -> Bool {
+        let handleVertical = shouldHandleVerticalSwipes?() == true
+        let handlePaging = shouldHandlePageSwipes?() == true
+
         guard event.hasPreciseScrollingDeltas,
               event.momentumPhase.isEmpty,
-              shouldHandleVerticalSwipes?() == true,
+              handleVertical || handlePaging,
               !containsSwipeExclusion(at: event.locationInWindow),
               !isInsideVerticalScrollView(at: event.locationInWindow) else {
             resetSwipeTrackingIfNeeded(for: event)
@@ -729,30 +767,53 @@ final class HoverHostingView<Content: View>: NSHostingView<Content>, PanelScroll
         if event.phase.contains(.began) {
             verticalSwipeDistance = 0
             didTriggerVerticalSwipe = false
+            horizontalSwipeDistance = 0
+            didTriggerHorizontalSwipe = false
+            TooltipManager.shared.hide()
         }
 
-        guard abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) else {
+        if handleVertical, abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) {
+            let deviceNormalizedDelta = event.isDirectionInvertedFromDevice
+                ? -event.scrollingDeltaY
+                : event.scrollingDeltaY
+            verticalSwipeDistance += deviceNormalizedDelta
+
+            if !didTriggerVerticalSwipe,
+               verticalSwipeDistance >= swipeActivationDistance {
+                didTriggerVerticalSwipe = true
+                onSwipeDown?()
+            } else if !didTriggerVerticalSwipe,
+                      verticalSwipeDistance <= -swipeActivationDistance {
+                didTriggerVerticalSwipe = true
+                onSwipeUp?()
+            }
+
             resetSwipeTrackingIfNeeded(for: event)
-            return false
+            return true
         }
 
-        let deviceNormalizedDelta = event.isDirectionInvertedFromDevice
-            ? -event.scrollingDeltaY
-            : event.scrollingDeltaY
-        verticalSwipeDistance += deviceNormalizedDelta
+        if handlePaging, abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) {
+            let deviceNormalizedDelta = event.isDirectionInvertedFromDevice
+                ? -event.scrollingDeltaX
+                : event.scrollingDeltaX
+            horizontalSwipeDistance += deviceNormalizedDelta
 
-        if !didTriggerVerticalSwipe,
-           verticalSwipeDistance >= swipeActivationDistance {
-            didTriggerVerticalSwipe = true
-            onSwipeDown?()
-        } else if !didTriggerVerticalSwipe,
-                  verticalSwipeDistance <= -swipeActivationDistance {
-            didTriggerVerticalSwipe = true
-            onSwipeUp?()
+            if !didTriggerHorizontalSwipe,
+               horizontalSwipeDistance <= -swipeActivationDistance {
+                didTriggerHorizontalSwipe = true
+                onPageSwipeNext?()
+            } else if !didTriggerHorizontalSwipe,
+                      horizontalSwipeDistance >= swipeActivationDistance {
+                didTriggerHorizontalSwipe = true
+                onPageSwipePrevious?()
+            }
+
+            resetSwipeTrackingIfNeeded(for: event)
+            return true
         }
 
         resetSwipeTrackingIfNeeded(for: event)
-        return true
+        return false
     }
 
     private func isInsideVerticalScrollView(at windowPoint: NSPoint) -> Bool {
@@ -791,6 +852,8 @@ final class HoverHostingView<Content: View>: NSHostingView<Content>, PanelScroll
         if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
             verticalSwipeDistance = 0
             didTriggerVerticalSwipe = false
+            horizontalSwipeDistance = 0
+            didTriggerHorizontalSwipe = false
         }
     }
 }
