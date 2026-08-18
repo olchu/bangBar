@@ -244,7 +244,7 @@ struct PanelContentView: View {
                         isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
                     )
                 case .translator:
-                    TranslatorWidget()
+                    TranslatorWidget(isPanelExpanded: state.isExpanded)
                 }
             }
         }

@@ -3,6 +3,8 @@ import SwiftUI
 import Translation
 
 struct TranslatorWidget: View {
+    let isPanelExpanded: Bool
+
     @AppStorage(BangBarSettings.Key.translatorSourceIsRussian) private var sourceIsRussian = true
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var sourceText = ""
@@ -26,8 +28,19 @@ struct TranslatorWidget: View {
         .translationTask(configuration) { session in
             await performTranslation(using: session)
         }
+        .onChange(of: isPanelExpanded) { _, expanded in
+            if !expanded { reset() }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Russian and English translator")
+    }
+
+    private func reset() {
+        sourceText = ""
+        translatedText = ""
+        errorMessage = nil
+        configuration = nil
+        isTranslating = false
     }
 
     private var languageHeader: some View {
