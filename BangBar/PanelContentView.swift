@@ -215,7 +215,10 @@ struct PanelContentView: View {
                 case .pomodoro:
                     PomodoroWidget(service: pomodoro)
                 case .reminders:
-                    RemindersWidget(service: reminders)
+                    RemindersWidget(
+                        service: reminders,
+                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                    )
                         .frame(
                             width: PanelLayout.remindersWidgetWidth,
                             height: PanelLayout.nowPlayingWidgetHeight,

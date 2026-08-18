@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RemindersWidget: View {
     @ObservedObject var service: ReminderService
+    let isPanelContentVisible: Bool
 
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     private var accentColor: Color { Color(hex: accentColorHex) }
@@ -77,7 +78,7 @@ struct RemindersWidget: View {
     private var activeContent: some View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(service.items.prefix(maxVisible)) { item in
-                ReminderRow(item: item, accentColor: accentColor) {
+                ReminderRow(item: item, accentColor: accentColor, isPanelContentVisible: isPanelContentVisible) {
                     service.completeReminder(id: item.id)
                 }
             }
@@ -126,6 +127,7 @@ struct RemindersWidget: View {
 private struct ReminderRow: View {
     let item: ReminderItem
     let accentColor: Color
+    let isPanelContentVisible: Bool
     let onComplete: () -> Void
 
     @State private var completing = false
@@ -212,7 +214,7 @@ private struct ReminderRow: View {
         .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
         .contentShape(Rectangle())
         .overlay(
-            ReminderTooltipTrackingView(text: tooltipText)
+            ReminderTooltipTrackingView(text: tooltipText, isPanelContentVisible: isPanelContentVisible)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
     }
@@ -237,20 +239,29 @@ private struct ReminderRow: View {
 
 private struct ReminderTooltipTrackingView: NSViewRepresentable {
     let text: String
+    let isPanelContentVisible: Bool
 
     func makeNSView(context: Context) -> ReminderTooltipTrackingNSView {
         let view = ReminderTooltipTrackingNSView(frame: .zero)
         view.text = text
+        view.isPanelContentVisible = isPanelContentVisible
         return view
     }
 
     func updateNSView(_ nsView: ReminderTooltipTrackingNSView, context: Context) {
         nsView.text = text
+        nsView.isPanelContentVisible = isPanelContentVisible
     }
 }
 
 private final class ReminderTooltipTrackingNSView: NSView {
     var text = ""
+    var isPanelContentVisible = true {
+        didSet {
+            guard isPanelContentVisible != oldValue, !isPanelContentVisible else { return }
+            TooltipManager.shared.hide()
+        }
+    }
     private var trackingArea: NSTrackingArea?
     private var canShowDuringCurrentHover = true
 
@@ -276,6 +287,8 @@ private final class ReminderTooltipTrackingNSView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        guard isPanelContentVisible else { return }
+
         guard TooltipManager.shared.canShow else {
             canShowDuringCurrentHover = false
             TooltipManager.shared.hide()
@@ -315,6 +328,7 @@ private final class ReminderTooltipTrackingNSView: NSView {
 
     private func showTooltip(for event: NSEvent) {
         guard canShowDuringCurrentHover,
+              isPanelContentVisible,
               let window,
               window.isVisible,
               !isHiddenOrHasHiddenAncestor

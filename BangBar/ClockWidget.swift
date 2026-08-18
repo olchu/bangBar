@@ -51,14 +51,15 @@ struct ClockWidget: View {
                         .offset(y: -1)
                     Text(minuteString)
                 }
-                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.94))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
                 .fixedSize(horizontal: true, vertical: false)
+                .padding(.trailing, 4)
 
-                Spacer(minLength: 8)
+                //Spacer(minLength: 4)
 
                 inlineDate
             }
