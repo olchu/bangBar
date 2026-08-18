@@ -59,12 +59,7 @@ class HoverPanel: NSPanel {
 
     convenience init() {
         let screen = NSScreen.main!
-        let expandedWidth = PanelLayout.expandedWidth(
-            for: PanelLayout.widgetsThatFit(
-                PanelLayout.enabledWidgets(forPage: 0),
-                maximumWidth: PanelLayout.maximumExpandedWidth(on: screen)
-            )
-        )
+        let expandedWidth = PanelLayout.expandedWidth(forPage: 0, on: screen)
         let initialRect = NSRect(
             x: screen.frame.midX - expandedWidth / 2,
             y: screen.frame.maxY - PanelLayout.expandedHeight(on: screen),
@@ -122,7 +117,8 @@ class HoverPanel: NSPanel {
             return self.state.isExpanded
                 && !self.state.isCompact
                 && !self.state.showsClipboardHistory
-                && !PanelLayout.fittedSecondaryWidgets(on: self.screen).isEmpty
+                && !self.isAnimatingFrame
+                && !PanelLayout.fittedWidgets(forPage: 1, on: NSScreen.main).isEmpty
         }
         contentView.onPageSwipeNext = { [weak self] in
             self?.handlePageSwipe(isNext: true)
@@ -213,14 +209,26 @@ class HoverPanel: NSPanel {
     }
 
     private func advancePage(by delta: Int) {
-        let pageCount = PanelLayout.fittedSecondaryWidgets(on: screen).isEmpty ? 1 : 2
+        guard !isAnimatingFrame, let screen = NSScreen.main else { return }
+        let pageCount = PanelLayout.fittedWidgets(forPage: 1, on: screen).isEmpty ? 1 : 2
         let newPage = state.currentPage + delta
         guard newPage >= 0, newPage < pageCount else { return }
 
         TooltipManager.shared.suppressShowing(for: 0.5)
+
+        let targetWidth = PanelLayout.expandedWidth(forPage: newPage, on: screen)
+        let currentFrame = frame
+        let targetFrame = NSRect(
+            x: currentFrame.midX - targetWidth / 2,
+            y: currentFrame.minY,
+            width: targetWidth,
+            height: currentFrame.height
+        )
+
         withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
             state.currentPage = newPage
         }
+        animateFrame(to: targetFrame, duration: 0.34)
     }
 
     // MARK: - Animation
@@ -398,13 +406,8 @@ class HoverPanel: NSPanel {
         DispatchQueue.main.asyncAfter(deadline: .now() + hideDelay, execute: work)
     }
 
-    private func expandedFrame(on screen: NSScreen) -> NSRect {
-        let width = PanelLayout.expandedWidth(
-            for: PanelLayout.widgetsThatFit(
-                PanelLayout.enabledWidgets(forPage: 0),
-                maximumWidth: PanelLayout.maximumExpandedWidth(on: screen)
-            )
-        )
+    private func expandedFrame(on screen: NSScreen, page: Int = 0) -> NSRect {
+        let width = PanelLayout.expandedWidth(forPage: page, on: screen)
         let height = PanelLayout.expandedHeight(on: screen)
 
         return NSRect(
@@ -418,7 +421,7 @@ class HoverPanel: NSPanel {
     private func resizeExpandedPanelForCurrentSettings() {
         guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = NSScreen.main else { return }
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
-        setFrame(expandedFrame(on: screen), display: true)
+        setFrame(expandedFrame(on: screen, page: state.currentPage), display: true)
     }
 
     private func compactFrame(on screen: NSScreen) -> NSRect {

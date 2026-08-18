@@ -117,12 +117,12 @@ enum PanelLayout {
         enabledWidgets.filter { widgetPage(for: $0) == page }
     }
 
-    static func primaryPageWidth(on screen: NSScreen?) -> CGFloat {
-        expandedWidth(for: widgetsThatFit(enabledWidgets(forPage: 0), maximumWidth: maximumExpandedWidth(on: screen)))
+    static func fittedWidgets(forPage page: Int, on screen: NSScreen?) -> [BangBarWidget] {
+        widgetsThatFit(enabledWidgets(forPage: page), maximumWidth: maximumExpandedWidth(on: screen))
     }
 
-    static func fittedSecondaryWidgets(on screen: NSScreen?) -> [BangBarWidget] {
-        widgetsThatFit(enabledWidgets(forPage: 1), maximumWidth: primaryPageWidth(on: screen))
+    static func expandedWidth(forPage page: Int, on screen: NSScreen?) -> CGFloat {
+        expandedWidth(for: fittedWidgets(forPage: page, on: screen))
     }
 
     static func expandedWidth(for widgets: [BangBarWidget]) -> CGFloat {

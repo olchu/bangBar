@@ -738,52 +738,32 @@ struct SettingsView: View {
         widgetPages[widget.rawValue] ?? 0
     }
 
-    private func page0EnabledWidgets(excluding excluded: BangBarWidget? = nil) -> [BangBarWidget] {
-        widgetOrder.filter { $0 != excluded && isWidgetEnabled($0) && widgetPage(for: $0) == 0 }
-    }
-
-    private func page1EnabledWidgets(excluding excluded: BangBarWidget? = nil) -> [BangBarWidget] {
-        widgetOrder.filter { $0 != excluded && isWidgetEnabled($0) && widgetPage(for: $0) == 1 }
+    private func pageEnabledWidgets(_ page: Int, excluding excluded: BangBarWidget? = nil) -> [BangBarWidget] {
+        widgetOrder.filter { $0 != excluded && isWidgetEnabled($0) && widgetPage(for: $0) == page }
     }
 
     private func canEnableWidget(_ widget: BangBarWidget) -> Bool {
         if isWidgetEnabled(widget) { return true }
 
-        if widgetPage(for: widget) == 0 {
-            let proposedWidgets = page0EnabledWidgets() + [widget]
-            return PanelLayout.expandedWidth(for: proposedWidgets)
-                <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
-        } else {
-            let proposedWidgets = page1EnabledWidgets() + [widget]
-            let page0Width = PanelLayout.expandedWidth(for: page0EnabledWidgets())
-            return PanelLayout.expandedWidth(for: proposedWidgets) <= page0Width
-        }
+        let proposedWidgets = pageEnabledWidgets(widgetPage(for: widget)) + [widget]
+        return PanelLayout.expandedWidth(for: proposedWidgets)
+            <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
     }
 
     private func canAssign(_ widget: BangBarWidget, toPage targetPage: Int) -> Bool {
         guard isWidgetEnabled(widget) else { return true }
 
-        if targetPage == 0 {
-            let newPage0 = page0EnabledWidgets(excluding: widget) + [widget]
-            return PanelLayout.expandedWidth(for: newPage0)
-                <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
-        } else {
-            let newPage0Width = PanelLayout.expandedWidth(for: page0EnabledWidgets(excluding: widget))
-            let newPage1 = page1EnabledWidgets(excluding: widget) + [widget]
-            return PanelLayout.expandedWidth(for: newPage1) <= newPage0Width
-        }
+        let proposedWidgets = pageEnabledWidgets(targetPage, excluding: widget) + [widget]
+        return PanelLayout.expandedWidth(for: proposedWidgets)
+            <= PanelLayout.maximumExpandedWidth(on: NSScreen.main)
     }
 
     private func widgetFitsCurrentPage(_ widget: BangBarWidget) -> Bool {
         guard isWidgetEnabled(widget) else { return true }
 
-        if widgetPage(for: widget) == 0 {
-            let maxWidth = PanelLayout.maximumExpandedWidth(on: NSScreen.main)
-            return PanelLayout.widgetsThatFit(page0EnabledWidgets(), maximumWidth: maxWidth).contains(widget)
-        } else {
-            let page0Width = PanelLayout.expandedWidth(for: page0EnabledWidgets())
-            return PanelLayout.widgetsThatFit(page1EnabledWidgets(), maximumWidth: page0Width).contains(widget)
-        }
+        let maxWidth = PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        return PanelLayout.widgetsThatFit(pageEnabledWidgets(widgetPage(for: widget)), maximumWidth: maxWidth)
+            .contains(widget)
     }
 
     private func pageBinding(for widget: BangBarWidget) -> Binding<Int> {

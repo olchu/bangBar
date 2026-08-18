@@ -49,7 +49,7 @@ struct PanelContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     ZStack {
-                        pagedWidgets(hideExpandedArtwork: hideExpandedArtwork, containerWidth: geo.size.width)
+                        pagedWidgets(hideExpandedArtwork: hideExpandedArtwork)
                             .opacity(state.showsClipboardHistory ? 0 : 1)
                             .allowsHitTesting(!state.showsClipboardHistory)
                             .accessibilityHidden(state.showsClipboardHistory)
@@ -62,15 +62,21 @@ struct PanelContentView: View {
                         .opacity(state.showsClipboardHistory ? 1 : 0)
                         .allowsHitTesting(state.showsClipboardHistory)
                         .accessibilityHidden(!state.showsClipboardHistory)
-
-                        if !state.showsClipboardHistory, !activeWidgets(forPage: 1).isEmpty {
-                            pageIndicator
-                                .allowsHitTesting(false)
-                        }
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.10), value: state.contentVisible)
                     .animation(.easeOut(duration: 0.16), value: state.showsClipboardHistory)
+                }
+
+                if !state.isCompact, !state.showsClipboardHistory, !activeWidgets(forPage: 1).isEmpty {
+                    pageIndicator
+                        .position(x: geo.size.width / 2, y: geo.size.height - 16)
+                        .transaction { transaction in
+                            transaction.animation = nil
+                            transaction.disablesAnimations = true
+                        }
+                        .opacity(state.contentVisible ? 1.0 : 0.0)
+                        .allowsHitTesting(false)
                 }
 
                 if let progress = state.artworkHeroProgress, nowPlaying.isAvailable {
@@ -172,20 +178,38 @@ struct PanelContentView: View {
     }
 
     @ViewBuilder
-    private func pagedWidgets(hideExpandedArtwork: Bool, containerWidth: CGFloat) -> some View {
+    private func pagedWidgets(hideExpandedArtwork: Bool) -> some View {
         ZStack(alignment: .topLeading) {
-            widgetRow(for: activeWidgets(forPage: 0), hideExpandedArtwork: hideExpandedArtwork)
-                .offset(x: CGFloat(0 - state.currentPage) * containerWidth)
+            pageLayer(page: 0, hideExpandedArtwork: hideExpandedArtwork)
 
-            let secondPageWidgets = activeWidgets(forPage: 1)
-            if !secondPageWidgets.isEmpty {
-                widgetRow(for: secondPageWidgets, hideExpandedArtwork: hideExpandedArtwork)
-                    .offset(x: CGFloat(1 - state.currentPage) * containerWidth)
+            if !activeWidgets(forPage: 1).isEmpty {
+                pageLayer(page: 1, hideExpandedArtwork: hideExpandedArtwork)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.currentPage)
+    }
+
+    @ViewBuilder
+    private func pageLayer(page: Int, hideExpandedArtwork: Bool) -> some View {
+        let widgets = activeWidgets(forPage: page)
+        widgetRow(for: widgets, hideExpandedArtwork: hideExpandedArtwork)
+            .offset(x: pageLayerOffset(page: page, widgets: widgets))
+    }
+
+    private func pageLayerOffset(page: Int, widgets: [BangBarWidget]) -> CGFloat {
+        if page == state.currentPage {
+            return 0
+        } else if page > state.currentPage {
+            // Appears to the right: must clear the currently visible page's own width,
+            // regardless of how narrow this (still off-screen) page itself is.
+            return PanelLayout.expandedWidth(for: activeWidgets(forPage: state.currentPage))
+        } else {
+            // Appears to the left: must clear its own width, since it extends
+            // rightward from its offset origin toward x = 0.
+            return -PanelLayout.expandedWidth(for: widgets)
+        }
     }
 
     private var pageIndicator: some View {
@@ -196,8 +220,6 @@ struct PanelContentView: View {
                     .frame(width: 5, height: 5)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -218,7 +240,7 @@ struct PanelContentView: View {
         }
         .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
         .padding(.top, state.topSafeInset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -298,10 +320,10 @@ struct PanelContentView: View {
         let enabledWidgets = BangBarSettings.widgetOrder(from: widgetOrderRaw)
             .filter(isWidgetVisible)
             .filter { (pageAssignments[$0.rawValue] ?? 0) == page }
-        let maximumWidth = page == 0
-            ? PanelLayout.maximumExpandedWidth(on: NSScreen.main)
-            : PanelLayout.expandedWidth(for: activeWidgets(forPage: 0))
-        return PanelLayout.widgetsThatFit(enabledWidgets, maximumWidth: maximumWidth)
+        return PanelLayout.widgetsThatFit(
+            enabledWidgets,
+            maximumWidth: PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        )
     }
 
     private func isWidgetVisible(_ widget: BangBarWidget) -> Bool {
