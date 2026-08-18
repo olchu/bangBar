@@ -131,9 +131,9 @@ Album artwork should read visually as one continuous element between compact and
   - `MirrorWidget`: 94×94
   - `SystemWidget`: 160×110
   - `GitHubWidget`: 150×110
-  - `AIUsageWidget`: 190×110
+  - `AIUsageWidget`: 140×110
   - `HabitsWidget`: 220×110
-  - `TranslatorWidget`: 240×110
+  - `TranslatorWidget`: 150×110
   - divider: 1×60
   - visible edge padding: 20 pt from the shaped side wall and bottom edge
   - raw SwiftUI horizontal padding: `panelTopEarInset + panelTopRadius + visible padding`
@@ -328,6 +328,7 @@ Album artwork should read visually as one continuous element between compact and
 11. ⏸ Companion development is paused. Its existing code and saved state remain in the project, but the widget, toggle, ordering chip, and Companion settings tab are hidden from the interface and its runtime service is not started.
 12. ✅ `HabitsWidget` is implemented with daily completion, local history/statistics, and Settings management according to the plan below.
 13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
+14. ⬜ Add swipeable widget pages/surfaces — see "Planned: Widget Pages (Swipe Between Surfaces)" below.
 
 ### MoonWidget
 
@@ -588,7 +589,7 @@ Today  Buy milk
 
 ### TranslatorWidget
 
-- Fixed `240×110` widget implemented in `TranslatorWidget.swift`.
+- Fixed `150×110` widget implemented in `TranslatorWidget.swift`.
 - Translates Russian to English and English to Russian with Apple's system Translation framework; no API key or remote service is required.
 - The direction button swaps RU/EN. If a translation exists, the result becomes the new source text.
 - Translation starts with Return or the submit button. The result can be copied to the clipboard.
@@ -1041,7 +1042,7 @@ struct NotionTask: Identifiable {
 - All file, Keychain, and network work happens off the main thread; only the published snapshot hops to `DispatchQueue.main` / `@MainActor`, per the project's service convention.
 
 **Display:**
-- Fixed 190×110 surface, no scrolling.
+- Fixed 140×110 surface, no scrolling.
 - Header row: small gauge SF Symbol + "AI Usage" label.
 - One block per available provider, in fixed order Codex then Claude: provider name + plan label (right-aligned, e.g. "Pro", "Max"), then one thin capsule progress bar per available window (primary, then secondary — Codex plans without a separate weekly cap show only one bar), each labeled with its actual duration and, trailing the bar on the same line, the used percentage plus a short countdown to when it unlocks (e.g. `100% ·3d`, `22% ·14h`, `4% ·22m`, or `·now` once the reset time has passed). A window at ≥90% used switches its bar and percentage to orange; the countdown stays dim regardless. The countdown is computed at render time from the window's `resetsAt`, so it advances on each 5-minute refresh rather than ticking live.
 - Only one block renders when just one provider is signed in; the block fills the widget's vertical space instead of leaving a gap.
@@ -1227,6 +1228,34 @@ Panel width may need to increase to accommodate all widgets.
 Each widget separated by `Divider` at 35pt height.
 
 `RemindersWidget` and `CountdownWidget` can be added as optional widgets once the settings panel can enable/disable optional surfaces.
+
+---
+
+## Planned: Widget Pages (Swipe Between Surfaces)
+
+**Status:** ⬜ Not started — planning entry only, no implementation yet.
+
+**Goal:** Let the user swipe left/right on the expanded panel to switch between multiple pages ("surfaces") of widgets, so more widgets can be enabled overall without one page becoming too wide/crowded.
+
+**Concept:**
+- Each enabled widget is assigned to a page. All existing widgets default to page 1 (the primary/home surface), so this feature is additive and does not change today's default layout.
+- Swiping left/right over the expanded panel content moves between pages — a horizontal paging slide, conceptually like swiping between macOS Spaces, scoped to the panel's widget row.
+- A lightweight page indicator (e.g. small dots) should show how many pages exist and which one is active, so the extra pages are discoverable.
+- Settings gains a per-widget page assignment control (e.g. a page picker next to each widget's enable toggle) so the user can choose which page a widget lives on and move widgets between pages.
+
+**Open question — panel width across pages (needs a decision before implementation):**
+Today `PanelLayout.expandedWidth` is derived once from a single flat enabled-widget set. With multiple pages, each page can have a different natural width. Two options were raised, neither decided yet:
+- **Option A — widest page wins:** the panel's fixed width is the max width across all pages; narrower pages just show trailing empty space. The NSPanel frame never needs to resize mid-swipe, so the existing slide-in/out animation in `HoverPanel` is unaffected. Safer default — recommended unless empty space on shorter pages looks bad in practice.
+- **Option B — primary/first page wins:** the panel width always matches page 1. Any other page whose widgets don't fit that width would need its own resize of the NSPanel frame during the swipe, or its content would get clipped by `NotchPanelShape` — clipping is not acceptable (it would hide widgets rather than show them), so this option is only viable if panel-width animation during a swipe is also built, which is a bigger, riskier change.
+- Whichever option is chosen, `PanelLayout.widgetsThatFit` (today a single fits-in-max-width safety net) needs to run per page against the shared `maximumExpandedWidth`, and Settings must validate the page currently being edited rather than one flat enabled-widget list.
+
+**Other requirements to work out during planning:**
+1. Data model: extend widget-order/enablement storage (currently a single ordered list, see `BangBarSettings.widgetOrder`) to also carry a page index per widget.
+2. `PanelContentView`: replace the single `HStack` of widgets with a paged container (e.g. `TabView(.page)` or a custom swipeable `HStack` driven by `DragGesture`) that renders one page's widgets at a time.
+3. `PanelLayout`: compute width per page and resolve `expandedWidth` per the Option A/B decision above; keep the per-page fit-check as a safety net like today's `widgetsThatFit`.
+4. Settings UI: add a page assignment per enabled widget, and block assigning a widget to a page in a way that would blow that page's width budget (mirroring today's single-page enablement guard).
+5. The swipe gesture must not conflict with existing drag/hover gestures already living on the panel or its widgets (e.g. `NowPlayingWidget`'s scrub bar, `MirrorWidget`, reminder-row tooltip tracking areas, clipboard history).
+6. Decide whether paging is available in compact mode at all, or expanded-panel only (likely expanded-only, since compact mode already shows a single focused widget).
 
 ---
 

@@ -13,7 +13,6 @@ struct RemindersWidget: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             headerRow
-                .padding(.top, 5)
 
             switch service.authorizationState {
             case .unknown, .requesting:
