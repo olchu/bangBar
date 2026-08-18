@@ -2,7 +2,6 @@ import Combine
 import Foundation
 
 struct AIProviderUsage {
-    let planLabel: String?
     let primary: AIUsageWindow?
     let secondary: AIUsageWindow?
 }
@@ -20,7 +19,8 @@ private func windowDurationLabel(seconds: TimeInterval) -> String {
     guard seconds > 0 else { return "—" }
     let hours = seconds / 3600
     if hours < 36 { return "\(Int(hours.rounded()))h" }
-    return "\(Int((seconds / 86400).rounded()))d"
+    let days = Int((seconds / 86400).rounded())
+    return days == 7 ? "W" : "\(days)d"
 }
 
 private enum AIUsageFetchOutcome {
@@ -86,7 +86,6 @@ final class AIUsageService: ObservableObject {
         }
 
         let usage = AIProviderUsage(
-            planLabel: payload.planType?.capitalized,
             primary: payload.rateLimit?.primaryWindow.map {
                 AIUsageWindow(
                     label: windowDurationLabel(seconds: $0.limitWindowSeconds),
@@ -157,11 +156,9 @@ final class AIUsageService: ObservableObject {
             }
         }
 
-        let planType: String?
         let rateLimit: RateLimit?
 
         enum CodingKeys: String, CodingKey {
-            case planType = "plan_type"
             case rateLimit = "rate_limit"
         }
     }
@@ -187,7 +184,6 @@ final class AIUsageService: ObservableObject {
 
         let isoFormatter = ISO8601DateFormatter()
         let usage = AIProviderUsage(
-            planLabel: nil,
             primary: payload.fiveHour.map {
                 AIUsageWindow(
                     label: "5h",
@@ -197,7 +193,7 @@ final class AIUsageService: ObservableObject {
             },
             secondary: payload.sevenDay.map {
                 AIUsageWindow(
-                    label: "7d",
+                    label: "W",
                     usedPercent: Int($0.utilization.rounded()),
                     resetsAt: $0.resetsAt.flatMap(isoFormatter.date)
                 )

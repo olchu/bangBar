@@ -79,6 +79,12 @@ private struct AIUsageProviderRow: View {
     let row: Data
     let accentColor: Color
 
+    private var nextReset: Date? {
+        [row.usage.primary?.resetsAt, row.usage.secondary?.resetsAt]
+            .compactMap { $0 }
+            .min()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
@@ -88,8 +94,8 @@ private struct AIUsageProviderRow: View {
 
                 Spacer()
 
-                if let planLabel = row.usage.planLabel {
-                    Text(planLabel)
+                if let nextReset {
+                    Text("resets \(AIUsageResetFormatter.label(until: nextReset).dropFirst())")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.42))
                 }
@@ -141,7 +147,7 @@ private struct AIUsageBar: View {
 
         guard let resetsAt = window.resetsAt else { return percent }
 
-        let reset = Text(" " + Self.resetLabel(until: resetsAt))
+        let reset = Text(" " + AIUsageResetFormatter.label(until: resetsAt))
             .foregroundColor(.white.opacity(0.4))
         return percent + reset
     }
@@ -151,11 +157,15 @@ private struct AIUsageBar: View {
     }
 
     private var barColor: Color {
-        window.usedPercent >= 90 ? .orange : accentColor
+        if window.usedPercent >= 90 { return accentColor }
+        if window.usedPercent < 50 { return .green }
+        return .orange
     }
+}
 
-    /// Shortest single-unit countdown to when the window unlocks, e.g. "·3d", "·14h", "·22m".
-    private static func resetLabel(until date: Date) -> String {
+/// Shortest single-unit countdown to when a usage window unlocks, e.g. "·3d", "·14h", "·22m".
+private enum AIUsageResetFormatter {
+    static func label(until date: Date) -> String {
         let seconds = date.timeIntervalSinceNow
         guard seconds > 60 else { return "·now" }
 
