@@ -17,6 +17,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showAIUsageWidget) private var showAIUsageWidget = false
     @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
     @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
+    @AppStorage(BangBarSettings.Key.showDayPlansWidget) private var showDayPlansWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
@@ -28,6 +29,7 @@ struct PanelContentView: View {
     @StateObject private var githubContributions = GitHubContributionsService()
     @StateObject private var aiUsage = AIUsageService()
     @StateObject private var habits = HabitService.shared
+    @StateObject private var dayPlans = DayPlanService.shared
     @State private var currentTime = Date()
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -122,10 +124,12 @@ struct PanelContentView: View {
             currentTime = date
             calendarEvents.refreshIfNeeded(now: date)
             habits.refreshDay(now: date)
+            dayPlans.refreshDay(now: date)
         }
         .onAppear {
             if showClockWidget { calendarEvents.start() }
             if showRemindersWidget { reminders.start() }
+            if showDayPlansWidget { dayPlans.reload() }
         }
         .onChange(of: state.isExpanded) { _, isExpanded in
             if !isExpanded {
@@ -133,6 +137,7 @@ struct PanelContentView: View {
             } else {
                 if showClockWidget { calendarEvents.start() }
                 if showRemindersWidget { reminders.refresh() }
+                if showDayPlansWidget { dayPlans.reload() }
             }
         }
         .onChange(of: state.isCompact) { _, isCompact in
@@ -145,6 +150,9 @@ struct PanelContentView: View {
         }
         .onChange(of: showRemindersWidget) { _, isVisible in
             if isVisible { reminders.start() }
+        }
+        .onChange(of: showDayPlansWidget) { _, isVisible in
+            if isVisible { dayPlans.reload() }
         }
         .onChange(of: showMirrorWidget) { _, isVisible in
             if !isVisible {
@@ -310,6 +318,8 @@ struct PanelContentView: View {
                     )
                 case .translator:
                     TranslatorWidget(isPanelExpanded: state.isExpanded)
+                case .dayPlans:
+                    DayPlansWidget(service: dayPlans)
                 }
             }
         }
@@ -352,6 +362,8 @@ struct PanelContentView: View {
             return showHabitsWidget
         case .translator:
             return showTranslatorWidget
+        case .dayPlans:
+            return showDayPlansWidget
         }
     }
 }

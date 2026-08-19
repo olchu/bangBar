@@ -328,7 +328,7 @@ Album artwork should read visually as one continuous element between compact and
 11. ⏸ Companion development is paused. Its existing code and saved state remain in the project, but the widget, toggle, ordering chip, and Companion settings tab are hidden from the interface and its runtime service is not started.
 12. ✅ `HabitsWidget` is implemented with daily completion, local history/statistics, and Settings management according to the plan below.
 13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
-14. ⬜ Add swipeable widget pages/surfaces — see "Planned: Widget Pages (Swipe Between Surfaces)" below.
+14. ✅ Swipeable widget pages/surfaces are implemented — see "Planned: Widget Pages (Swipe Between Surfaces)" below.
 
 ### MoonWidget
 
@@ -1231,31 +1231,36 @@ Each widget separated by `Divider` at 35pt height.
 
 ---
 
-## Planned: Widget Pages (Swipe Between Surfaces)
+## Widget Pages (Swipe Between Surfaces) — Implemented
 
-**Status:** ⬜ Not started — planning entry only, no implementation yet.
+**Status:** ✅ Implemented.
 
-**Goal:** Let the user swipe left/right on the expanded panel to switch between multiple pages ("surfaces") of widgets, so more widgets can be enabled overall without one page becoming too wide/crowded.
+**Goal:** Let the user swipe left/right on the expanded panel to switch between two pages ("surfaces") of widgets, so more widgets can be enabled overall without one page becoming too wide/crowded.
 
 **Concept:**
-- Each enabled widget is assigned to a page. All existing widgets default to page 1 (the primary/home surface), so this feature is additive and does not change today's default layout.
-- Swiping left/right over the expanded panel content moves between pages — a horizontal paging slide, conceptually like swiping between macOS Spaces, scoped to the panel's widget row.
-- A lightweight page indicator (e.g. small dots) should show how many pages exist and which one is active, so the extra pages are discoverable.
-- Settings gains a per-widget page assignment control (e.g. a page picker next to each widget's enable toggle) so the user can choose which page a widget lives on and move widgets between pages.
+- Every widget is assigned to Page 1 or Page 2. All widgets default to Page 1 (the primary/home surface) unless reassigned, so the feature is additive and does not change the default layout.
+- Two-finger trackpad swipe over the expanded panel content (not the compact panel) moves between pages, using the same trackpad scroll-wheel interception mechanism as Clipboard History's vertical swipe (`HoverHostingView.handlePanelScrollWheel`), branching on horizontal vs. vertical dominant-axis deltas in the same function.
+- Paging is only active when Page 2 has at least one fitted widget; with an empty Page 2 the panel behaves exactly as before this feature, with no indicator and no swipe response.
+- Settings → Widgets → General gains a per-widget Page 1 / Page 2 picker next to each widget's enable toggle (`WidgetSettingsRow`).
 
-**Open question — panel width across pages (needs a decision before implementation):**
-Today `PanelLayout.expandedWidth` is derived once from a single flat enabled-widget set. With multiple pages, each page can have a different natural width. Two options were raised, neither decided yet:
-- **Option A — widest page wins:** the panel's fixed width is the max width across all pages; narrower pages just show trailing empty space. The NSPanel frame never needs to resize mid-swipe, so the existing slide-in/out animation in `HoverPanel` is unaffected. Safer default — recommended unless empty space on shorter pages looks bad in practice.
-- **Option B — primary/first page wins:** the panel width always matches page 1. Any other page whose widgets don't fit that width would need its own resize of the NSPanel frame during the swipe, or its content would get clipped by `NotchPanelShape` — clipping is not acceptable (it would hide widgets rather than show them), so this option is only viable if panel-width animation during a swipe is also built, which is a bigger, riskier change.
-- Whichever option is chosen, `PanelLayout.widgetsThatFit` (today a single fits-in-max-width safety net) needs to run per page against the shared `maximumExpandedWidth`, and Settings must validate the page currently being edited rather than one flat enabled-widget list.
+**Panel width across pages:**
+- Each page has its own independent width, computed the same way the single page always was: `PanelLayout.fittedWidgets(forPage:on:)` / `expandedWidth(forPage:on:)`, capped only by the shared `maximumExpandedWidth(on:)` — Page 2 is not constrained by Page 1's width.
+- The `NSPanel` frame animates its width live during the swipe, pinned to the top edge and horizontally re-centered on screen, via the existing `animateFrame` interpolation helper in `HoverPanel` (the same mechanism already used for compact↔expanded transitions) — driven by `advancePage(by:)`.
+- `PanelContentView` renders each page's widget row (`pageLayer(page:hideExpandedArtwork:)`) offset by that specific page's own width in the correct direction — never by a shared/live container width — so a narrower off-screen page can never bleed into view under a wider active page (or vice versa) while the frame is mid-resize.
+- Settings applies the same per-page width-budget guard independently to each page (`canEnableWidget`, `canAssign(_:toPage:)`, `pageEnabledWidgets(_:excluding:)` in `SettingsView`), reusing the exact validation pattern the app already used for the single-page case.
 
-**Other requirements to work out during planning:**
-1. Data model: extend widget-order/enablement storage (currently a single ordered list, see `BangBarSettings.widgetOrder`) to also carry a page index per widget.
-2. `PanelContentView`: replace the single `HStack` of widgets with a paged container (e.g. `TabView(.page)` or a custom swipeable `HStack` driven by `DragGesture`) that renders one page's widgets at a time.
-3. `PanelLayout`: compute width per page and resolve `expandedWidth` per the Option A/B decision above; keep the per-page fit-check as a safety net like today's `widgetsThatFit`.
-4. Settings UI: add a page assignment per enabled widget, and block assigning a widget to a page in a way that would blow that page's width budget (mirroring today's single-page enablement guard).
-5. The swipe gesture must not conflict with existing drag/hover gestures already living on the panel or its widgets (e.g. `NowPlayingWidget`'s scrub bar, `MirrorWidget`, reminder-row tooltip tracking areas, clipboard history).
-6. Decide whether paging is available in compact mode at all, or expanded-panel only (likely expanded-only, since compact mode already shows a single focused widget).
+**Page indicator:**
+- Two small dots, shown only when Page 2 has fitted widgets, hidden in compact mode and while Clipboard History is open.
+- Positioned with SwiftUI `.position(x: geo.size.width / 2, y: ...)` — true absolute placement in the panel's coordinate space, not a `.frame(width:alignment:)`-based layout — wrapped in `.transaction { $0.animation = nil; $0.disablesAnimations = true }` so it never participates in the page-swipe animation and always renders at the same screen point regardless of which page (or width) is active.
+
+**Gesture safety:**
+- Reuses `containsSwipeExclusion`/`PanelSwipeExclusionView` unchanged, so `HabitsWidget` stays excluded from page-swipe the same way it's excluded from Clipboard History's vertical swipe.
+- Horizontal page-swipe is gated off while Clipboard History is open, in compact mode, or while a frame animation is already in flight.
+- Does not conflict with `NowPlayingWidget`'s scrub bar or any click-drag gesture, since trackpad-swipe interception and `DragGesture` are different input channels.
+
+**Settings:**
+- `BangBarSettings.Key.widgetPages` stores a JSON `[widgetRawValue: pageIndex]` dictionary (missing entry = Page 1), separate from the existing `widgetOrder` key/format.
+- `BangBarSettings.Key.pageSwipeInverted` (Settings → Widgets → General → "Invert page swipe direction") swaps which two-finger swipe direction advances to the next page, mirroring the existing Clipboard swipe-inversion toggle.
 
 ---
 

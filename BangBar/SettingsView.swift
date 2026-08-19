@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showCompanionWidget) private var showCompanionWidget = false
     @AppStorage(BangBarSettings.Key.showHabitsWidget) private var showHabitsWidget = false
     @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
+    @AppStorage(BangBarSettings.Key.showDayPlansWidget) private var showDayPlansWidget = false
     @AppStorage(BangBarSettings.Key.githubUsername) private var githubUsername = ""
     @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var moonUsesCurrentLocation = true
     @AppStorage(BangBarSettings.Key.moonLocationName) private var moonLocationName = "Istanbul"
@@ -62,6 +63,7 @@ struct SettingsView: View {
     @State private var widgetPages: [String: Int] = [:]
     @State private var draggedWidget: BangBarWidget?
     @StateObject private var habits = HabitService.shared
+    @StateObject private var dayPlans = DayPlanService.shared
 
     private var accentColorBinding: Binding<Color> {
         Binding(
@@ -97,6 +99,7 @@ struct SettingsView: View {
         .onAppear {
             loadWidgetOrder()
             loadWidgetPages()
+            dayPlans.reload()
         }
         .onChange(of: widgetOrderRaw) { _, _ in
             loadWidgetOrder()
@@ -107,6 +110,7 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .bangBarSettingsWillOpen)) { _ in
             selectedSettingsTab = .widgets
             selectedWidgetTab = .general
+            dayPlans.reload()
         }
     }
 
@@ -333,6 +337,8 @@ struct SettingsView: View {
             githubWidgetSettings(accentColor: accentColor)
         case .habits:
             habitsWidgetSettings(accentColor: accentColor)
+        case .dayPlans:
+            dayPlansWidgetSettings(accentColor: accentColor)
         }
     }
 
@@ -438,6 +444,15 @@ struct SettingsView: View {
             description: "Build daily consistency and review your recent progress."
         ) {
             HabitSettingsContent(service: habits, accentColor: accentColor)
+        }
+    }
+
+    private func dayPlansWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .dayPlans,
+            description: "Create plans and assign each one to a day. Synced via iCloud Drive when available."
+        ) {
+            DayPlanSettingsContent(service: dayPlans, accentColor: accentColor)
         }
     }
 
@@ -727,6 +742,8 @@ struct SettingsView: View {
             return $showHabitsWidget
         case .translator:
             return $showTranslatorWidget
+        case .dayPlans:
+            return $showDayPlansWidget
         }
     }
 
@@ -1063,6 +1080,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case focusTimer
     case github
     case habits
+    case dayPlans
 
     var id: Self { self }
 
@@ -1075,6 +1093,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
         case .focusTimer: return "Focus Timer"
         case .github: return "GitHub"
         case .habits: return "Habits"
+        case .dayPlans: return "Day Plans"
         }
     }
 }
@@ -1742,6 +1761,9 @@ private struct WidgetIcon: View {
             } else if widget == .aiUsage {
                 Image(systemName: "gauge.with.dots.needle.67percent")
                     .font(.system(size: size * 0.72, weight: .semibold))
+            } else if widget == .dayPlans {
+                Image(systemName: "list.bullet.clipboard")
+                    .font(.system(size: size * 0.72, weight: .semibold))
             } else {
                 Image(widget.iconAsset)
                     .renderingMode(.template)
@@ -1829,6 +1851,8 @@ private extension BangBarWidget {
         case .habits:
             return 190
         case .translator:
+            return 190
+        case .dayPlans:
             return 190
         }
     }
