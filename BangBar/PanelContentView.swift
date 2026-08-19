@@ -52,6 +52,7 @@ struct PanelContentView: View {
                 } else {
                     ZStack {
                         pagedWidgets(hideExpandedArtwork: hideExpandedArtwork)
+                            .frame(width: geo.size.width, alignment: .topLeading)
                             .opacity(state.showsClipboardHistory ? 0 : 1)
                             .allowsHitTesting(!state.showsClipboardHistory)
                             .accessibilityHidden(state.showsClipboardHistory)
@@ -95,6 +96,7 @@ struct PanelContentView: View {
                     PanelTopBar(
                         showsClipboardHistory: $state.showsClipboardHistory,
                         clipboardFilter: $state.clipboardFilter,
+                        width: geo.size.width,
                         height: state.topSafeInset,
                         isClearDisabled: clipboardHistory.items.isEmpty,
                         activeGroupName: clipboardHistory.activeGroup?.name,
@@ -319,7 +321,10 @@ struct PanelContentView: View {
                 case .translator:
                     TranslatorWidget(isPanelExpanded: state.isExpanded)
                 case .dayPlans:
-                    DayPlansWidget(service: dayPlans)
+                    DayPlansWidget(
+                        service: dayPlans,
+                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                    )
                 }
             }
         }

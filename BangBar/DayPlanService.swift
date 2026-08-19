@@ -5,6 +5,7 @@ struct DayPlanItem: Codable, Hashable, Identifiable {
     let id: UUID
     var title: String
     var date: String
+    var isCompleted: Bool = false
 }
 
 @MainActor
@@ -40,9 +41,26 @@ final class DayPlanService: ObservableObject {
     func refreshDay(now: Date = Date()) {
         calendar = .autoupdatingCurrent
         let newDay = Self.dayIdentifier(for: now, calendar: calendar)
-        if currentDay != newDay {
-            currentDay = newDay
+        guard currentDay != newDay else { return }
+        currentDay = newDay
+        rolloverIncompletePlans(to: newDay)
+    }
+
+    func togglePlanCompletion(_ plan: DayPlanItem) {
+        guard let index = items.firstIndex(where: { $0.id == plan.id }) else { return }
+        items[index].isCompleted.toggle()
+        persist()
+    }
+
+    private func rolloverIncompletePlans(to day: String) {
+        var didChange = false
+        for index in items.indices where !items[index].isCompleted && items[index].date < day {
+            items[index].date = day
+            didChange = true
         }
+        guard didChange else { return }
+        items.sort { $0.date < $1.date }
+        persist()
     }
 
     func reload() {
@@ -59,10 +77,12 @@ final class DayPlanService: ObservableObject {
         }
 
         items = stored.items.sorted { $0.date < $1.date }
+        rolloverIncompletePlans(to: currentDay)
     }
 
     @discardableResult
     func addPlan(title: String, date: Date) -> DayPlanItem? {
+        refreshDay()
         let normalizedTitle = Self.normalizedTitle(title)
         guard !normalizedTitle.isEmpty else { return nil }
 

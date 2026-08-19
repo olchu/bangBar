@@ -4,6 +4,7 @@ import AppKit
 struct PanelTopBar: View {
     @Binding var showsClipboardHistory: Bool
     @Binding var clipboardFilter: ClipboardHistoryFilter
+    let width: CGFloat
     let height: CGFloat
     let isClearDisabled: Bool
     let activeGroupName: String?
@@ -24,66 +25,58 @@ struct PanelTopBar: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let leftZoneWidth = max(
-                (geometry.size.width - PanelLayout.notchWidth(on: NSScreen.main)) / 2 - 8,
-                20
-            )
+        let leftZoneWidth = max(
+            (width - PanelLayout.notchWidth(on: NSScreen.main)) / 2 - 8,
+            20
+        )
 
-            ZStack {
-                if clipboardButtonPosition == .nearNotch {
-                    HStack(spacing: 9) {
-                        if showsClipboardHistory {
-                            historyControls
-                            toolbarDivider
-                        }
-
-                        clipboardToggleButton
+        ZStack {
+            if clipboardButtonPosition == .nearNotch {
+                HStack(spacing: 9) {
+                    if showsClipboardHistory {
+                        historyControls
+                        toolbarDivider
                     }
-                    .frame(width: leftZoneWidth, alignment: .trailing)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    HStack(spacing: 9) {
-                        clipboardToggleButton
 
-                        if showsClipboardHistory {
-                            toolbarDivider
-                            historyControls
-                        }
-                    }
-                    .padding(.leading, PanelLayout.topBarHorizontalPadding)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    clipboardToggleButton
                 }
-
-                HStack(spacing: 10) {
-                    Spacer()
+                .frame(width: leftZoneWidth, alignment: .trailing)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 9) {
+                    clipboardToggleButton
 
                     if showsClipboardHistory {
-                        Button(action: onClear) {
-                            Label("Clear", systemImage: "trash")
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(accentColor.opacity(0.9))
-                                .padding(.horizontal, 7)
-                                .frame(height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isClearDisabled)
-                        .opacity(isClearDisabled ? 0.35 : 1)
-                        .transition(.opacity)
+                        toolbarDivider
+                        historyControls
                     }
-
-                    topBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
                 }
-                .padding(.horizontal, PanelLayout.topBarHorizontalPadding)
+                .padding(.leading, PanelLayout.topBarHorizontalPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(
-                width: geometry.size.width,
-                height: geometry.size.height,
-                alignment: .center
-            )
+
+            HStack(spacing: 10) {
+                if showsClipboardHistory {
+                    Button(action: onClear) {
+                        Label("Clear", systemImage: "trash")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(accentColor.opacity(0.9))
+                            .padding(.horizontal, 7)
+                            .frame(height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isClearDisabled)
+                    .opacity(isClearDisabled ? 0.35 : 1)
+                    .transition(.opacity)
+                }
+
+                topBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
+            }
+            .padding(.horizontal, PanelLayout.topBarHorizontalPadding)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: width, alignment: .center)
         .frame(height: height)
         .background(Color.black)
         .contentShape(.rect)
