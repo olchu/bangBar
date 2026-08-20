@@ -59,7 +59,6 @@ final class DayPlanService: ObservableObject {
             didChange = true
         }
         guard didChange else { return }
-        items.sort { $0.date < $1.date }
         persist()
     }
 
@@ -76,7 +75,7 @@ final class DayPlanService: ObservableObject {
             return
         }
 
-        items = stored.items.sorted { $0.date < $1.date }
+        items = stored.items
         rolloverIncompletePlans(to: currentDay)
     }
 
@@ -92,7 +91,6 @@ final class DayPlanService: ObservableObject {
             date: Self.dayIdentifier(for: date, calendar: calendar)
         )
         items.append(plan)
-        items.sort { $0.date < $1.date }
         persist()
         return plan
     }
@@ -106,12 +104,28 @@ final class DayPlanService: ObservableObject {
 
         items[index].title = normalizedTitle
         items[index].date = Self.dayIdentifier(for: date, calendar: calendar)
-        items.sort { $0.date < $1.date }
         persist()
     }
 
     func deletePlan(_ plan: DayPlanItem) {
         items.removeAll { $0.id == plan.id }
+        persist()
+    }
+
+    func movePlans(_ orderedPlans: [DayPlanItem], from source: IndexSet, to destination: Int) {
+        var reorderedPlans = orderedPlans
+        reorderedPlans.move(fromOffsets: source, toOffset: destination)
+        let reorderedIDs = reorderedPlans.map(\.id)
+        let affectedIDs = Set(orderedPlans.map(\.id))
+        let movedItems = reorderedIDs.compactMap { id in
+            items.first { $0.id == id }
+        }
+        guard movedItems.count == reorderedPlans.count else { return }
+
+        var movedIterator = movedItems.makeIterator()
+        items = items.map { item in
+            affectedIDs.contains(item.id) ? (movedIterator.next() ?? item) : item
+        }
         persist()
     }
 

@@ -57,7 +57,7 @@ enum PanelLayout {
     static let companionWidgetWidth: CGFloat = 170
     static let habitsWidgetWidth: CGFloat = 220
     static let translatorWidgetWidth: CGFloat = 150
-    static let dayPlansWidgetWidth: CGFloat = 150
+    static let dayPlansWidgetWidth: CGFloat = 170
     static let clockWidgetWidth: CGFloat = 194
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110

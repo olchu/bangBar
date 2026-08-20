@@ -12,6 +12,15 @@ struct DayPlansWidget: View {
 
     private var accentColor: Color { Color(hex: accentColorHex) }
 
+    private var displayedTodayItems: [DayPlanItem] {
+        service.todaysItems.sorted { lhs, rhs in
+            if lhs.isCompleted != rhs.isCompleted {
+                return !lhs.isCompleted
+            }
+            return false
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             headerRow
@@ -106,21 +115,34 @@ struct DayPlansWidget: View {
         HStack(spacing: 6) {
             Image(systemName: "list.bullet.clipboard")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(.red)
 
             if !service.todaysItems.isEmpty {
-                Text("\(service.todaysItems.count) today")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.85))
+                Text("Today \(service.todaysItems.count)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.62))
             }
 
             Spacer()
+
+            Button {
+                DayPlansWindowController.shared.show()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.red)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help("Open tasks")
         }
     }
 
     private var planRows: some View {
         VStack(spacing: 1) {
-            ForEach(service.todaysItems) { plan in
+            ForEach(displayedTodayItems) { plan in
                 DayPlanRow(plan: plan, accentColor: accentColor) {
                     withAnimation(.easeInOut(duration: 0.16)) {
                         service.togglePlanCompletion(plan)
@@ -159,11 +181,18 @@ private struct DayPlanRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: 5) {
                 ZStack {
+                    if !plan.isCompleted {
+                        Circle()
+                            .stroke(statusColor.opacity(0.75), lineWidth: 2.5)
+                            .frame(width: 15, height: 15)
+                            .blur(radius: 2.5)
+                    }
+
                     Circle()
-                        .stroke(statusColor, lineWidth: 1.25)
-                        .frame(width: 13, height: 13)
+                        .stroke(statusColor, lineWidth: 1.5)
+                        .frame(width: 15, height: 15)
 
                     if plan.isCompleted {
                         Image(systemName: "checkmark")
@@ -179,7 +208,8 @@ private struct DayPlanRow: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 2)
+            .padding(.leading, 2)
+            .padding(.trailing, 2)
             .frame(height: 20)
             .contentShape(Rectangle())
         }
