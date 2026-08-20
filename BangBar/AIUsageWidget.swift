@@ -182,18 +182,25 @@ private struct AIUsageBar: View {
             if showsReset {
                 Spacer(minLength: 0)
 
-                if let resetsAt = window.resetsAt {
-                    AIUsageResetBadge(date: resetsAt)
-                        .frame(width: 34, alignment: .leading)
-                }
-            }
+                HStack(spacing: 2) {
+                    if let resetsAt = window.resetsAt {
+                        AIUsageResetBadge(date: resetsAt)
+                    }
 
-            Text("\(window.usedPercent)%")
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .foregroundStyle(barColor.opacity(0.9))
-                .frame(width: 25, alignment: .trailing)
+                    percentage
+                }
+            } else {
+                percentage
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var percentage: some View {
+        Text("\(window.usedPercent)%")
+            .font(.system(size: 8, weight: .medium, design: .monospaced))
+            .foregroundStyle(barColor.opacity(0.9))
+            .frame(width: 25, alignment: .trailing)
     }
 
     private var fraction: CGFloat {
