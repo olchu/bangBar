@@ -182,24 +182,30 @@ final class AIUsageService: ObservableObject {
             return .transientFailure
         }
 
-        let isoFormatter = ISO8601DateFormatter()
         let usage = AIProviderUsage(
             primary: payload.fiveHour.map {
                 AIUsageWindow(
                     label: "5h",
                     usedPercent: Int($0.utilization.rounded()),
-                    resetsAt: $0.resetsAt.flatMap(isoFormatter.date)
+                    resetsAt: $0.resetsAt.flatMap(parseISO8601Date)
                 )
             },
             secondary: payload.sevenDay.map {
                 AIUsageWindow(
                     label: "W",
                     usedPercent: Int($0.utilization.rounded()),
-                    resetsAt: $0.resetsAt.flatMap(isoFormatter.date)
+                    resetsAt: $0.resetsAt.flatMap(parseISO8601Date)
                 )
             }
         )
         return .usage(usage)
+    }
+
+    /// Anthropic may return ISO-8601 timestamps either with or without fractional seconds.
+    private static func parseISO8601Date(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private nonisolated static func claudeAccessToken() async -> String? {

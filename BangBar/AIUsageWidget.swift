@@ -47,8 +47,12 @@ struct AIUsageWidget: View {
 
     private var rows: [AIUsageProviderRow.Data] {
         [
-            service.codex.map { AIUsageProviderRow.Data(name: "Codex", usage: $0) },
-            service.claude.map { AIUsageProviderRow.Data(name: "Claude", usage: $0) }
+            service.codex.map {
+                AIUsageProviderRow.Data(name: "Codex", usage: $0, resetDisplay: .providerHeader)
+            },
+            service.claude.map {
+                AIUsageProviderRow.Data(name: "Claude", usage: $0, resetDisplay: .usageRows)
+            }
         ]
         .compactMap { $0 }
     }
@@ -70,9 +74,15 @@ struct AIUsageWidget: View {
 }
 
 private struct AIUsageProviderRow: View {
+    enum ResetDisplay {
+        case providerHeader
+        case usageRows
+    }
+
     struct Data: Identifiable {
         let name: String
         let usage: AIProviderUsage
+        let resetDisplay: ResetDisplay
         var id: String { name }
     }
 
@@ -94,26 +104,60 @@ private struct AIUsageProviderRow: View {
 
                 Spacer()
 
-                if let nextReset {
-                    Text("resets \(AIUsageResetFormatter.label(until: nextReset).dropFirst())")
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.42))
-                }
+                headerResets
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.42))
             }
 
             if let primary = row.usage.primary {
-                AIUsageBar(window: primary, accentColor: accentColor)
+                AIUsageBar(
+                    window: primary,
+                    showsReset: row.resetDisplay == .usageRows,
+                    accentColor: accentColor
+                )
             }
 
             if let secondary = row.usage.secondary {
-                AIUsageBar(window: secondary, accentColor: accentColor)
+                AIUsageBar(
+                    window: secondary,
+                    showsReset: row.resetDisplay == .usageRows,
+                    accentColor: accentColor
+                )
             }
         }
+    }
+
+    @ViewBuilder
+    private var headerResets: some View {
+        switch row.resetDisplay {
+        case .providerHeader:
+            if let nextReset {
+                AIUsageResetBadge(date: nextReset)
+            }
+        case .usageRows:
+            EmptyView()
+        }
+    }
+}
+
+private struct AIUsageResetBadge: View {
+    let date: Date
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 8, weight: .semibold))
+
+            Text(AIUsageResetFormatter.label(until: date).dropFirst())
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+        }
+        .foregroundStyle(.white.opacity(0.52))
     }
 }
 
 private struct AIUsageBar: View {
     let window: AIUsageWindow
+    let showsReset: Bool
     let accentColor: Color
 
     var body: some View {
@@ -133,23 +177,23 @@ private struct AIUsageBar: View {
                         .frame(width: geometry.size.width * fraction)
                 }
             }
-            .frame(height: 5)
+            .frame(width: showsReset ? 75 : nil, height: 5)
 
-            trailingText
+            if showsReset {
+                Spacer(minLength: 0)
+
+                if let resetsAt = window.resetsAt {
+                    AIUsageResetBadge(date: resetsAt)
+                        .frame(width: 34, alignment: .leading)
+                }
+            }
+
+            Text("\(window.usedPercent)%")
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .frame(width: 52, alignment: .trailing)
+                .foregroundStyle(barColor.opacity(0.9))
+                .frame(width: 25, alignment: .trailing)
         }
-    }
-
-    private var trailingText: Text {
-        let percent = Text("\(window.usedPercent)%")
-            .foregroundColor(barColor.opacity(0.9))
-
-        guard let resetsAt = window.resetsAt else { return percent }
-
-        let reset = Text(" " + AIUsageResetFormatter.label(until: resetsAt))
-            .foregroundColor(.white.opacity(0.4))
-        return percent + reset
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var fraction: CGFloat {

@@ -53,7 +53,7 @@ enum PanelLayout {
     static let mirrorWidgetHeight: CGFloat = 94
     static let systemWidgetWidth: CGFloat = 160
     static let githubWidgetWidth: CGFloat = 150
-    static let aiUsageWidgetWidth: CGFloat = 140
+    static let aiUsageWidgetWidth: CGFloat = 170
     static let companionWidgetWidth: CGFloat = 170
     static let habitsWidgetWidth: CGFloat = 220
     static let translatorWidgetWidth: CGFloat = 150
