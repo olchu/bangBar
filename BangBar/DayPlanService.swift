@@ -114,7 +114,7 @@ final class DayPlanService: ObservableObject {
 
     func movePlans(_ orderedPlans: [DayPlanItem], from source: IndexSet, to destination: Int) {
         var reorderedPlans = orderedPlans
-        reorderedPlans.move(fromOffsets: source, toOffset: destination)
+        reorderedPlans.moveElements(from: source, to: destination)
         let reorderedIDs = reorderedPlans.map(\.id)
         let affectedIDs = Set(orderedPlans.map(\.id))
         let movedItems = reorderedIDs.compactMap { id in
@@ -191,5 +191,18 @@ final class DayPlanService: ObservableObject {
                 .sink { [weak self] _ in self?.refreshDay() }
                 .store(in: &cancellables)
         }
+    }
+}
+
+private extension Array {
+    mutating func moveElements(from source: IndexSet, to destination: Int) {
+        let movingElements = source.map { self[$0] }
+        for index in source.sorted(by: >) {
+            remove(at: index)
+        }
+
+        let movedBeforeDestination = source.filter { $0 < destination }.count
+        let insertionIndex = Swift.max(0, Swift.min(destination - movedBeforeDestination, count))
+        insert(contentsOf: movingElements, at: insertionIndex)
     }
 }

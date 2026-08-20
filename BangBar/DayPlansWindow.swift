@@ -587,16 +587,16 @@ private struct DayPlansTaskDropDelegate: DropDelegate {
 }
 
 private enum DayPlansTaskFilter: String, CaseIterable, Identifiable {
+    case today
     case all
-    case active
     case completed
 
     var id: Self { self }
 
     var title: String {
         switch self {
+        case .today: "Today"
         case .all: "All"
-        case .active: "Active"
         case .completed: "Completed"
         }
     }
