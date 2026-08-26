@@ -48,7 +48,7 @@ struct AIUsageWidget: View {
     private var rows: [AIUsageProviderRow.Data] {
         [
             service.codex.map {
-                AIUsageProviderRow.Data(name: "Codex", usage: $0, resetDisplay: .providerHeader)
+                AIUsageProviderRow.Data(name: "Codex", usage: $0, resetDisplay: .usageRows)
             },
             service.claude.map {
                 AIUsageProviderRow.Data(name: "Claude", usage: $0, resetDisplay: .usageRows)
