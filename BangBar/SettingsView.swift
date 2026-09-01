@@ -649,36 +649,56 @@ struct SettingsView: View {
     }
 
     private func enabledWidgetsTray(accentColor: Color) -> some View {
-        let enabledWidgets = widgetOrder.filter(isWidgetEnabled)
+        VStack(alignment: .leading, spacing: 14) {
+            enabledWidgetsPageTray(page: 0, accentColor: accentColor)
+            enabledWidgetsPageTray(page: 1, accentColor: accentColor)
+        }
+    }
 
-        return SettingsCard {
-            HStack(spacing: 10) {
-                ForEach(enabledWidgets) { widget in
-                    WidgetChip(
-                        widget: widget,
-                        isActive: draggedWidget == widget,
-                        accentColor: accentColor
-                    )
-                        .frame(maxWidth: .infinity)
-                        .animation(.easeInOut(duration: 0.16), value: draggedWidget)
-                        .onDrag {
-                            draggedWidget = widget
-                            return NSItemProvider(object: widget.rawValue as NSString)
-                        } preview: {
-                            WidgetChip(widget: widget, isDragPreview: true)
-                        }
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: WidgetOrderDropDelegate(
-                                targetWidget: widget,
-                                widgets: $widgetOrder,
-                                draggedWidget: $draggedWidget,
-                                persist: persistWidgetOrder
+    private func enabledWidgetsPageTray(page: Int, accentColor: Color) -> some View {
+        let enabledWidgets = pageEnabledWidgets(page)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            SettingsSectionLabel("PAGE \(page + 1)")
+
+            SettingsCard {
+                if enabledWidgets.isEmpty {
+                    Text("No widgets on this page")
+                        .font(SettingsTheme.captionFont)
+                        .foregroundStyle(SettingsTheme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 54)
+                        .padding(.vertical, 18)
+                } else {
+                    HStack(spacing: 10) {
+                        ForEach(enabledWidgets) { widget in
+                            WidgetChip(
+                                widget: widget,
+                                isActive: draggedWidget == widget,
+                                accentColor: accentColor
                             )
-                        )
+                            .frame(maxWidth: .infinity)
+                            .animation(.easeInOut(duration: 0.16), value: draggedWidget)
+                            .onDrag {
+                                draggedWidget = widget
+                                return NSItemProvider(object: widget.rawValue as NSString)
+                            } preview: {
+                                WidgetChip(widget: widget, isDragPreview: true)
+                            }
+                            .onDrop(
+                                of: [UTType.text],
+                                delegate: WidgetOrderDropDelegate(
+                                    targetWidget: widget,
+                                    widgets: $widgetOrder,
+                                    draggedWidget: $draggedWidget,
+                                    persist: persistWidgetOrder
+                                )
+                            )
+                        }
+                    }
+                    .padding(.vertical, 18)
                 }
             }
-            .padding(.vertical, 18)
         }
     }
 
