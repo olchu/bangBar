@@ -10,11 +10,19 @@ struct DayPlansWidget: View {
     @State private var pendingScrollReset: Task<Void, Never>?
     @State private var pendingScrollEnable: Task<Void, Never>?
     @State private var isScrollEnabled = false
+    @State private var selectedGroupFilterID: UUID?
 
     private var accentColor: Color { Color(hex: accentColorHex) }
 
     private var displayedTodayItems: [DayPlanItem] {
-        service.todaysItems.sorted { lhs, rhs in
+        let filteredItems: [DayPlanItem]
+        if let selectedGroupFilterID {
+            filteredItems = service.todaysItems.filter { $0.groupID == selectedGroupFilterID }
+        } else {
+            filteredItems = service.todaysItems
+        }
+
+        return filteredItems.sorted { lhs, rhs in
             if lhs.isCompleted != rhs.isCompleted {
                 return !lhs.isCompleted
             }
@@ -116,13 +124,15 @@ struct DayPlansWidget: View {
         HStack(spacing: 6) {
             Image(systemName: "list.bullet.clipboard")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.red)
+                .foregroundStyle(accentColor)
 
             if !service.todaysItems.isEmpty {
-                Text("Today \(service.todaysItems.count)")
+                Text("Today \(displayedTodayItems.count)")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.62))
             }
+
+            groupFilterDots
 
             Spacer()
 
@@ -131,7 +141,7 @@ struct DayPlansWidget: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(accentColor)
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
             }
@@ -146,6 +156,7 @@ struct DayPlansWidget: View {
             ForEach(displayedTodayItems) { plan in
                 DayPlanRow(
                     plan: plan,
+                    group: service.group(for: plan),
                     accentColor: accentColor,
                     isPanelContentVisible: isPanelContentVisible
                 ) {
@@ -156,6 +167,30 @@ struct DayPlansWidget: View {
             }
         }
         .padding(.top, 1)
+    }
+
+    private var groupFilterDots: some View {
+        HStack(spacing: 5) {
+            ForEach(service.groups) { group in
+                Button {
+                    selectedGroupFilterID = selectedGroupFilterID == group.id ? nil : group.id
+                } label: {
+                    Circle()
+                        .fill(Color(hex: group.colorHex))
+                        .frame(width: selectedGroupFilterID == group.id ? 7 : 6, height: selectedGroupFilterID == group.id ? 7 : 6)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(selectedGroupFilterID == group.id ? 0.9 : 0), lineWidth: 1.2)
+                        )
+                        .frame(width: 18, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .help(group.name)
+            }
+        }
+        .frame(height: 16)
     }
 
     private var emptyState: some View {
@@ -173,6 +208,7 @@ struct DayPlansWidget: View {
 
 private struct DayPlanRow: View {
     let plan: DayPlanItem
+    let group: DayPlanGroup?
     let accentColor: Color
     let isPanelContentVisible: Bool
     let action: () -> Void
@@ -182,7 +218,10 @@ private struct DayPlanRow: View {
     }
 
     private var statusColor: Color {
-        plan.isCompleted ? .white.opacity(0.58) : accentColor
+        if plan.isCompleted {
+            return .white.opacity(0.58)
+        }
+        return group.map { Color(hex: $0.colorHex) } ?? accentColor
     }
 
     var body: some View {
@@ -232,6 +271,9 @@ private struct DayPlanRow: View {
 
     private var tooltipText: String {
         var lines = [plan.title]
+        if let group {
+            lines.append(group.name)
+        }
         if plan.isCompleted {
             lines.append("Completed")
         }

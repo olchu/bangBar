@@ -451,7 +451,7 @@ struct SettingsView: View {
     private func dayPlansWidgetSettings(accentColor: Color) -> some View {
         widgetSpecificSettings(
             widget: .dayPlans,
-            description: "Create plans and assign each one to a day. Synced via iCloud Drive when available."
+            description: "Configure colored groups for daily tasks. Synced via iCloud Drive when available."
         ) {
             DayPlanSettingsContent(service: dayPlans, accentColor: accentColor)
         }

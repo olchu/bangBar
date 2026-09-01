@@ -46,6 +46,8 @@ private struct DayPlansWindowView: View {
 
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var newTaskTitle = ""
+    @State private var newTaskGroupID: UUID?
+    @State private var selectedGroupFilterID: UUID?
     @State private var selectedFilter = DayPlansTaskFilter.today
     @State private var selectedDate = Date()
     @State private var displayedMonth = Date()
@@ -62,7 +64,7 @@ private struct DayPlansWindowView: View {
         service.items.filter { $0.date == selectedDayID }
     }
     private var displayedItems: [DayPlanItem] {
-        switch selectedFilter {
+        let baseItems: [DayPlanItem] = switch selectedFilter {
         case .today:
             selectedDayItems
         case .all:
@@ -70,6 +72,9 @@ private struct DayPlansWindowView: View {
         case .completed:
             service.items.filter(\.isCompleted)
         }
+
+        guard let selectedGroupFilterID else { return baseItems }
+        return baseItems.filter { $0.groupID == selectedGroupFilterID }
     }
     private var activeItems: [DayPlanItem] { displayedItems.filter { !$0.isCompleted } }
     private var completedItems: [DayPlanItem] { displayedItems.filter(\.isCompleted) }
@@ -189,6 +194,8 @@ private struct DayPlansWindowView: View {
                     .foregroundStyle(accentColor)
 
                 Spacer()
+
+                groupFilterDots
 
                 Button(action: addTask) {
                     Label("Add Task", systemImage: "plus")
@@ -346,8 +353,13 @@ private struct DayPlansWindowView: View {
                     ForEach(tasks) { task in
                         DayPlansWindowTaskRow(
                             task: task,
+                            group: service.group(for: task),
+                            groups: service.groups,
                             accentColor: accentColor,
                             onToggle: { toggle(task) },
+                            onUpdate: { title, date, groupID in
+                                service.updatePlan(task, title: title, date: date, groupID: groupID)
+                            },
                             onDelete: { service.deletePlan(task) }
                         )
                         .onDrag {
@@ -401,6 +413,8 @@ private struct DayPlansWindowView: View {
                 .foregroundStyle(SettingsTheme.primaryText)
                 .focused($isNewTaskFocused)
                 .onSubmit(addTask)
+
+            groupPicker(selection: $newTaskGroupID)
         }
         .padding(.horizontal, 22)
         .frame(height: 54)
@@ -410,6 +424,43 @@ private struct DayPlansWindowView: View {
                 .foregroundStyle(SettingsTheme.border)
         )
         .padding(10)
+    }
+
+    private func groupPicker(selection: Binding<UUID?>) -> some View {
+        Menu {
+            Button("No Group") {
+                selection.wrappedValue = nil
+            }
+
+            ForEach(service.groups) { group in
+                Button {
+                    selection.wrappedValue = group.id
+                } label: {
+                    Label(group.name, systemImage: selection.wrappedValue == group.id ? "checkmark.circle.fill" : "circle")
+                }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                if let group = service.groups.first(where: { $0.id == selection.wrappedValue }) {
+                    Circle()
+                        .fill(Color(hex: group.colorHex))
+                        .frame(width: 10, height: 10)
+                    Text(group.name)
+                        .lineLimit(1)
+                } else {
+                    Circle()
+                        .stroke(SettingsTheme.secondaryText, lineWidth: 1.4)
+                        .frame(width: 10, height: 10)
+                    Text("No Group")
+                        .lineLimit(1)
+                }
+            }
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(SettingsTheme.secondaryText)
+            .frame(width: 112, alignment: .leading)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
     }
 
     private var bottomBar: some View {
@@ -437,6 +488,41 @@ private struct DayPlansWindowView: View {
         !newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var groupFilterDots: some View {
+        HStack(spacing: 7) {
+            Button {
+                selectedGroupFilterID = nil
+            } label: {
+                Circle()
+                    .fill(selectedGroupFilterID == nil ? accentColor : SettingsTheme.secondaryText.opacity(0.35))
+                    .frame(width: 8, height: 8)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("All groups")
+
+            ForEach(service.groups) { group in
+                Button {
+                    selectedGroupFilterID = selectedGroupFilterID == group.id ? nil : group.id
+                } label: {
+                    Circle()
+                        .fill(Color(hex: group.colorHex))
+                        .frame(width: 10, height: 10)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(selectedGroupFilterID == group.id ? 0.85 : 0), lineWidth: 2)
+                        )
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(group.name)
+            }
+        }
+        .frame(height: 42)
+    }
+
     private var monthTitle: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
@@ -452,7 +538,7 @@ private struct DayPlansWindowView: View {
             isNewTaskFocused = true
             return
         }
-        service.addPlan(title: newTaskTitle, date: selectedDate)
+        service.addPlan(title: newTaskTitle, date: selectedDate, groupID: newTaskGroupID)
         newTaskTitle = ""
         isNewTaskFocused = true
     }
@@ -475,7 +561,6 @@ private struct DayPlansWindowView: View {
     }
 
     private func calendarDays() -> [CalendarDay] {
-        let today = Date()
         guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth),
               let firstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
               let lastWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.end.addingTimeInterval(-1)) else {
@@ -508,14 +593,58 @@ private struct DayPlansWindowView: View {
     }
 }
 
+private func dateFromDayIdentifier(_ dayIdentifier: String) -> Date {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.calendar = .autoupdatingCurrent
+    formatter.timeZone = .autoupdatingCurrent
+    return formatter.date(from: dayIdentifier) ?? Date()
+}
+
 private struct DayPlansWindowTaskRow: View {
     let task: DayPlanItem
+    let group: DayPlanGroup?
+    let groups: [DayPlanGroup]
     let accentColor: Color
     let onToggle: () -> Void
+    let onUpdate: (String, Date, UUID?) -> Void
     let onDelete: () -> Void
 
+    private var statusColor: Color {
+        if task.isCompleted {
+            return group.map { Color(hex: $0.colorHex).opacity(0.72) } ?? SettingsTheme.secondaryText
+        }
+        return group.map { Color(hex: $0.colorHex) } ?? accentColor
+    }
+
+    @State private var title: String
+    @State private var date: Date
+    @State private var groupID: UUID?
+    @State private var isDatePickerPresented = false
+
+    init(
+        task: DayPlanItem,
+        group: DayPlanGroup?,
+        groups: [DayPlanGroup],
+        accentColor: Color,
+        onToggle: @escaping () -> Void,
+        onUpdate: @escaping (String, Date, UUID?) -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.task = task
+        self.group = group
+        self.groups = groups
+        self.accentColor = accentColor
+        self.onToggle = onToggle
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+        _title = State(initialValue: task.title)
+        _date = State(initialValue: dateFromDayIdentifier(task.date))
+        _groupID = State(initialValue: task.groupID)
+    }
+
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 14) {
             Image(systemName: "circle.grid.3x3")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(SettingsTheme.secondaryText)
@@ -524,19 +653,19 @@ private struct DayPlansWindowTaskRow: View {
                 ZStack {
                     if task.isCompleted {
                         Circle()
-                            .fill(accentColor)
+                            .fill(statusColor)
                             .frame(width: 18, height: 18)
-                            .shadow(color: accentColor.opacity(0.45), radius: 8)
+                            .shadow(color: statusColor.opacity(0.45), radius: 8)
                         Image(systemName: "checkmark")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(.white)
                     } else {
                         Circle()
-                            .stroke(accentColor.opacity(0.75), lineWidth: 2.5)
+                            .stroke(statusColor.opacity(0.75), lineWidth: 2.5)
                             .frame(width: 20, height: 20)
                             .blur(radius: 2)
                         Circle()
-                            .stroke(accentColor, lineWidth: 1.8)
+                            .stroke(statusColor, lineWidth: 1.8)
                             .frame(width: 20, height: 20)
                     }
                 }
@@ -544,15 +673,30 @@ private struct DayPlansWindowTaskRow: View {
             }
             .buttonStyle(.plain)
 
-            Text(task.title)
+            TextField("Task title", text: $title)
+                .textFieldStyle(.plain)
                 .font(.system(size: 17, weight: .medium, design: .rounded))
                 .foregroundStyle(task.isCompleted ? SettingsTheme.secondaryText : SettingsTheme.primaryText)
                 .strikethrough(task.isCompleted, color: SettingsTheme.secondaryText)
                 .lineLimit(1)
+                .onSubmit(commit)
+                .onChange(of: title) { _, newValue in
+                    if newValue.count > 120 {
+                        title = String(newValue.prefix(120))
+                    }
+                }
+                .onChange(of: task.title) { _, newValue in
+                    if title != newValue { title = newValue }
+                }
 
             Spacer()
 
+            dateButton
+
+            groupMenu
+
             Menu {
+                Button("Save", action: commit)
                 Button("Delete", role: .destructive, action: onDelete)
             } label: {
                 Image(systemName: "ellipsis")
@@ -566,6 +710,108 @@ private struct DayPlansWindowTaskRow: View {
         }
         .padding(.horizontal, 26)
         .frame(height: 62)
+    }
+
+    private var dateButton: some View {
+        Button {
+            isDatePickerPresented.toggle()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(formattedDate)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .foregroundStyle(SettingsTheme.secondaryText)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(SettingsTheme.border.opacity(0.75), lineWidth: 1)
+                    )
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help("Edit task date")
+        .popover(isPresented: $isDatePickerPresented, arrowEdge: .bottom) {
+            DatePicker("", selection: $date, displayedComponents: [.date])
+                .labelsHidden()
+                .datePickerStyle(.graphical)
+                .tint(accentColor)
+                .padding(12)
+                .frame(width: 260)
+                .background(SettingsTheme.background)
+        }
+        .onChange(of: date) { _, _ in commit() }
+        .onChange(of: task.date) { _, newValue in
+            let newDate = dateFromDayIdentifier(newValue)
+            if !Calendar.autoupdatingCurrent.isDate(date, inSameDayAs: newDate) {
+                date = newDate
+            }
+        }
+    }
+
+    private var formattedDate: String {
+        if Calendar.autoupdatingCurrent.isDateInToday(date) {
+            return "Today"
+        }
+        return Self.dateFormatter.string(from: date)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate("MMM d, yyyy")
+        return formatter
+    }()
+
+    private var groupMenu: some View {
+        Menu {
+            Button("No Group") {
+                groupID = nil
+                commit()
+            }
+
+            ForEach(groups) { group in
+                Button {
+                    groupID = group.id
+                    commit()
+                } label: {
+                    Label(group.name, systemImage: groupID == group.id ? "checkmark.circle.fill" : "circle")
+                }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                if let selectedGroup = groups.first(where: { $0.id == groupID }) {
+                    Circle()
+                        .fill(Color(hex: selectedGroup.colorHex))
+                        .frame(width: 10, height: 10)
+                    Text(selectedGroup.name)
+                } else {
+                    Circle()
+                        .stroke(SettingsTheme.secondaryText, lineWidth: 1.4)
+                        .frame(width: 10, height: 10)
+                    Text("No Group")
+                }
+            }
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(SettingsTheme.secondaryText)
+            .frame(width: 112, alignment: .leading)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .onChange(of: task.groupID) { _, newValue in
+            if groupID != newValue { groupID = newValue }
+        }
+    }
+
+    private func commit() {
+        onUpdate(title, date, groupID)
     }
 }
 

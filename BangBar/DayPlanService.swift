@@ -6,6 +6,13 @@ struct DayPlanItem: Codable, Hashable, Identifiable {
     var title: String
     var date: String
     var isCompleted: Bool = false
+    var groupID: UUID? = nil
+}
+
+struct DayPlanGroup: Codable, Hashable, Identifiable {
+    let id: UUID
+    var name: String
+    var colorHex: String
 }
 
 @MainActor
@@ -13,14 +20,28 @@ final class DayPlanService: ObservableObject {
     static let shared = DayPlanService()
 
     @Published private(set) var items: [DayPlanItem] = []
+    @Published private(set) var groups: [DayPlanGroup] = []
     @Published private(set) var currentDay = ""
 
     private struct StoredData: Codable {
         var version: Int
         var items: [DayPlanItem]
+        var groups: [DayPlanGroup]?
     }
 
-    private static let storageVersion = 1
+    private struct LegacyDayPlanItem: Codable {
+        let id: UUID
+        var title: String
+        var date: String
+        var isCompleted: Bool
+    }
+
+    private struct LegacyStoredData: Codable {
+        var version: Int
+        var items: [LegacyDayPlanItem]
+    }
+
+    private static let storageVersion = 2
 
     private let storageURL: URL
     private var calendar: Calendar
@@ -65,22 +86,46 @@ final class DayPlanService: ObservableObject {
     func reload() {
         guard let data = try? Data(contentsOf: storageURL) else {
             items = []
+            groups = []
             return
         }
 
-        guard let stored = try? JSONDecoder().decode(StoredData.self, from: data),
-              stored.version == Self.storageVersion else {
-            preserveUnreadableFile()
-            items = []
+        if let stored = try? JSONDecoder().decode(StoredData.self, from: data),
+           stored.version == Self.storageVersion {
+            groups = stored.groups ?? []
+            items = stored.items.map { item in
+                var migratedItem = item
+                migratedItem.groupID = validGroupID(item.groupID, in: groups)
+                return migratedItem
+            }
+            rolloverIncompletePlans(to: currentDay)
             return
         }
 
-        items = stored.items
-        rolloverIncompletePlans(to: currentDay)
+        if let legacy = try? JSONDecoder().decode(LegacyStoredData.self, from: data),
+           legacy.version == 1 {
+            groups = []
+            items = legacy.items.map {
+                DayPlanItem(
+                    id: $0.id,
+                    title: $0.title,
+                    date: $0.date,
+                    isCompleted: $0.isCompleted,
+                    groupID: nil
+                )
+            }
+            persist()
+            rolloverIncompletePlans(to: currentDay)
+            return
+        }
+
+        preserveUnreadableFile()
+        items = []
+        groups = []
     }
 
     @discardableResult
-    func addPlan(title: String, date: Date) -> DayPlanItem? {
+    func addPlan(title: String, date: Date, groupID: UUID? = nil) -> DayPlanItem? {
         refreshDay()
         let normalizedTitle = Self.normalizedTitle(title)
         guard !normalizedTitle.isEmpty else { return nil }
@@ -88,14 +133,15 @@ final class DayPlanService: ObservableObject {
         let plan = DayPlanItem(
             id: UUID(),
             title: normalizedTitle,
-            date: Self.dayIdentifier(for: date, calendar: calendar)
+            date: Self.dayIdentifier(for: date, calendar: calendar),
+            groupID: validGroupID(groupID)
         )
         items.append(plan)
         persist()
         return plan
     }
 
-    func updatePlan(_ plan: DayPlanItem, title: String, date: Date) {
+    func updatePlan(_ plan: DayPlanItem, title: String, date: Date, groupID: UUID? = nil) {
         let normalizedTitle = Self.normalizedTitle(title)
         guard !normalizedTitle.isEmpty,
               let index = items.firstIndex(where: { $0.id == plan.id }) else {
@@ -104,6 +150,47 @@ final class DayPlanService: ObservableObject {
 
         items[index].title = normalizedTitle
         items[index].date = Self.dayIdentifier(for: date, calendar: calendar)
+        items[index].groupID = validGroupID(groupID)
+        persist()
+    }
+
+    func group(for plan: DayPlanItem) -> DayPlanGroup? {
+        guard let groupID = plan.groupID else { return nil }
+        return groups.first { $0.id == groupID }
+    }
+
+    @discardableResult
+    func addGroup(name: String, colorHex: String) -> DayPlanGroup? {
+        let normalizedName = Self.normalizedGroupName(name)
+        guard !normalizedName.isEmpty else { return nil }
+
+        let group = DayPlanGroup(
+            id: UUID(),
+            name: normalizedName,
+            colorHex: Self.normalizedColorHex(colorHex)
+        )
+        groups.append(group)
+        persist()
+        return group
+    }
+
+    func updateGroup(_ group: DayPlanGroup, name: String, colorHex: String) {
+        let normalizedName = Self.normalizedGroupName(name)
+        guard !normalizedName.isEmpty,
+              let index = groups.firstIndex(where: { $0.id == group.id }) else {
+            return
+        }
+
+        groups[index].name = normalizedName
+        groups[index].colorHex = Self.normalizedColorHex(colorHex)
+        persist()
+    }
+
+    func deleteGroup(_ group: DayPlanGroup) {
+        groups.removeAll { $0.id == group.id }
+        for index in items.indices where items[index].groupID == group.id {
+            items[index].groupID = nil
+        }
         persist()
     }
 
@@ -143,8 +230,26 @@ final class DayPlanService: ObservableObject {
         String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
     }
 
+    private static func normalizedGroupName(_ name: String) -> String {
+        String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(32))
+    }
+
+    private static func normalizedColorHex(_ colorHex: String) -> String {
+        let trimmed = colorHex.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "#FF3B30" : trimmed
+    }
+
+    private func validGroupID(_ groupID: UUID?) -> UUID? {
+        validGroupID(groupID, in: groups)
+    }
+
+    private func validGroupID(_ groupID: UUID?, in groups: [DayPlanGroup]) -> UUID? {
+        guard let groupID, groups.contains(where: { $0.id == groupID }) else { return nil }
+        return groupID
+    }
+
     private func persist() {
-        let stored = StoredData(version: Self.storageVersion, items: items)
+        let stored = StoredData(version: Self.storageVersion, items: items, groups: groups)
         guard let data = try? JSONEncoder().encode(stored) else { return }
         try? FileManager.default.createDirectory(
             at: storageURL.deletingLastPathComponent(),

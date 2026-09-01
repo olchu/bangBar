@@ -4,28 +4,30 @@ struct DayPlanSettingsContent: View {
     @ObservedObject var service: DayPlanService
     let accentColor: Color
 
-    @State private var newPlanTitle = ""
-    @State private var newPlanDate = Date()
-    @FocusState private var isNewPlanFieldFocused: Bool
+    @State private var newGroupName = ""
+    @State private var newGroupColor = Color.red
+    @FocusState private var isNewGroupFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             SettingsCard {
                 VStack(spacing: 0) {
-                    addPlanRow
+                    addGroupRow
 
-                    if !service.items.isEmpty {
+                    if !service.groups.isEmpty {
                         SettingsDivider()
 
-                        ForEach(Array(service.items.enumerated()), id: \.element.id) { index, plan in
-                            EditablePlanRow(
-                                plan: plan,
+                        ForEach(Array(service.groups.enumerated()), id: \.element.id) { index, group in
+                            EditableDayPlanGroupRow(
+                                group: group,
                                 accentColor: accentColor,
-                                onSave: { title, date in service.updatePlan(plan, title: title, date: date) },
-                                onDelete: { service.deletePlan(plan) }
+                                onSave: { name, color in
+                                    service.updateGroup(group, name: name, colorHex: color.hexString)
+                                },
+                                onDelete: { service.deleteGroup(group) }
                             )
 
-                            if index < service.items.count - 1 {
+                            if index < service.groups.count - 1 {
                                 SettingsDivider()
                             }
                         }
@@ -33,7 +35,7 @@ struct DayPlanSettingsContent: View {
                 }
             }
 
-            Text("Each plan shows in the widget only on its assigned day.")
+            Text("Tasks are created and edited from the Tasks window. Groups add one color marker and one widget filter per group.")
                 .font(SettingsTheme.captionFont)
                 .foregroundStyle(SettingsTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -43,32 +45,25 @@ struct DayPlanSettingsContent: View {
         }
     }
 
-    private var addPlanRow: some View {
+    private var addGroupRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "plus.circle")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(accentColor)
+            GroupColorPicker(selection: $newGroupColor)
 
-            TextField("New plan", text: $newPlanTitle)
+            TextField("New group", text: $newGroupName)
                 .textFieldStyle(.plain)
                 .font(SettingsTheme.rowFont)
-                .focused($isNewPlanFieldFocused)
-                .onSubmit(addPlan)
+                .focused($isNewGroupFieldFocused)
+                .onSubmit(addGroup)
 
-            DatePicker("", selection: $newPlanDate, displayedComponents: [.date])
-                .labelsHidden()
-                .datePickerStyle(.compact)
-                .tint(accentColor)
-
-            Button("Add", action: addPlan)
+            Button("Add", action: addGroup)
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(canAddPlan ? Color.white : SettingsTheme.secondaryText)
+                .foregroundStyle(canAddGroup ? Color.white : SettingsTheme.secondaryText)
                 .padding(.horizontal, 14)
                 .frame(height: 30)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(canAddPlan ? accentColor : Color.white.opacity(0.06))
+                        .fill(canAddGroup ? accentColor : Color.white.opacity(0.06))
                 )
                 .contentShape(Rectangle())
         }
@@ -76,61 +71,64 @@ struct DayPlanSettingsContent: View {
         .frame(height: 48)
     }
 
-    private var canAddPlan: Bool {
-        !newPlanTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var canAddGroup: Bool {
+        !newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func addPlan() {
-        guard canAddPlan else { return }
-        service.addPlan(title: newPlanTitle, date: newPlanDate)
-        newPlanTitle = ""
-        isNewPlanFieldFocused = true
+    private func addGroup() {
+        guard canAddGroup else { return }
+        service.addGroup(name: newGroupName, colorHex: newGroupColor.hexString)
+        newGroupName = ""
+        isNewGroupFieldFocused = true
     }
 }
 
-private struct EditablePlanRow: View {
-    let plan: DayPlanItem
+private struct EditableDayPlanGroupRow: View {
+    let group: DayPlanGroup
     let accentColor: Color
-    let onSave: (String, Date) -> Void
+    let onSave: (String, Color) -> Void
     let onDelete: () -> Void
 
-    @State private var title: String
-    @State private var date: Date
+    @State private var name: String
+    @State private var color: Color
 
     init(
-        plan: DayPlanItem,
+        group: DayPlanGroup,
         accentColor: Color,
-        onSave: @escaping (String, Date) -> Void,
+        onSave: @escaping (String, Color) -> Void,
         onDelete: @escaping () -> Void
     ) {
-        self.plan = plan
+        self.group = group
         self.accentColor = accentColor
         self.onSave = onSave
         self.onDelete = onDelete
-        _title = State(initialValue: plan.title)
-        _date = State(initialValue: EditablePlanRow.date(from: plan.date))
+        _name = State(initialValue: group.name)
+        _color = State(initialValue: Color(hex: group.colorHex))
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            TextField("Plan title", text: $title)
+            GroupColorPicker(selection: $color)
+                .onChange(of: color) { _, _ in commit() }
+
+            TextField("Group name", text: $name)
                 .textFieldStyle(.plain)
                 .font(SettingsTheme.rowFont)
                 .onSubmit(commit)
-                .onChange(of: plan.title) { _, newValue in
-                    if title != newValue { title = newValue }
-                }
-                .onChange(of: title) { _, newValue in
-                    if newValue.count > 120 {
-                        title = String(newValue.prefix(120))
+                .onChange(of: name) { _, newValue in
+                    if newValue.count > 32 {
+                        name = String(newValue.prefix(32))
                     }
                 }
-
-            DatePicker("", selection: $date, displayedComponents: [.date])
-                .labelsHidden()
-                .datePickerStyle(.compact)
-                .tint(accentColor)
-                .onChange(of: date) { _, _ in commit() }
+                .onChange(of: group.name) { _, newValue in
+                    if name != newValue { name = newValue }
+                }
+                .onChange(of: group.colorHex) { _, newValue in
+                    let newColor = Color(hex: newValue)
+                    if color.hexString != newColor.hexString {
+                        color = newColor
+                    }
+                }
 
             Button(action: commit) {
                 Image(systemName: "checkmark")
@@ -139,7 +137,7 @@ private struct EditablePlanRow: View {
                     .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
-            .help("Save changes")
+            .help("Save group")
 
             Button(action: onDelete) {
                 Image(systemName: "xmark")
@@ -148,21 +146,38 @@ private struct EditablePlanRow: View {
                     .frame(width: 26, height: 26)
             }
             .buttonStyle(.plain)
-            .help("Delete plan")
+            .help("Delete group")
         }
         .padding(.horizontal, 16)
         .frame(height: 48)
     }
 
     private func commit() {
-        onSave(title, date)
+        onSave(name, color)
     }
+}
 
-    private static func date(from dayIdentifier: String) -> Date {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.calendar = .autoupdatingCurrent
-        formatter.timeZone = .autoupdatingCurrent
-        return formatter.date(from: dayIdentifier) ?? Date()
+private struct GroupColorPicker: View {
+    @Binding var selection: Color
+
+    var body: some View {
+        ColorPicker(selection: $selection, supportsOpacity: false) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(selection)
+                    .frame(width: 14, height: 14)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                    )
+
+                Text("Color")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SettingsTheme.secondaryText)
+            }
+        }
+        .labelsHidden()
+        .frame(width: 72)
+        .help("Edit group color")
     }
 }
