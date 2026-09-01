@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 
 struct NowPlayingInfo {
     var title: String = ""
@@ -206,6 +207,8 @@ private enum Player: String, CaseIterable {
 }
 
 final class NowPlayingService: ObservableObject {
+    private static let logger = Logger(subsystem: "BangBar", category: "NowPlaying")
+
     @Published var info = NowPlayingInfo()
     @Published var isAvailable = false
 
@@ -352,7 +355,12 @@ final class NowPlayingService: ObservableObject {
         guard let script = NSAppleScript(source: source) else { return nil }
         var errorInfo: NSDictionary?
         let result = script.executeAndReturnError(&errorInfo)
-        guard errorInfo == nil else { return nil }
+        if let errorInfo {
+            let message = errorInfo[NSAppleScript.errorMessage] as? String ?? "Unknown AppleScript error"
+            let number = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
+            Self.logger.error("AppleScript failed: \(message, privacy: .public) (\(number))")
+            return nil
+        }
         let output = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
         return output?.isEmpty == false ? output : nil
     }

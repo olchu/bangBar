@@ -203,6 +203,8 @@ enum BangBarSettings {
 
     static let defaultAccentColorHex = "#FF383C"
     static let defaultWidgetOrderRaw = widgetOrderRaw(from: BangBarWidget.allCases)
+    static let defaultCalendarAlertBlurRadius = 32
+    static let calendarAlertBlurRadiusRange = 0...80
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -233,7 +235,7 @@ enum BangBarSettings {
             Key.calendarAlertsEnabled: false,
             Key.calendarAlertLeadMinutes: 0,
             Key.calendarAlertBackgroundOpacity: 62,
-            Key.calendarAlertBlurIntensity: 100,
+            Key.calendarAlertBlurIntensity: defaultCalendarAlertBlurRadius,
             Key.widgetOrder: defaultWidgetOrderRaw,
             Key.widgetPages: "{}",
             Key.pageSwipeInverted: false,

@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import Carbon
 import CoreLocation
 import EventKit
 import ServiceManagement
@@ -35,7 +36,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.calendarAlertBackgroundOpacity)
     private var calendarAlertBackgroundOpacity = 62
     @AppStorage(BangBarSettings.Key.calendarAlertBlurIntensity)
-    private var calendarAlertBlurIntensity = 100
+    private var calendarAlertBlurIntensity = BangBarSettings.defaultCalendarAlertBlurRadius
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.panelActivationThreshold) private var panelActivationThreshold = 0
@@ -542,12 +543,12 @@ struct SettingsView: View {
                         SettingsDivider()
 
                         SettingsStepperRow(
-                            title: "Blur",
+                            title: "Window blur",
                             value: $calendarAlertBlurIntensity,
-                            range: 0...100,
-                            step: 5,
-                            unit: "%",
-                            resetValue: 100,
+                            range: BangBarSettings.calendarAlertBlurRadiusRange,
+                            step: 4,
+                            unit: "px",
+                            resetValue: BangBarSettings.defaultCalendarAlertBlurRadius,
                             accentColor: accentColor
                         )
                     }
@@ -1193,6 +1194,8 @@ private struct LaunchAtLoginSettingsRow: View {
 private struct PrivacySettingsSection: View {
     @State private var cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var calendarStatus = EKEventStore.authorizationStatus(for: .event)
+    @State private var automationStatus = "Required to control Spotify and Music"
+    @State private var isRequestingAutomation = false
     private let eventStore = EKEventStore()
 
     var body: some View {
@@ -1220,12 +1223,15 @@ private struct PrivacySettingsSection: View {
 
                 PermissionRow(
                     title: "Automation",
-                    status: "Required to control Spotify and Music",
+                    status: automationStatus,
                     systemImage: "gearshape.2.fill",
-                    buttonTitle: "Open",
-                    action: {
+                    buttonTitle: isRequestingAutomation ? "Requesting..." : "Request",
+                    action: requestAutomationAccess,
+                    secondaryButtonTitle: "Open",
+                    secondaryAction: {
                         openPrivacySettings(anchor: "Privacy_Automation")
-                    }
+                    },
+                    isPrimaryDisabled: isRequestingAutomation
                 )
             }
         }
@@ -1300,6 +1306,133 @@ private struct PrivacySettingsSection: View {
         }
     }
 
+    private func requestAutomationAccess() {
+        guard !isRequestingAutomation else { return }
+        isRequestingAutomation = true
+        automationStatus = "Waiting for macOS permission prompt..."
+
+        Task { @MainActor in
+            let result = await Self.performAutomationProbe()
+            isRequestingAutomation = false
+            automationStatus = result.message
+            if result.shouldOpenSettings {
+                openPrivacySettings(anchor: "Privacy_Automation")
+            }
+        }
+    }
+
+    @MainActor
+    private static func performAutomationProbe() async -> (message: String, shouldOpenSettings: Bool) {
+        let targets = runningMediaPlayers()
+        let players = targets.isEmpty ? [("Music", "com.apple.Music")] : targets
+
+        var lastMessage = "Permission was not granted"
+        for player in players {
+            ensureApplicationIsRunning(bundleID: player.bundleID)
+            try? await Task.sleep(for: .milliseconds(500))
+
+            let permissionStatus = automationPermissionStatus(for: player.bundleID)
+            if permissionStatus == noErr {
+                return verifyAutomationScript(for: player)
+            }
+
+            if permissionStatus != errAEEventWouldRequireUserConsent {
+                lastMessage = appleEventPermissionMessage(permissionStatus)
+                continue
+            }
+
+            return verifyAutomationScript(for: player)
+        }
+
+        return ("Permission needed: \(lastMessage)", true)
+    }
+
+    @MainActor
+    private static func runningMediaPlayers() -> [(name: String, bundleID: String)] {
+        var players: [(name: String, bundleID: String)] = []
+        let runningBundleIDs = Set(
+            NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
+        )
+
+        if runningBundleIDs.contains("com.apple.Music") {
+            players.append(("Music", "com.apple.Music"))
+        }
+        if runningBundleIDs.contains("com.spotify.client") {
+            players.append(("Spotify", "com.spotify.client"))
+        }
+
+        return players
+    }
+
+    @MainActor
+    private static func ensureApplicationIsRunning(bundleID: String) {
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+    }
+
+    private static func automationPermissionStatus(for bundleID: String) -> OSStatus {
+        guard let data = bundleID.data(using: .utf8) else { return OSStatus(paramErr) }
+
+        var target = AEAddressDesc()
+        let createStatus = data.withUnsafeBytes { bytes in
+            AECreateDesc(
+                DescType(typeApplicationBundleID),
+                bytes.baseAddress,
+                data.count,
+                &target
+            )
+        }
+        guard createStatus == noErr else { return OSStatus(createStatus) }
+        defer { AEDisposeDesc(&target) }
+
+        return AEDeterminePermissionToAutomateTarget(
+            &target,
+            AEEventClass(kCoreEventClass),
+            AEEventID(kAEGetData),
+            true
+        )
+    }
+
+    private static func verifyAutomationScript(
+        for player: (name: String, bundleID: String)
+    ) -> (message: String, shouldOpenSettings: Bool) {
+        let script = NSAppleScript(source: """
+        tell application "\(player.name)"
+            get player state
+        end tell
+        """)
+        var errorInfo: NSDictionary?
+        _ = script?.executeAndReturnError(&errorInfo)
+
+        if let errorInfo {
+            let message = errorInfo[NSAppleScript.errorMessage] as? String
+                ?? "Unknown AppleScript error"
+            let number = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
+            return ("Permission needed: \(message) (\(number))", true)
+        }
+
+        return ("Allowed for \(player.name)", false)
+    }
+
+    private static func appleEventPermissionMessage(_ status: OSStatus) -> String {
+        switch status {
+        case noErr:
+            return "Allowed"
+        case OSStatus(errAEEventWouldRequireUserConsent):
+            return "macOS needs confirmation"
+        case OSStatus(errAEEventNotPermitted):
+            return "Automation is denied in System Settings"
+        default:
+            return "Apple Events error \(status)"
+        }
+    }
+
     private func openPrivacySettings(anchor: String) {
         let urlStrings = [
             "x-apple.systempreferences:com.apple.preference.security?\(anchor)",
@@ -1325,6 +1458,9 @@ private struct PermissionRow: View {
     let systemImage: String
     let buttonTitle: String
     let action: () -> Void
+    var secondaryButtonTitle: String? = nil
+    var secondaryAction: (() -> Void)? = nil
+    var isPrimaryDisabled = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -1346,8 +1482,16 @@ private struct PermissionRow: View {
 
             Spacer()
 
-            Button(buttonTitle, action: action)
-                .buttonStyle(SettingsOutlineButtonStyle())
+            HStack(spacing: 8) {
+                Button(buttonTitle, action: action)
+                    .buttonStyle(SettingsOutlineButtonStyle())
+                    .disabled(isPrimaryDisabled)
+
+                if let secondaryButtonTitle, let secondaryAction {
+                    Button(secondaryButtonTitle, action: secondaryAction)
+                        .buttonStyle(SettingsOutlineButtonStyle())
+                }
+            }
         }
         .frame(minHeight: 72)
     }

@@ -51,7 +51,10 @@ final class CalendarAlertService {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateTimer() }
+                MainActor.assumeIsolated {
+                    self?.updateTimer()
+                    self?.applyWindowBlur()
+                }
             }
         )
         observers.append(
@@ -287,6 +290,25 @@ final class CalendarAlertService {
         alertWindow = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        applyWindowBlur()
+    }
+
+    private func applyWindowBlur() {
+        guard let alertWindow else { return }
+        alertWindow.isOpaque = false
+        alertWindow.backgroundColor = .clear
+        alertWindow.alphaValue = 1
+        let blurRadius = UserDefaults.standard.integer(
+            forKey: BangBarSettings.Key.calendarAlertBlurIntensity
+        )
+        WindowBackgroundBlur.setRadius(UInt32(clampedBlurRadius(blurRadius)), for: alertWindow)
+    }
+
+    private func clampedBlurRadius(_ radius: Int) -> Int {
+        min(
+            max(radius, BangBarSettings.calendarAlertBlurRadiusRange.lowerBound),
+            BangBarSettings.calendarAlertBlurRadiusRange.upperBound
+        )
     }
 
     private func snooze(_ event: CalendarAlertEvent, minutes: Int) {
@@ -323,7 +345,7 @@ private struct CalendarAlertView: View {
     @AppStorage(BangBarSettings.Key.calendarAlertBackgroundOpacity)
     private var backgroundOpacity = 62
     @AppStorage(BangBarSettings.Key.calendarAlertBlurIntensity)
-    private var blurIntensity = 100
+    private var blurIntensity = BangBarSettings.defaultCalendarAlertBlurRadius
     @State private var appeared = false
 
     private var calendarColor: Color { Color(nsColor: event.calendarColor) }
@@ -333,8 +355,6 @@ private struct CalendarAlertView: View {
 
     var body: some View {
         ZStack {
-            CalendarAlertBackdrop(intensity: blurIntensity)
-
             Color.black.opacity(normalizedBackgroundOpacity)
 
             RadialGradient(
@@ -551,6 +571,8 @@ private struct CalendarAlertView: View {
             }
         }
         .background {
+            CalendarAlertWindowBlurUpdater(radius: blurIntensity)
+
             Button("") { onSnooze(5) }
                 .keyboardShortcut("s", modifiers: [])
                 .frame(width: 0, height: 0)
@@ -591,27 +613,29 @@ private struct CalendarAlertView: View {
     }
 }
 
-private struct CalendarAlertBackdrop: NSViewRepresentable {
-    let intensity: Int
+private struct CalendarAlertWindowBlurUpdater: NSViewRepresentable {
+    let radius: Int
 
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.appearance = NSAppearance(named: .darkAqua)
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.alphaValue = normalizedIntensity
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        applyBlur(from: view)
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.appearance = NSAppearance(named: .darkAqua)
-        nsView.state = .active
-        nsView.alphaValue = normalizedIntensity
+    func updateNSView(_ nsView: NSView, context: Context) {
+        applyBlur(from: nsView)
     }
 
-    private var normalizedIntensity: CGFloat {
-        CGFloat(min(max(intensity, 0), 100)) / 100
+    private func applyBlur(from view: NSView) {
+        guard let window = view.window else { return }
+        WindowBackgroundBlur.setRadius(UInt32(clampedRadius), for: window)
+    }
+
+    private var clampedRadius: Int {
+        min(
+            max(radius, BangBarSettings.calendarAlertBlurRadiusRange.lowerBound),
+            BangBarSettings.calendarAlertBlurRadiusRange.upperBound
+        )
     }
 }
 
