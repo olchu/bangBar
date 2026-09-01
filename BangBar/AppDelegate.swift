@@ -176,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if shouldOpenPanel {
             if let panel = hoverPanel,
-               (!panel.isVisible || panel.isHiding || panel.isCompactMode),
+               (!panel.isVisible || panel.isHiding || panel.isCompactMode || !panel.isOnActiveSpace),
                !panel.isAnimatingFrame {
                 if panel.isCompactMode {
                     compactExpansionGraceUntil = Date().addingTimeInterval(0.85)

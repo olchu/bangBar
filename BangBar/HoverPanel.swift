@@ -253,6 +253,14 @@ class HoverPanel: NSPanel {
             logger.error("Cannot show panel because no screen is available")
             return
         }
+
+        if isVisible, !isOnActiveSpace {
+            logger.notice("Panel was visible but stranded on another Space; reasserting membership")
+            reassertAllSpacesMembership()
+            orderOut(nil)
+            orderFrontRegardless()
+        }
+
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         if clipboardHistory.isCollectingImages {
             state.showsClipboardHistory = true
