@@ -20,11 +20,15 @@ enum MoonOrientation {
             tan(observerLatitude) * cos(moon.dec) - sin(moon.dec) * cos(hourAngle)
         )
 
+        let localBrightLimbDegrees = (brightLimb - parallactic) * 180 / .pi
+        let eastFacingMaskOffset = -90.0
+
         // The astronomical angle is measured from the disk's north point.
-        // MoonIlluminationMask starts with its bright side pointing east (right).
-        // SwiftUI's screen Y axis points down, so the converted angle must also
-        // be mirrored to match the orientation seen against the local horizon.
-        return -((brightLimb - parallactic) * 180 / .pi + 90)
+        // MoonIlluminationMask starts with its bright side pointing east (right),
+        // so the fixed offset only converts between those coordinate frames.
+        // The localBrightLimbDegrees value above still carries the observer's
+        // latitude and longitude through the parallactic angle.
+        return -(localBrightLimbDegrees + eastFacingMaskOffset)
     }
 
     private static func sunEquatorial(days: Double) -> (ra: Double, dec: Double) {
