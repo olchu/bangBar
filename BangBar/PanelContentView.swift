@@ -268,17 +268,27 @@ struct PanelContentView: View {
 
                 switch widget {
                 case .nowPlaying:
-                    NowPlayingWidget(
-                        service: nowPlaying,
-                        hideArtwork: hideExpandedArtwork
-                    )
+                    Group {
+                        if state.contentVisible {
+                            NowPlayingWidget(
+                                service: nowPlaying,
+                                hideArtwork: hideExpandedArtwork
+                            )
+                        } else {
+                            EmptyView()
+                        }
+                    }
                     .frame(
                         width: PanelLayout.nowPlayingWidgetWidth,
                         height: PanelLayout.nowPlayingWidgetHeight,
                         alignment: .topLeading
                     )
                 case .clock:
-                    ClockWidget(date: currentTime, calendarEvents: calendarEvents)
+                    ClockWidget(
+                        date: currentTime,
+                        calendarEvents: calendarEvents,
+                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                    )
                         .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                 case .moon:
                     MoonWidget(date: currentTime)

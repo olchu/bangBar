@@ -5,6 +5,7 @@ import AppKit
 struct ClockWidget: View {
     let date: Date
     @ObservedObject var calendarEvents: CalendarEventService
+    let isPanelContentVisible: Bool
     private let headerHeight: CGFloat = 43
 
     private var hourString: String {
@@ -91,7 +92,7 @@ struct ClockWidget: View {
                         }
                     }
                 } else if case .authorized = calendarEvents.authorizationState {
-                    EmptyCalendarEventsView()
+                    EmptyCalendarEventsView(isPanelContentVisible: isPanelContentVisible)
                 } else {
                     HStack(alignment: .center, spacing: 5) {
                         Image(systemName: "calendar")
@@ -115,13 +116,15 @@ struct ClockWidget: View {
     }
 
     private struct EmptyCalendarEventsView: View {
+        let isPanelContentVisible: Bool
+
         @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
         @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
         private var accentColor: Color { Color(hex: accentColorHex) }
 
         var body: some View {
             HStack(alignment: .center, spacing: 8) {
-                LoopingVideoView(resourceName: "man")
+                LoopingVideoView(resourceName: "man", isPlaying: isPanelContentVisible)
                     .frame(width: 55, height: 55)
                     .colorMultiply(tintWalkingMan ? accentColor : .white)
 
@@ -146,6 +149,7 @@ struct ClockWidget: View {
 
     private struct LoopingVideoView: NSViewRepresentable {
         let resourceName: String
+        let isPlaying: Bool
 
         func makeCoordinator() -> Coordinator {
             Coordinator()
@@ -158,10 +162,12 @@ struct ClockWidget: View {
         }
 
         func updateNSView(_ view: VideoContainerView, context: Context) {
-            guard context.coordinator.player == nil,
-                  let url = Bundle.main.url(forResource: resourceName, withExtension: "mp4") else {
+            if let player = context.coordinator.player {
+                isPlaying ? player.play() : player.pause()
                 return
             }
+
+            guard let url = Bundle.main.url(forResource: resourceName, withExtension: "mp4") else { return }
 
             let item = Self.loopingItem(from: url)
             let player = AVQueuePlayer()
@@ -171,7 +177,9 @@ struct ClockWidget: View {
             context.coordinator.player = player
             context.coordinator.looper = AVPlayerLooper(player: player, templateItem: item)
             view.playerLayer.player = player
-            player.play()
+            if isPlaying {
+                player.play()
+            }
         }
 
         private static func loopingItem(from url: URL) -> AVPlayerItem {

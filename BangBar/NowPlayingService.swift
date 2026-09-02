@@ -15,6 +15,28 @@ struct NowPlayingInfo {
     var canFavorite: Bool = false
 }
 
+private extension NowPlayingInfo {
+    func matchesMetadata(
+        title: String,
+        artist: String,
+        isPlaying: Bool,
+        duration: Double,
+        shuffleEnabled: Bool,
+        repeatMode: RepeatMode,
+        isFavorited: Bool,
+        canFavorite: Bool
+    ) -> Bool {
+        self.title == title
+            && self.artist == artist
+            && self.isPlaying == isPlaying
+            && self.duration == duration
+            && self.shuffleEnabled == shuffleEnabled
+            && self.repeatMode == repeatMode
+            && self.isFavorited == isFavorited
+            && self.canFavorite == canFavorite
+    }
+}
+
 enum RepeatMode: String {
     case off
     case one
@@ -283,16 +305,29 @@ final class NowPlayingService: ObservableObject {
                     }
 
                     self.activePlayer = player
-                    self.isAvailable  = true
-                    self.info = NowPlayingInfo(
-                        title: title, artist: artist,
-                        isPlaying: isPlaying, artwork: artwork,
-                        position: position, duration: duration,
+                    self.isAvailable = true
+                    if self.info.matchesMetadata(
+                        title: title,
+                        artist: artist,
+                        isPlaying: isPlaying,
+                        duration: duration,
                         shuffleEnabled: shuffleEnabled,
                         repeatMode: repeatMode,
                         isFavorited: displayedFavorite,
                         canFavorite: canFavorite
-                    )
+                    ) {
+                        self.info.position = position
+                    } else {
+                        self.info = NowPlayingInfo(
+                            title: title, artist: artist,
+                            isPlaying: isPlaying, artwork: artwork,
+                            position: position, duration: duration,
+                            shuffleEnabled: shuffleEnabled,
+                            repeatMode: repeatMode,
+                            isFavorited: displayedFavorite,
+                            canFavorite: canFavorite
+                        )
+                    }
                     self.finishPoll()
                 }
                 return
