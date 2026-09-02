@@ -197,6 +197,22 @@ private struct DayPlansWindowView: View {
 
                 groupFilterDots
 
+                Button {
+                    service.reload()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(accentColor)
+                        .frame(width: 42, height: 42)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(SettingsTheme.border, lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Sync tasks")
+
                 Button(action: addTask) {
                     Label("Add Task", systemImage: "plus")
                         .font(.system(size: 15, weight: .bold, design: .rounded))

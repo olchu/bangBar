@@ -46,6 +46,7 @@ final class DayPlanService: ObservableObject {
     private let storageURL: URL
     private var calendar: Calendar
     private var cancellables: Set<AnyCancellable> = []
+    private var lastKnownStorageModificationDate: Date?
 
     init(calendar: Calendar = .autoupdatingCurrent) {
         self.calendar = calendar
@@ -53,6 +54,7 @@ final class DayPlanService: ObservableObject {
         currentDay = Self.dayIdentifier(for: Date(), calendar: calendar)
         reload()
         observeCalendarChanges()
+        observeExternalStorageChanges()
     }
 
     var todaysItems: [DayPlanItem] {
@@ -87,6 +89,7 @@ final class DayPlanService: ObservableObject {
         guard let data = try? Data(contentsOf: storageURL) else {
             items = []
             groups = []
+            lastKnownStorageModificationDate = nil
             return
         }
 
@@ -99,6 +102,7 @@ final class DayPlanService: ObservableObject {
                 return migratedItem
             }
             rolloverIncompletePlans(to: currentDay)
+            lastKnownStorageModificationDate = storageModificationDate()
             return
         }
 
@@ -116,12 +120,20 @@ final class DayPlanService: ObservableObject {
             }
             persist()
             rolloverIncompletePlans(to: currentDay)
+            lastKnownStorageModificationDate = storageModificationDate()
             return
         }
 
         preserveUnreadableFile()
         items = []
         groups = []
+        lastKnownStorageModificationDate = nil
+    }
+
+    func syncFromStorageIfChanged() {
+        let modificationDate = storageModificationDate()
+        guard modificationDate != lastKnownStorageModificationDate else { return }
+        reload()
     }
 
     @discardableResult
@@ -256,6 +268,12 @@ final class DayPlanService: ObservableObject {
             withIntermediateDirectories: true
         )
         try? data.write(to: storageURL, options: .atomic)
+        lastKnownStorageModificationDate = storageModificationDate()
+    }
+
+    private func storageModificationDate() -> Date? {
+        try? FileManager.default
+            .attributesOfItem(atPath: storageURL.path)[.modificationDate] as? Date
     }
 
     private func preserveUnreadableFile() {
@@ -296,6 +314,15 @@ final class DayPlanService: ObservableObject {
                 .sink { [weak self] _ in self?.refreshDay() }
                 .store(in: &cancellables)
         }
+    }
+
+    private func observeExternalStorageChanges() {
+        Timer.publish(every: 8, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.syncFromStorageIfChanged()
+            }
+            .store(in: &cancellables)
     }
 }
 

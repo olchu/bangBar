@@ -137,6 +137,19 @@ struct DayPlansWidget: View {
             Spacer()
 
             Button {
+                service.reload()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(accentColor)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help("Sync tasks")
+
+            Button {
                 DayPlansWindowController.shared.show()
             } label: {
                 Image(systemName: "plus")
