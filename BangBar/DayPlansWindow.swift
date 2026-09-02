@@ -7,6 +7,8 @@ final class DayPlansWindowController: NSWindowController {
     static let shared = DayPlansWindowController()
 
     private let service = DayPlanService.shared
+    private var localMouseDownMonitor: Any?
+    private var globalMouseDownMonitor: Any?
 
     private init() {
         let window = NSWindow(
@@ -38,6 +40,48 @@ final class DayPlansWindowController: NSWindowController {
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        startOutsideClickMonitoring()
+    }
+
+    private func startOutsideClickMonitoring() {
+        stopOutsideClickMonitoring()
+
+        let mouseDownEvents: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: mouseDownEvents) { [weak self] event in
+            self?.closeIfClickedOutside()
+            return event
+        }
+        globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: mouseDownEvents) { [weak self] _ in
+            self?.closeIfClickedOutside()
+        }
+    }
+
+    private func stopOutsideClickMonitoring() {
+        if let localMouseDownMonitor {
+            NSEvent.removeMonitor(localMouseDownMonitor)
+            self.localMouseDownMonitor = nil
+        }
+        if let globalMouseDownMonitor {
+            NSEvent.removeMonitor(globalMouseDownMonitor)
+            self.globalMouseDownMonitor = nil
+        }
+    }
+
+    private func closeIfClickedOutside() {
+        guard let window, window.isVisible, !window.frame.contains(NSEvent.mouseLocation) else { return }
+        window.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        stopOutsideClickMonitoring()
+    }
+}
+
+private struct AddTaskRowFrameKey: PreferenceKey {
+    static let defaultValue = CGRect.zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
     }
 }
 
@@ -52,6 +96,8 @@ private struct DayPlansWindowView: View {
     @State private var selectedDate = Date()
     @State private var displayedMonth = Date()
     @State private var draggedTaskID: UUID?
+    @State private var isAddTaskRowVisible = false
+    @State private var addTaskRowFrame = CGRect.zero
     @FocusState private var isNewTaskFocused: Bool
 
     private var accentColor: Color { Color(hex: accentColorHex) }
@@ -159,24 +205,6 @@ private struct DayPlansWindowView: View {
 
             Spacer()
 
-            Button(action: focusAddField) {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus")
-                        .foregroundStyle(accentColor)
-                    Text("Add Task")
-                        .foregroundStyle(SettingsTheme.primaryText)
-                }
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-                .background(
-                    RoundedRectangle(cornerRadius: 7)
-                        .stroke(SettingsTheme.border, lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 28)
-            .padding(.bottom, 28)
         }
         .frame(width: 250)
         .background(Color.black.opacity(0.96))
@@ -213,7 +241,7 @@ private struct DayPlansWindowView: View {
                 .buttonStyle(.plain)
                 .help("Sync tasks")
 
-                Button(action: addTask) {
+                Button(action: focusAddField) {
                     Label("Add Task", systemImage: "plus")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
@@ -226,18 +254,28 @@ private struct DayPlansWindowView: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(!canAddTask)
-                .opacity(canAddTask ? 1 : 0.55)
             }
 
             VStack(spacing: 28) {
                 taskSection(title: "ACTIVE", tasks: activeItems, isCompletedSection: false)
                 taskSection(title: "COMPLETED", tasks: completedItems, isCompletedSection: true)
             }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .contentShape(Rectangle())
+            .coordinateSpace(name: "dayPlansTaskArea")
+            .onPreferenceChange(AddTaskRowFrameKey.self) { frame in
+                addTaskRowFrame = frame
+            }
+            .simultaneousGesture(
+                SpatialTapGesture().onEnded { value in
+                    guard isAddTaskRowVisible,
+                          !canAddTask,
+                          !addTaskRowFrame.contains(value.location) else { return }
+                    isAddTaskRowVisible = false
+                    isNewTaskFocused = false
+                }
+            )
 
-            Spacer()
-
-            bottomBar
         }
         .padding(.horizontal, 34)
         .padding(.bottom, 24)
@@ -245,7 +283,7 @@ private struct DayPlansWindowView: View {
     }
 
     private var titleBarSpacer: some View {
-        Color.clear.frame(height: 48)
+        Color.clear.frame(height: 20)
     }
 
     private var monthCard: some View {
@@ -403,7 +441,7 @@ private struct DayPlansWindowView: View {
                     }
                 }
 
-                if !isCompletedSection, selectedFilter != .completed {
+                if !isCompletedSection, selectedFilter != .completed, isAddTaskRowVisible {
                     addTaskRow
                 }
             }
@@ -431,6 +469,22 @@ private struct DayPlansWindowView: View {
                 .onSubmit(addTask)
 
             groupPicker(selection: $newTaskGroupID)
+
+            Button(action: addTask) {
+                Text("Save")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(accentColor)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canAddTask)
+            .opacity(canAddTask ? 1 : 0.45)
         }
         .padding(.horizontal, 22)
         .frame(height: 54)
@@ -440,6 +494,14 @@ private struct DayPlansWindowView: View {
                 .foregroundStyle(SettingsTheme.border)
         )
         .padding(10)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: AddTaskRowFrameKey.self,
+                    value: proxy.frame(in: .named("dayPlansTaskArea"))
+                )
+            }
+        }
     }
 
     private func groupPicker(selection: Binding<UUID?>) -> some View {
@@ -479,58 +541,29 @@ private struct DayPlansWindowView: View {
         .menuIndicator(.hidden)
     }
 
-    private var bottomBar: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                Text("Drag & drop to reorder tasks")
-            }
-            .font(SettingsTheme.captionFont)
-            .foregroundStyle(SettingsTheme.secondaryText)
-        }
-        .padding(.horizontal, 18)
-        .frame(height: 54)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(SettingsTheme.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(SettingsTheme.border, lineWidth: 1)
-                )
-        )
-    }
-
     private var canAddTask: Bool {
         !newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var groupFilterDots: some View {
         HStack(spacing: 7) {
-            Button {
-                selectedGroupFilterID = nil
-            } label: {
-                Circle()
-                    .fill(selectedGroupFilterID == nil ? accentColor : SettingsTheme.secondaryText.opacity(0.35))
-                    .frame(width: 8, height: 8)
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("All groups")
-
             ForEach(service.groups) { group in
                 Button {
                     selectedGroupFilterID = selectedGroupFilterID == group.id ? nil : group.id
                 } label: {
-                    Circle()
-                        .fill(Color(hex: group.colorHex))
-                        .frame(width: 10, height: 10)
-                        .overlay(
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: group.colorHex))
+                            .frame(width: selectedGroupFilterID == group.id ? 12 : 10, height: selectedGroupFilterID == group.id ? 12 : 10)
+
+                        if selectedGroupFilterID == group.id {
                             Circle()
-                                .stroke(Color.white.opacity(selectedGroupFilterID == group.id ? 0.85 : 0), lineWidth: 2)
-                        )
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
+                                .fill(SettingsTheme.background.opacity(0.96))
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(group.name)
@@ -546,6 +579,7 @@ private struct DayPlansWindowView: View {
     }
 
     private func focusAddField() {
+        isAddTaskRowVisible = true
         isNewTaskFocused = true
     }
 
@@ -556,7 +590,8 @@ private struct DayPlansWindowView: View {
         }
         service.addPlan(title: newTaskTitle, date: selectedDate, groupID: newTaskGroupID)
         newTaskTitle = ""
-        isNewTaskFocused = true
+        isAddTaskRowVisible = false
+        isNewTaskFocused = false
     }
 
     private func toggle(_ task: DayPlanItem) {
@@ -638,6 +673,20 @@ private struct DayPlansWindowTaskRow: View {
     @State private var groupID: UUID?
     @State private var isDatePickerPresented = false
 
+    private var normalizedTitle: String {
+        String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+    }
+
+    private var hasChanges: Bool {
+        normalizedTitle != task.title
+            || DayPlanService.dayIdentifier(for: date, calendar: .autoupdatingCurrent) != task.date
+            || groupID != task.groupID
+    }
+
+    private var canSaveChanges: Bool {
+        hasChanges && !normalizedTitle.isEmpty
+    }
+
     init(
         task: DayPlanItem,
         group: DayPlanGroup?,
@@ -711,6 +760,24 @@ private struct DayPlansWindowTaskRow: View {
 
             groupMenu
 
+            if hasChanges {
+                Button(action: commit) {
+                    Text("Save")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(accentColor)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSaveChanges)
+                .opacity(canSaveChanges ? 1 : 0.45)
+            }
+
             Menu {
                 Button("Save", action: commit)
                 Button("Delete", role: .destructive, action: onDelete)
@@ -764,7 +831,6 @@ private struct DayPlansWindowTaskRow: View {
                 .frame(width: 260)
                 .background(SettingsTheme.background)
         }
-        .onChange(of: date) { _, _ in commit() }
         .onChange(of: task.date) { _, newValue in
             let newDate = dateFromDayIdentifier(newValue)
             if !Calendar.autoupdatingCurrent.isDate(date, inSameDayAs: newDate) {
@@ -790,13 +856,11 @@ private struct DayPlansWindowTaskRow: View {
         Menu {
             Button("No Group") {
                 groupID = nil
-                commit()
             }
 
             ForEach(groups) { group in
                 Button {
                     groupID = group.id
-                    commit()
                 } label: {
                     Label(group.name, systemImage: groupID == group.id ? "checkmark.circle.fill" : "circle")
                 }
@@ -827,7 +891,9 @@ private struct DayPlansWindowTaskRow: View {
     }
 
     private func commit() {
-        onUpdate(title, date, groupID)
+        guard canSaveChanges else { return }
+        title = normalizedTitle
+        onUpdate(normalizedTitle, date, groupID)
     }
 }
 

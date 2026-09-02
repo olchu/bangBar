@@ -191,13 +191,17 @@ struct DayPlansWidget: View {
                 Button {
                     selectedGroupFilterID = selectedGroupFilterID == group.id ? nil : group.id
                 } label: {
-                    Circle()
-                        .fill(Color(hex: group.colorHex))
-                        .frame(width: selectedGroupFilterID == group.id ? 7 : 6, height: selectedGroupFilterID == group.id ? 7 : 6)
-                        .overlay(
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: group.colorHex))
+                            .frame(width: selectedGroupFilterID == group.id ? 8 : 6, height: selectedGroupFilterID == group.id ? 8 : 6)
+
+                        if selectedGroupFilterID == group.id {
                             Circle()
-                                .stroke(Color.white.opacity(selectedGroupFilterID == group.id ? 0.9 : 0), lineWidth: 1.2)
-                        )
+                                .fill(Color.black.opacity(0.92))
+                                .frame(width: 4, height: 4)
+                        }
+                    }
                         .frame(width: 13, height: 16)
                         .contentShape(Rectangle())
                 }
