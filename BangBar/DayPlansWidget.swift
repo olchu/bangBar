@@ -121,20 +121,23 @@ struct DayPlansWidget: View {
     }
 
     private var headerRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: "list.bullet.clipboard")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(accentColor)
+                .frame(width: 14, height: 16)
 
             if !service.todaysItems.isEmpty {
-                Text("Today \(displayedTodayItems.count)")
+                Text("\(displayedTodayItems.count)")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+                    .frame(minWidth: 10, alignment: .leading)
             }
 
             groupFilterDots
 
-            Spacer()
+            Spacer(minLength: 2)
 
             Button {
                 service.reload()
@@ -183,7 +186,7 @@ struct DayPlansWidget: View {
     }
 
     private var groupFilterDots: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 1) {
             ForEach(service.groups) { group in
                 Button {
                     selectedGroupFilterID = selectedGroupFilterID == group.id ? nil : group.id
@@ -195,7 +198,7 @@ struct DayPlansWidget: View {
                             Circle()
                                 .stroke(Color.white.opacity(selectedGroupFilterID == group.id ? 0.9 : 0), lineWidth: 1.2)
                         )
-                        .frame(width: 18, height: 16)
+                        .frame(width: 13, height: 16)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -203,6 +206,9 @@ struct DayPlansWidget: View {
                 .help(group.name)
             }
         }
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: 74, alignment: .leading)
+        .clipped()
         .frame(height: 16)
     }
 
