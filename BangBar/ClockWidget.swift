@@ -9,38 +9,58 @@ struct ClockWidget: View {
     private let headerHeight: CGFloat = 43
 
     private var hourString: String {
-        let f = DateFormatter()
-        f.dateFormat = "HH"
-        return f.string(from: date)
+        Self.hourFormatter.string(from: date)
     }
 
     private var minuteString: String {
-        let f = DateFormatter()
-        f.dateFormat = "mm"
-        return f.string(from: date)
+        Self.minuteFormatter.string(from: date)
     }
 
     private var dayString: String {
-        let f = DateFormatter()
-        f.dateFormat = "d"
-        return f.string(from: date)
+        Self.dayFormatter.string(from: date)
     }
 
     private var monthString: String {
-        let f = DateFormatter()
-        f.locale = .autoupdatingCurrent
-        f.dateFormat = "MMM"
-        return f.string(from: date).replacingOccurrences(of: ".", with: "")
+        Self.monthFormatter.string(from: date).replacingOccurrences(of: ".", with: "")
     }
 
     private var weekdayString: String {
-        let f = DateFormatter()
-        f.locale = .autoupdatingCurrent
-        f.dateFormat = "EEE"
-        return f.string(from: date)
+        Self.weekdayFormatter.string(from: date)
             .replacingOccurrences(of: ".", with: "")
             .uppercased()
     }
+
+    private static let hourFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH"
+        return formatter
+    }()
+
+    private static let minuteFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "mm"
+        return formatter
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter
+    }()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.dateFormat = "MMM"
+        return formatter
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {

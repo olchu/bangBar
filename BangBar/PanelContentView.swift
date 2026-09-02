@@ -123,7 +123,9 @@ struct PanelContentView: View {
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(timer) { date in
-            currentTime = date
+            if state.isExpanded, state.contentVisible {
+                currentTime = date
+            }
             calendarEvents.refreshIfNeeded(now: date)
             habits.refreshDay(now: date)
             dayPlans.refreshDay(now: date)

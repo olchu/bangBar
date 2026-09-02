@@ -350,24 +350,28 @@ final class NowPlayingService: ObservableObject {
     }
 
     private func loadArtwork(hint: String, player: Player, title: String, artist: String) -> NSImage? {
+        let cacheKey = "\(player.rawValue)|\(hint)|\(title)|\(artist)"
+        if cacheKey == artworkCacheKey, let cached = artworkCacheImage {
+            return cached
+        }
+
+        func cache(_ image: NSImage?) -> NSImage? {
+            artworkCacheKey = cacheKey
+            artworkCacheImage = image
+            return image
+        }
+
         switch player {
         case .spotify:
             guard !hint.isEmpty,
                   let url = URL(string: hint),
                   let data = try? Data(contentsOf: url) else { return nil }
-            return NSImage(data: data)
+            return cache(NSImage(data: data))
         case .music:
             if !hint.isEmpty, let img = NSImage(contentsOfFile: hint) {
-                return img
+                return cache(img)
             }
-            let cacheKey = "\(title)|\(artist)"
-            if cacheKey == artworkCacheKey, let cached = artworkCacheImage {
-                return cached
-            }
-            let img = fetchITunesArtwork(title: title, artist: artist)
-            artworkCacheKey = cacheKey
-            artworkCacheImage = img
-            return img
+            return cache(fetchITunesArtwork(title: title, artist: artist))
         }
     }
 

@@ -4,24 +4,36 @@ struct CalendarWidget: View {
     let date: Date
 
     var dayString: String {
-        let f = DateFormatter()
-        f.dateFormat = "d"
-        return f.string(from: date)
+        Self.dayFormatter.string(from: date)
     }
 
     var monthString: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ru_RU")
-        f.dateFormat = "LLLL"
-        return f.string(from: date).capitalized
+        Self.monthFormatter.string(from: date).capitalized
     }
 
     var weekdayString: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ru_RU")
-        f.dateFormat = "EEEE"
-        return f.string(from: date).capitalized
+        Self.weekdayFormatter.string(from: date).capitalized
     }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter
+    }()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "LLLL"
+        return formatter
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "EEEE"
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
