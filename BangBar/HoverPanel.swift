@@ -80,7 +80,7 @@ class HoverPanel: NSPanel {
         }
         isFloatingPanel = true
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications, .stationary]
         isMovable = false
         isOpaque = false
         backgroundColor = .clear
@@ -118,7 +118,7 @@ class HoverPanel: NSPanel {
                 && !self.state.isCompact
                 && !self.state.showsClipboardHistory
                 && !self.isAnimatingFrame
-                && !PanelLayout.fittedWidgets(forPage: 1, on: NSScreen.main).isEmpty
+                && !PanelLayout.fittedWidgets(forPage: 1, on: self.screen ?? NSScreen.main).isEmpty
         }
         contentView.onPageSwipeNext = { [weak self] in
             self?.handlePageSwipe(isNext: true)
@@ -209,7 +209,7 @@ class HoverPanel: NSPanel {
     }
 
     private func advancePage(by delta: Int) {
-        guard !isAnimatingFrame, let screen = NSScreen.main else { return }
+        guard !isAnimatingFrame, let screen = screen ?? NSScreen.main else { return }
         let pageCount = PanelLayout.fittedWidgets(forPage: 1, on: screen).isEmpty ? 1 : 2
         let newPage = state.currentPage + delta
         guard newPage >= 0, newPage < pageCount else { return }
@@ -256,9 +256,8 @@ class HoverPanel: NSPanel {
 
         if isVisible, !isOnActiveSpace {
             logger.notice("Panel was visible but stranded on another Space; reasserting membership")
-            reassertAllSpacesMembership()
             orderOut(nil)
-            orderFrontRegardless()
+            reassertAllSpacesMembership()
         }
 
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
@@ -275,7 +274,7 @@ class HoverPanel: NSPanel {
             state.isCompact = false
             state.contentVisible = false
             setFrame(targetFrame, display: true)
-            orderFront(nil)
+            orderFrontRegardless()
         }
 
         DispatchQueue.main.async { [weak self] in
@@ -334,6 +333,9 @@ class HoverPanel: NSPanel {
         artworkHeroCleanupWorkItem = nil
         isHiding = false
 
+        let wasVisible = isVisible
+        // Remove the old WindowServer registration before applying collection rules.
+        orderOut(nil)
         level = .statusBar
         reassertAllSpacesMembership()
 
@@ -342,12 +344,16 @@ class HoverPanel: NSPanel {
             return
         }
 
-        if isVisible, state.isCompact {
+        state.topSafeInset = PanelLayout.topSafeInset(on: targetScreen)
+        state.artworkHeroProgress = nil
+        state.compactArtworkRevealAllowed = true
+        state.compactIndicatorRevealAllowed = true
+        if wasVisible, state.isCompact {
             setFrame(compactFrame(on: targetScreen), display: true)
             orderFrontRegardless()
-        } else if isVisible, state.isExpanded {
+        } else if wasVisible, state.isExpanded {
             state.contentVisible = true
-            setFrame(expandedFrame(on: targetScreen), display: true)
+            setFrame(expandedFrame(on: targetScreen, page: state.currentPage), display: true)
             orderFrontRegardless()
         } else if isVisible {
             orderOut(nil)
@@ -364,7 +370,7 @@ class HoverPanel: NSPanel {
     /// to force WindowServer to recompute membership on the next reassignment.
     private func reassertAllSpacesMembership() {
         collectionBehavior = []
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications, .stationary]
     }
 
     /// When the panel is hidden, `reassertAllSpacesMembership()` alone doesn't force WindowServer to
@@ -399,7 +405,7 @@ class HoverPanel: NSPanel {
         state.isExpanded = false
         state.isCompact = false
         state.artworkHeroProgress = nil
-        if let screen = NSScreen.main {
+        if let screen = screen ?? NSScreen.main {
             animateFrame(to: compactFrame(on: screen), duration: 0.24)
         }
 
@@ -427,7 +433,7 @@ class HoverPanel: NSPanel {
     }
 
     private func resizeExpandedPanelForCurrentSettings() {
-        guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = NSScreen.main else { return }
+        guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = screen ?? NSScreen.main else { return }
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         setFrame(expandedFrame(on: screen, page: state.currentPage), display: true)
     }
@@ -505,7 +511,7 @@ class HoverPanel: NSPanel {
         artworkHeroCleanupWorkItem = nil
         isHiding = false
 
-        guard let screen = NSScreen.main else { return }
+        guard let screen = screen ?? NSScreen.main else { return }
         let targetFrame = compactFrame(on: screen)
 
         if !isVisible {
@@ -583,7 +589,7 @@ class HoverPanel: NSPanel {
             }
             if !isVisible || isHiding {
                 enterCompactMode()
-            } else if state.isCompact, let screen = NSScreen.main, !isAnimatingFrame {
+            } else if state.isCompact, let screen = screen ?? NSScreen.main, !isAnimatingFrame {
                 animateFrame(to: compactFrame(on: screen), duration: 0.18)
             }
         } else if state.isCompact {
@@ -596,7 +602,7 @@ class HoverPanel: NSPanel {
         hideWorkItem = nil
         isHiding = true
 
-        guard let screen = NSScreen.main else {
+        guard let screen = screen ?? NSScreen.main else {
             orderOut(nil)
             isHiding = false
             updateStateWithoutAnimation {

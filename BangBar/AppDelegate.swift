@@ -8,6 +8,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var hoverPanel: HoverPanel?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
+    private var hoverPollTimer: Timer?
+    private var nextHoverOpenAttempt: TimeInterval = 0
     private var workspaceObservers: [NSObjectProtocol] = []
     private var applicationObservers: [NSObjectProtocol] = []
     private var settingsWindow: NSWindow?
@@ -84,10 +86,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.handleMouseMove(event)
             return event
         }
+        // Reevaluate a stationary pointer after an animation or a busy main run loop.
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+            guard NSEvent.pressedMouseButtons == 0 else { return }
+            self?.evaluateHover()
+        }
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        hoverPollTimer = timer
         logger.info("Mouse tracking started")
     }
 
     private func stopMouseTracking() {
+        hoverPollTimer?.invalidate()
+        hoverPollTimer = nil
         if let globalMouseMonitor {
             NSEvent.removeMonitor(globalMouseMonitor)
             self.globalMouseMonitor = nil
@@ -130,6 +142,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func handleMouseMove(_ event: NSEvent) {
+        evaluateHover()
+    }
+
+    private func evaluateHover() {
         let mouseLocation = NSEvent.mouseLocation
         guard let screen = screenContainingMouse() else { return }
         let screenFrame = screen.frame
@@ -168,7 +184,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             dx: -activationThreshold,
             dy: -activationThreshold
         ) ?? .zero
-        let shouldOpenPanel = if isCompactMode {
+        let panelIsOnMouseScreen = hoverPanel?.screen == screen
+        let shouldOpenPanel = if isCompactMode && panelIsOnMouseScreen {
             compactActivationFrame.contains(mouseLocation)
         } else {
             activationZone.contains(mouseLocation)
@@ -176,8 +193,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if shouldOpenPanel {
             if let panel = hoverPanel,
-               (!panel.isVisible || panel.isHiding || panel.isCompactMode || !panel.isOnActiveSpace),
-               !panel.isAnimatingFrame {
+               (!panel.isVisible || panel.isHiding || panel.isCompactMode || !panel.isOnActiveSpace || !panelIsOnMouseScreen),
+               !panel.isAnimatingFrame,
+               ProcessInfo.processInfo.systemUptime >= nextHoverOpenAttempt {
+                // Give WindowServer time to apply Space membership before retrying.
+                nextHoverOpenAttempt = ProcessInfo.processInfo.systemUptime + 0.75
                 if panel.isCompactMode {
                     compactExpansionGraceUntil = Date().addingTimeInterval(0.85)
                 }

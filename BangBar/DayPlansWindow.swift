@@ -404,40 +404,8 @@ private struct DayPlansWindowView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                 } else {
-                    ForEach(tasks) { task in
-                        DayPlansWindowTaskRow(
-                            task: task,
-                            group: service.group(for: task),
-                            groups: service.groups,
-                            accentColor: accentColor,
-                            onToggle: { toggle(task) },
-                            onUpdate: { title, date, groupID in
-                                service.updatePlan(task, title: title, date: date, groupID: groupID)
-                            },
-                            onDelete: { service.deletePlan(task) }
-                        )
-                        .onDrag {
-                            draggedTaskID = task.id
-                            return NSItemProvider(object: task.id.uuidString as NSString)
-                        }
-                        .onDrop(
-                            of: [.text],
-                            delegate: DayPlansTaskDropDelegate(
-                                task: task,
-                                tasks: tasks,
-                                draggedTaskID: $draggedTaskID,
-                                moveTask: moveTask
-                            )
-                        )
-
-                        if task.id != tasks.last?.id {
-                            Rectangle()
-                                .fill(SettingsTheme.border.opacity(0.75))
-                                .frame(height: 1)
-                        }
-                    }
-                    .onMove { source, destination in
-                        service.movePlans(tasks, from: source, to: destination)
+                    ForEach(groupedTaskSections(for: tasks)) { section in
+                        taskGroupSection(section, allTasks: tasks)
                     }
                 }
 
@@ -454,6 +422,100 @@ private struct DayPlansWindowView: View {
                     )
             )
         }
+    }
+
+    private func groupedTaskSections(for tasks: [DayPlanItem]) -> [DayPlanTaskGroupSection] {
+        let groupedSections = service.groups.compactMap { group -> DayPlanTaskGroupSection? in
+            let groupTasks = tasks.filter { $0.groupID == group.id }
+            guard !groupTasks.isEmpty else { return nil }
+            return DayPlanTaskGroupSection(
+                id: group.id.uuidString,
+                title: group.name,
+                colorHex: group.colorHex,
+                tasks: groupTasks
+            )
+        }
+
+        let ungroupedTasks = tasks.filter { service.group(for: $0) == nil }
+        guard !ungroupedTasks.isEmpty else { return groupedSections }
+
+        return groupedSections + [
+            DayPlanTaskGroupSection(
+                id: "ungrouped",
+                title: "No Group",
+                colorHex: nil,
+                tasks: ungroupedTasks
+            )
+        ]
+    }
+
+    private func groupColor(for section: DayPlanTaskGroupSection) -> Color {
+        guard let colorHex = section.colorHex else {
+            return SettingsTheme.secondaryText
+        }
+        return Color(hex: colorHex)
+    }
+
+    private func taskGroupSection(
+        _ section: DayPlanTaskGroupSection,
+        allTasks: [DayPlanItem]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(groupColor(for: section))
+                    .frame(width: 8, height: 8)
+
+                Text(section.title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(SettingsTheme.secondaryText)
+
+                Text("\(section.tasks.count)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(SettingsTheme.secondaryText.opacity(0.7))
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 32)
+
+            ForEach(section.tasks) { task in
+                taskRow(task, allTasks: allTasks)
+
+                if task.id != section.tasks.last?.id {
+                    Rectangle()
+                        .fill(SettingsTheme.border.opacity(0.75))
+                        .frame(height: 1)
+                }
+            }
+        }
+    }
+
+    private func taskRow(_ task: DayPlanItem, allTasks: [DayPlanItem]) -> some View {
+        DayPlansWindowTaskRow(
+            task: task,
+            group: service.group(for: task),
+            groups: service.groups,
+            accentColor: accentColor,
+            onToggle: { toggle(task) },
+            onUpdate: { title, date, groupID in
+                service.updatePlan(task, title: title, date: date, groupID: groupID)
+            },
+            onDelete: { service.deletePlan(task) }
+        )
+        .onDrag {
+            draggedTaskID = task.id
+            return NSItemProvider(object: task.id.uuidString as NSString)
+        }
+        .onDrop(
+            of: [.text],
+            delegate: DayPlansTaskDropDelegate(
+                task: task,
+                tasks: allTasks,
+                draggedTaskID: $draggedTaskID,
+                moveTask: moveTask
+            )
+        )
     }
 
     private var addTaskRow: some View {
@@ -589,6 +651,7 @@ private struct DayPlansWindowView: View {
             return
         }
         service.addPlan(title: newTaskTitle, date: selectedDate, groupID: newTaskGroupID)
+
         newTaskTitle = ""
         isAddTaskRowVisible = false
         isNewTaskFocused = false
@@ -642,6 +705,13 @@ private struct DayPlansWindowView: View {
         guard let newMonth = calendar.date(byAdding: .month, value: value, to: displayedMonth) else { return }
         displayedMonth = newMonth
     }
+}
+
+private struct DayPlanTaskGroupSection: Identifiable {
+    let id: String
+    let title: String
+    let colorHex: String?
+    let tasks: [DayPlanItem]
 }
 
 private func dateFromDayIdentifier(_ dayIdentifier: String) -> Date {

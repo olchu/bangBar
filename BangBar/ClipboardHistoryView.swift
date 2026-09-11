@@ -55,6 +55,7 @@ struct ClipboardHistoryView: View {
     @ObservedObject var service: ClipboardHistoryService
     let filter: ClipboardHistoryFilter
     let topSafeInset: CGFloat
+    let isPresented: Bool
     @State private var selectedGroupID: UUID?
 
     private var selectedGroup: ClipboardImageGroup? {
@@ -126,41 +127,48 @@ struct ClipboardHistoryView: View {
             } else if filteredItems.isEmpty && visibleGroups.isEmpty {
                 emptyState
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(displayEntries) { entry in
-                            switch entry {
-                            case .group(let group):
-                                ClipboardGroupCard(
-                                    group: group,
-                                    images: Array(service.items(in: group).prefix(3)).compactMap {
-                                        service.image(for: $0)
-                                    },
-                                    itemCount: service.items(in: group).count,
-                                    isCollecting: service.activeGroupID == group.id,
-                                    onOpen: { selectedGroupID = group.id },
-                                    onCopy: { service.copy(group) },
-                                    onTogglePin: { service.togglePin(group) },
-                                    onRename: { service.rename(group, to: $0) },
-                                    onDelete: { service.delete(group) }
-                                )
-                            case .image(let item):
-                                ClipboardHistoryCard(
-                                    item: item,
-                                    image: service.image(for: item),
-                                    onCopy: { service.copy(item) },
-                                    onTogglePin: { service.togglePin(item) },
-                                    onRemove: { service.remove(item) }
-                                )
-                            case .textColumn(let items):
-                                ClipboardTextColumn(
-                                    items: items,
-                                    onCopy: service.copy,
-                                    onTogglePin: service.togglePin,
-                                    onRemove: service.remove
-                                )
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 12) {
+                            ForEach(displayEntries) { entry in
+                                switch entry {
+                                case .group(let group):
+                                    ClipboardGroupCard(
+                                        group: group,
+                                        images: Array(service.items(in: group).prefix(3)).compactMap {
+                                            service.image(for: $0)
+                                        },
+                                        itemCount: service.items(in: group).count,
+                                        isCollecting: service.activeGroupID == group.id,
+                                        onOpen: { selectedGroupID = group.id },
+                                        onCopy: { service.copy(group) },
+                                        onTogglePin: { service.togglePin(group) },
+                                        onRename: { service.rename(group, to: $0) },
+                                        onDelete: { service.delete(group) }
+                                    )
+                                case .image(let item):
+                                    ClipboardHistoryCard(
+                                        item: item,
+                                        image: service.image(for: item),
+                                        onCopy: { service.copy(item) },
+                                        onTogglePin: { service.togglePin(item) },
+                                        onRemove: { service.remove(item) }
+                                    )
+                                case .textColumn(let items):
+                                    ClipboardTextColumn(
+                                        items: items,
+                                        onCopy: service.copy,
+                                        onTogglePin: service.togglePin,
+                                        onRemove: service.remove
+                                    )
+                                }
                             }
                         }
+                        .id(ScrollTarget.historyStart)
+                    }
+                    .onChange(of: isPresented) { _, isPresented in
+                        guard isPresented else { return }
+                        proxy.scrollTo(ScrollTarget.historyStart, anchor: .leading)
                     }
                 }
             }
@@ -182,38 +190,45 @@ struct ClipboardHistoryView: View {
     }
 
     private func groupDetail(_ group: ClipboardImageGroup) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                Button {
-                    selectedGroupID = nil
-                } label: {
-                    VStack(spacing: 7) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Back")
-                            .font(.system(size: 9, weight: .semibold))
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 12) {
+                    Button {
+                        selectedGroupID = nil
+                    } label: {
+                        VStack(spacing: 7) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Back")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 54, height: clipboardCardHeight)
+                        .background(Color.white.opacity(0.035))
+                        .clipShape(.rect(cornerRadius: 10))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.13))
+                        }
                     }
-                    .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 54, height: clipboardCardHeight)
-                    .background(Color.white.opacity(0.035))
-                    .clipShape(.rect(cornerRadius: 10))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.13))
-                    }
-                }
-                .buttonStyle(ClipboardCardButtonStyle())
-                .help("Back to clipboard history")
+                    .buttonStyle(ClipboardCardButtonStyle())
+                    .help("Back to clipboard history")
 
-                ForEach(service.items(in: group)) { item in
-                    ClipboardHistoryCard(
-                        item: item,
-                        image: service.image(for: item),
-                        onCopy: { service.copy(item) },
-                        onTogglePin: { service.togglePin(item) },
-                        onRemove: { service.remove(item) }
-                    )
+                    ForEach(service.items(in: group)) { item in
+                        ClipboardHistoryCard(
+                            item: item,
+                            image: service.image(for: item),
+                            onCopy: { service.copy(item) },
+                            onTogglePin: { service.togglePin(item) },
+                            onRemove: { service.remove(item) }
+                        )
+                    }
                 }
+                .id(ScrollTarget.groupStart)
+            }
+            .onChange(of: isPresented) { _, isPresented in
+                guard isPresented else { return }
+                proxy.scrollTo(ScrollTarget.groupStart, anchor: .leading)
             }
         }
     }
@@ -227,6 +242,11 @@ struct ClipboardHistoryView: View {
         }
         .foregroundStyle(.white.opacity(0.4))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private enum ScrollTarget {
+        static let historyStart = "clipboard-history-start"
+        static let groupStart = "clipboard-group-start"
     }
 }
 

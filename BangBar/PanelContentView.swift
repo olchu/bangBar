@@ -60,7 +60,8 @@ struct PanelContentView: View {
                         ClipboardHistoryView(
                             service: clipboardHistory,
                             filter: state.clipboardFilter,
-                            topSafeInset: state.topSafeInset
+                            topSafeInset: state.topSafeInset,
+                            isPresented: state.showsClipboardHistory
                         )
                         .opacity(state.showsClipboardHistory ? 1 : 0)
                         .allowsHitTesting(state.showsClipboardHistory)
