@@ -22,6 +22,11 @@ class HoverPanel: NSPanel {
     private var hideWorkItem: DispatchWorkItem?
     private var artworkHeroCleanupWorkItem: DispatchWorkItem?
     private var frameAnimationTimer: Timer?
+    private var transitionID = UUID()
+    private var wantsExpandedPanel = false
+    private static let spaceBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications, .stationary
+    ]
     private let hideDelay: TimeInterval = 0.45
     private var openedAt: Date = .distantPast
 
@@ -79,8 +84,9 @@ class HoverPanel: NSPanel {
             state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         }
         isFloatingPanel = true
+        hidesOnDeactivate = false
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications, .stationary]
+        collectionBehavior = Self.spaceBehavior
         isMovable = false
         isOpaque = false
         backgroundColor = .clear
@@ -131,10 +137,12 @@ class HoverPanel: NSPanel {
 
         nowPlaying.$info
             .combineLatest(nowPlaying.$isAvailable)
+            .map { info, isAvailable in isAvailable && info.isPlaying }
+            .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] info, isAvailable in
+            .sink { [weak self] isPlaying in
                 self?.syncCompactVisibility(
-                    isMusicPlaying: isAvailable && info.isPlaying,
+                    isMusicPlaying: isPlaying,
                     isPomodoroRunning: self?.pomodoro.isRunning == true,
                     isCollectingImages: self?.clipboardHistory.isCollectingImages == true
                 )
@@ -234,10 +242,9 @@ class HoverPanel: NSPanel {
     // MARK: - Animation
 
     func slideIn(on preferredScreen: NSScreen? = nil) {
-        guard !isAnimatingFrame else {
-            logger.warning("Ignored slideIn because a frame animation is still registered")
-            return
-        }
+        wantsExpandedPanel = true
+        cancelPendingTransition()
+        let transition = transitionID
         TooltipManager.shared.suppressShowing(for: 0.7)
         isHiding = false
         openedAt = Date()
@@ -254,12 +261,6 @@ class HoverPanel: NSPanel {
             return
         }
 
-        if isVisible, !isOnActiveSpace {
-            logger.notice("Panel was visible but stranded on another Space; reasserting membership")
-            orderOut(nil)
-            reassertAllSpacesMembership()
-        }
-
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         if clipboardHistory.isCollectingImages {
             state.showsClipboardHistory = true
@@ -267,18 +268,18 @@ class HoverPanel: NSPanel {
         }
         let wasCompact = state.isCompact
         let wasNowPlayingCompact = state.compactContent == .nowPlaying
-        let targetFrame = expandedFrame(on: screen)
+        let targetFrame = expandedFrame(on: screen, page: state.currentPage)
 
         if !isVisible {
             state.isExpanded = false
             state.isCompact = false
             state.contentVisible = false
             setFrame(targetFrame, display: true)
-            orderFrontRegardless()
         }
+        presentOnActiveSpace(transition: transition)
 
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.transitionID == transition else { return }
             if wasCompact, wasNowPlayingCompact {
                 self.updateStateWithoutAnimation {
                     self.state.artworkHeroProgress = 0
@@ -297,7 +298,7 @@ class HoverPanel: NSPanel {
                     self.state.isExpanded = true
                     self.state.contentVisible = true
                     let cleanupWork = DispatchWorkItem { [weak self] in
-                        guard let self else { return }
+                        guard let self, self.transitionID == transition else { return }
                         self.updateStateWithoutAnimation {
                             self.state.artworkHeroProgress = nil
                             self.state.compactArtworkRevealAllowed = true
@@ -324,73 +325,72 @@ class HoverPanel: NSPanel {
         }
     }
 
-    func recoverAfterSystemTransition(on preferredScreen: NSScreen?) {
+    private func cancelPendingTransition() {
+        transitionID = UUID()
         frameAnimationTimer?.invalidate()
         frameAnimationTimer = nil
         hideWorkItem?.cancel()
         hideWorkItem = nil
         artworkHeroCleanupWorkItem?.cancel()
         artworkHeroCleanupWorkItem = nil
+        collectionBehavior = Self.spaceBehavior
+    }
+
+    func recoverAfterSystemTransition(on preferredScreen: NSScreen?) {
+        let restoreExpanded = wantsExpandedPanel
+        let restoreCompact = clipboardHistory.isCollectingImages
+            || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying
+        cancelPendingTransition()
         isHiding = false
-
-        let wasVisible = isVisible
-        // Remove the old WindowServer registration before applying collection rules.
         orderOut(nil)
-        level = .statusBar
-        reassertAllSpacesMembership()
-
-        guard let targetScreen = preferredScreen ?? screen ?? NSScreen.main else {
-            logger.error("Panel recovery could not find a screen")
-            return
-        }
-
-        state.topSafeInset = PanelLayout.topSafeInset(on: targetScreen)
+        state.isExpanded = false
+        state.isCompact = false
+        state.contentVisible = false
         state.artworkHeroProgress = nil
         state.compactArtworkRevealAllowed = true
         state.compactIndicatorRevealAllowed = true
-        if wasVisible, state.isCompact {
-            setFrame(compactFrame(on: targetScreen), display: true)
-            orderFrontRegardless()
-        } else if wasVisible, state.isExpanded {
-            state.contentVisible = true
-            setFrame(expandedFrame(on: targetScreen, page: state.currentPage), display: true)
-            orderFrontRegardless()
-        } else if isVisible {
-            orderOut(nil)
-        } else {
-            refreshSpaceMembershipWhileHidden(on: targetScreen)
+        level = .statusBar
+
+        guard let targetScreen = preferredScreen ?? screen ?? NSScreen.main else { return }
+        state.topSafeInset = PanelLayout.topSafeInset(on: targetScreen)
+        setFrame(expandedFrame(on: targetScreen), display: false)
+        if restoreExpanded {
+            slideIn(on: targetScreen)
+        } else if restoreCompact {
+            enterCompactMode()
         }
-
-        logger.notice("Panel recovered; visible=\(self.isVisible) compact=\(self.state.isCompact)")
+        logger.notice("Panel state reset after system transition; visible=\(self.isVisible)")
     }
 
-    /// WindowServer can silently drop a `.canJoinAllSpaces` window's cross-space membership across
-    /// display sleep/wake, after which the window only shows on whichever Space was active at wake time.
-    /// Re-assigning the same collectionBehavior value is a no-op to AppKit, so it must be cleared first
-    /// to force WindowServer to recompute membership on the next reassignment.
-    private func reassertAllSpacesMembership() {
-        collectionBehavior = []
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications, .stationary]
-    }
-
-    /// When the panel is hidden, `reassertAllSpacesMembership()` alone doesn't force WindowServer to
-    /// recompute membership because the window isn't on screen. Briefly ordering it front at zero alpha
-    /// (then back out) forces that recomputation without a visible flash, so the next hover-triggered
-    /// `slideIn` shows the panel on whatever Space the user is actually on.
-    private func refreshSpaceMembershipWhileHidden(on screen: NSScreen) {
-        let restoreFrame = frame
-        let previousAlpha = alphaValue
-        alphaValue = 0
-        setFrame(concealedCompactFrame(on: screen), display: false)
+    private func presentOnActiveSpace(transition: UUID, attempt: Int = 0) {
+        guard transitionID == transition else { return }
+        // A hidden window can also belong to an inactive Space. Temporarily move
+        // it on ordering, then restore the persistent all-Spaces overlay policy.
+        if !isOnActiveSpace {
+            orderOut(nil)
+            collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary,
+                                  .canJoinAllApplications, .stationary]
+        }
         orderFrontRegardless()
-        orderOut(nil)
-        setFrame(restoreFrame, display: false)
-        alphaValue = previousAlpha
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, self.transitionID == transition, self.isVisible else { return }
+            self.collectionBehavior = Self.spaceBehavior
+            if !self.isOnActiveSpace {
+                if attempt < 2 {
+                    self.presentOnActiveSpace(transition: transition, attempt: attempt + 1)
+                } else {
+                    self.logger.error("Panel failed to join active Space after presentation retries")
+                }
+            }
+        }
     }
 
     func slideOut() {
         guard !isAnimatingFrame else { return }
         guard Date().timeIntervalSince(openedAt) > 0.5 else { return }
+        wantsExpandedPanel = false
+        cancelPendingTransition()
+        let transition = transitionID
         TooltipManager.shared.hide()
         isHiding = true
         state.contentVisible = false
@@ -410,7 +410,7 @@ class HoverPanel: NSPanel {
         }
 
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+            guard let self, self.transitionID == transition else { return }
             if self.isHiding {
                 self.orderOut(nil)
                 self.isHiding = false
@@ -491,6 +491,7 @@ class HoverPanel: NSPanel {
     }
 
     private func enterCompactMode() {
+        wantsExpandedPanel = false
         TooltipManager.shared.hide()
         let nextCompactContent: PanelState.CompactContent = if clipboardHistory.isCollectingImages {
             .clipboardGroup
@@ -505,10 +506,8 @@ class HoverPanel: NSPanel {
             return
         }
 
-        hideWorkItem?.cancel()
-        hideWorkItem = nil
-        artworkHeroCleanupWorkItem?.cancel()
-        artworkHeroCleanupWorkItem = nil
+        cancelPendingTransition()
+        let transition = transitionID
         isHiding = false
 
         guard let screen = screen ?? NSScreen.main else { return }
@@ -532,10 +531,10 @@ class HoverPanel: NSPanel {
             contentView?.frame = NSRect(origin: .zero, size: startFrame.size)
             contentView?.layoutSubtreeIfNeeded()
             displayIfNeeded()
-            orderFront(nil)
+            presentOnActiveSpace(transition: transition)
 
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
+                guard let self, self.transitionID == transition else { return }
                 self.setFrame(startFrame, display: false)
                 self.animateFrame(to: targetFrame, duration: 0.24, completion: {
                     guard !self.isHiding else { return }
@@ -567,6 +566,7 @@ class HoverPanel: NSPanel {
                         self.state.artworkHeroProgress = nil
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        guard self.transitionID == transition else { return }
                         self.state.compactArtworkRevealAnimated = true
                     }
                 }
@@ -598,8 +598,9 @@ class HoverPanel: NSPanel {
     }
 
     private func exitCompactMode() {
-        hideWorkItem?.cancel()
-        hideWorkItem = nil
+        wantsExpandedPanel = false
+        cancelPendingTransition()
+        let transition = transitionID
         isHiding = true
 
         guard let screen = screen ?? NSScreen.main else {
@@ -625,7 +626,7 @@ class HoverPanel: NSPanel {
 
         let compactFrame = compactFrame(on: screen)
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+            guard let self, self.transitionID == transition else { return }
             guard self.isHiding,
                   !self.clipboardHistory.isCollectingImages,
                   !self.nowPlaying.isCurrentlyPlaying,
@@ -659,13 +660,20 @@ class HoverPanel: NSPanel {
         completion: (() -> Void)? = nil
     ) {
         frameAnimationTimer?.invalidate()
+        frameAnimationTimer = nil
+        guard self.frame != frame else {
+            progressHandler?(1)
+            completion?()
+            return
+        }
+        let transition = transitionID
 
         let startFrame = self.frame
         let topY = frame.maxY
         let startTime = CACurrentMediaTime()
 
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self else {
+            guard let self, self.transitionID == transition else {
                 timer.invalidate()
                 return
             }

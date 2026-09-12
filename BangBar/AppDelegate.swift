@@ -137,6 +137,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func recoverPanel(reason: String) {
         logger.notice("Recovering panel after \(reason, privacy: .public)")
+        nextHoverOpenAttempt = 0
+        compactExpansionGraceUntil = .distantPast
         startMouseTracking()
         hoverPanel?.recoverAfterSystemTransition(on: screenContainingMouse())
     }
@@ -194,7 +196,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if shouldOpenPanel {
             if let panel = hoverPanel,
                (!panel.isVisible || panel.isHiding || panel.isCompactMode || !panel.isOnActiveSpace || !panelIsOnMouseScreen),
-               !panel.isAnimatingFrame,
                ProcessInfo.processInfo.systemUptime >= nextHoverOpenAttempt {
                 // Give WindowServer time to apply Space membership before retrying.
                 nextHoverOpenAttempt = ProcessInfo.processInfo.systemUptime + 0.75

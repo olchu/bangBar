@@ -61,6 +61,13 @@ The panel background is pure sRGB black (`0,0,0`) inside the clipped notch shape
 - Closing logic uses a small buffer around the panel and trigger zone to avoid boundary flicker.
 - `HoverHostingView` forwards `mouseEntered` and `mouseMoved` from inside the panel to the same hover handler used by global tracking. This keeps hover behavior stable over interactive SwiftUI content such as album artwork.
 - `syncCompactVisibility` must not repeatedly call `enterCompactMode()` while the panel is already compact; now-playing updates happen frequently and should not restart compact animations.
+- Hover and status-menu opening interrupt an in-flight transition instead of dropping the request. The requested expanded state survives a Space/display transition even before the opening animation finishes.
+- Deferred opening, hiding, artwork cleanup, and Space retries belong to a transition identifier; superseded callbacks must not change the panel.
+- The panel does not hide automatically when the application deactivates. Hidden and visible windows both check active-Space membership on presentation; off-Space windows temporarily use `moveToActiveSpace`, then restore the all-Spaces policy. Presentation checks membership after a delay and permits at most two retries.
+- Sleep/wake and Space/display changes cancel pending transitions and rebuild the requested mode. Hidden panels stay ordered out rather than being flashed onscreen at zero opacity.
+- Playback-position ticks must not trigger compact-window animations; unchanged frame targets complete immediately.
+
+Manual regression coverage for panel lifecycle: open from hover and the status menu on two desktops and a full-screen Space; switch Spaces while expanding/collapsing; open during a page animation; start/stop music while compact; sleep/wake in hidden and expanded modes; repeat on another display. Confirm that stale callbacks never reopen a dismissed panel and that the log contains no exhausted Space-presentation retries.
 
 ## Now Playing Transitions
 
