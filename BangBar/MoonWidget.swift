@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import SwiftUI
 
@@ -10,8 +11,18 @@ struct MoonWidget: View {
     @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var usesCurrentLocation = true
     @AppStorage(BangBarSettings.Key.moonLatitude) private var latitude = 41.0082
     @AppStorage(BangBarSettings.Key.moonLongitude) private var longitude = 28.9784
-    @AppStorage(BangBarSettings.Key.moonCurrentLatitude) private var currentLatitude = 41.0082
-    @AppStorage(BangBarSettings.Key.moonCurrentLongitude) private var currentLongitude = 28.9784
+    @AppStorage(BangBarSettings.Key.moonCurrentLatitude) private var currentLatitude: Double?
+    @AppStorage(BangBarSettings.Key.moonCurrentLongitude) private var currentLongitude: Double?
+    @ObservedObject private var locationService = MoonLocationService.shared
+
+    private var observerCoordinates: (latitude: Double, longitude: Double) {
+        if usesCurrentLocation,
+           locationService.authorizationStatus == .authorizedAlways,
+           let currentLatitude, let currentLongitude {
+            return (currentLatitude, currentLongitude)
+        }
+        return (latitude, longitude)
+    }
 
     private var phase: MoonPhase {
         MoonPhase(date: date)
@@ -28,7 +39,10 @@ struct MoonWidget: View {
         }
         .frame(width: PanelLayout.moonWidgetWidth, height: PanelLayout.nowPlayingWidgetHeight)
         .onAppear {
-            if usesCurrentLocation { MoonLocationService.shared.requestCurrentLocation() }
+            if usesCurrentLocation { locationService.requestCurrentLocation() }
+        }
+        .onChange(of: usesCurrentLocation) { _, enabled in
+            if enabled { locationService.requestCurrentLocation() }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
@@ -160,13 +174,12 @@ struct MoonWidget: View {
                 .opacity(0.92)
                 .mask {
                     MoonIlluminationMask(
-                        illumination: phase.illuminationFraction,
-                        isWaxing: phase.isWaxing
+                        illumination: phase.illuminationFraction
                     )
                     .rotation(.degrees(MoonOrientation.brightLimbRotation(
                         date: date,
-                        latitude: usesCurrentLocation ? currentLatitude : latitude,
-                        longitude: usesCurrentLocation ? currentLongitude : longitude
+                        latitude: observerCoordinates.latitude,
+                        longitude: observerCoordinates.longitude
                     )))
                 }
         }
@@ -460,73 +473,4 @@ private extension Double {
     var degreesToRadians: Double {
         self * .pi / 180
     }
-}
-
-private struct MoonIlluminationMask: Shape {
-    let illumination: Double
-    let isWaxing: Bool
-
-    func path(in rect: CGRect) -> Path {
-        let lit = min(max(illumination, 0), 1)
-
-        if lit <= 0.005 {
-            return Path()
-        }
-        if lit >= 0.9995 {
-            return Path(ellipseIn: rect)
-        }
-
-        let radius = min(rect.width, rect.height) / 2
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let steps = 36
-        let litSide: CGFloat = isWaxing ? 1 : -1
-        let terminatorOffset = terminatorOffset(for: lit, radius: radius)
-        var path = Path()
-
-        for step in 0...steps {
-            let y = center.y - radius + 2 * radius * CGFloat(step) / CGFloat(steps)
-            let x = center.x + litSide * circleXOffset(at: y, centerY: center.y, radius: radius)
-            let point = CGPoint(x: x, y: y)
-
-            if step == 0 {
-                path.move(to: point)
-            } else {
-                path.addLine(to: point)
-            }
-        }
-
-        for step in stride(from: steps, through: 0, by: -1) {
-            let y = center.y - radius + 2 * radius * CGFloat(step) / CGFloat(steps)
-            let x = center.x + terminatorOffset * circleXOffset(at: y, centerY: center.y, radius: radius) / radius
-            path.addLine(to: CGPoint(x: x, y: y))
-        }
-
-        path.closeSubpath()
-        return path
-    }
-
-    private func circleXOffset(at y: CGFloat, centerY: CGFloat, radius: CGFloat) -> CGFloat {
-        let distanceFromCenter = y - centerY
-        return sqrt(max(radius * radius - distanceFromCenter * distanceFromCenter, 0))
-    }
-
-    private func terminatorOffset(for illumination: Double, radius: CGFloat) -> CGFloat {
-        let phaseWidth: CGFloat
-
-        if illumination < 0.5 {
-            phaseWidth = CGFloat(1 - 2 * illumination)
-        } else {
-            phaseWidth = CGFloat(2 * illumination - 1)
-        }
-
-        let side: CGFloat
-        if illumination < 0.5 {
-            side = isWaxing ? 1 : -1
-        } else {
-            side = isWaxing ? -1 : 1
-        }
-
-        return side * phaseWidth * radius
-    }
-
 }

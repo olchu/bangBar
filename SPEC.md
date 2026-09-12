@@ -376,8 +376,8 @@ Jun 15            Jun 30
 4. Calculate the Moon's parallactic angle for observer latitude `φ`:
    ```
    q = atan2(
-       sin(H),
-       tan(φ) · cos(δm) − sin(δm) · cos(H)
+       sin(H) · cos(φ),
+       sin(φ) · cos(δm) − cos(φ) · sin(δm) · cos(H)
    )
    ```
 5. The bright-limb angle relative to the local zenith is `χ − q`. `MoonIlluminationMask` is authored with its illuminated side pointing right rather than up, so add `90°`. SwiftUI screen coordinates have Y increasing downward, so mirror the final angle:
@@ -386,13 +386,15 @@ Jun 15            Jun 30
    ```
 6. Recalculate from the live panel date. This makes the shadow orientation change with time, observer latitude, and longitude while the illumination fraction continues to determine the mask shape.
 
+The mask is always authored with its illuminated limb on the right, for both waxing and waning phases. Its terminator is `x = (1 − 2 · illumination) · sqrt(radius² − y²)`. Never mirror it based on phase: the bright-limb angle already points toward the Sun. Screen right is not celestial east; looking at the sky, positive eastward angles run counterclockwise from up. Orientation regression checks run with `bash scripts/test_moon_geometry.sh` and compare the rotated mask against an independent 3D projection of sunlight.
+
 The approximation is intended for a small visual widget rather than telescope pointing. The calculation lives in `MoonOrientation.swift`; `MoonPhase` continues to own phase, illumination, and full-moon timing. `MoonLocationService` owns permission requests, current coordinates, and manual-city resolution.
 
 **Settings:**
 - Enabled/disabled via the Moon toggle in General widget settings.
 - Settings → Widgets → Moon contains an automatic-location toggle and manual city field.
 - Automatic and manual coordinates are persisted separately, so a Core Location refresh never overwrites the selected fallback city.
-- When automatic location is denied or disabled, the saved manual city is used.
+- When automatic location is denied, disabled, or has not produced coordinates yet, the saved manual city is used. Automatic coordinates have no hardcoded default.
 - The rows use text labels without decorative leading icons.
 
 ---

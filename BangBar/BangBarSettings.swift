@@ -225,8 +225,6 @@ enum BangBarSettings {
             Key.moonLocationName: "Istanbul",
             Key.moonLatitude: 41.0082,
             Key.moonLongitude: 28.9784,
-            Key.moonCurrentLatitude: 41.0082,
-            Key.moonCurrentLongitude: 28.9784,
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,

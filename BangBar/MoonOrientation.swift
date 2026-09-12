@@ -5,30 +5,39 @@ enum MoonOrientation {
         let days = date.timeIntervalSince1970 / 86_400 + 2_440_587.5 - 2_451_545
         let sun = sunEquatorial(days: days)
         let moon = moonEquatorial(days: days)
+        // Core Location uses positive east longitudes; Date is an absolute instant.
+        let siderealDegrees = (280.46061837 + 360.98564736629 * days + longitude).normalizedDegrees
+        return brightLimbRotation(
+            sun: sun, moon: moon, latitude: latitude, siderealDegrees: siderealDegrees
+        )
+    }
 
+    static func brightLimbRotation(
+        sun: (ra: Double, dec: Double),
+        moon: (ra: Double, dec: Double),
+        latitude: Double,
+        siderealDegrees: Double
+    ) -> Double {
         let deltaRA = sun.ra - moon.ra
         let brightLimb = atan2(
             cos(sun.dec) * sin(deltaRA),
             sin(sun.dec) * cos(moon.dec) - cos(sun.dec) * sin(moon.dec) * cos(deltaRA)
         )
 
-        let siderealDegrees = (280.46061837 + 360.98564736629 * days + longitude).normalizedDegrees
         let hourAngle = siderealDegrees.radians - moon.ra
         let observerLatitude = latitude.radians
         let parallactic = atan2(
-            sin(hourAngle),
-            tan(observerLatitude) * cos(moon.dec) - sin(moon.dec) * cos(hourAngle)
+            sin(hourAngle) * cos(observerLatitude),
+            sin(observerLatitude) * cos(moon.dec)
+                - cos(observerLatitude) * sin(moon.dec) * cos(hourAngle)
         )
 
         let localBrightLimbDegrees = (brightLimb - parallactic) * 180 / .pi
-        let eastFacingMaskOffset = -90.0
-
-        // The astronomical angle is measured from the disk's north point.
-        // MoonIlluminationMask starts with its bright side pointing east (right),
-        // so the fixed offset only converts between those coordinate frames.
-        // The localBrightLimbDegrees value above still carries the observer's
-        // latitude and longitude through the parallactic angle.
-        return -(localBrightLimbDegrees + eastFacingMaskOffset)
+        // Seen looking at the sky, the angle runs counterclockwise from local up.
+        // The mask always points right, and SwiftUI rotates clockwise:
+        // up (0°) -> -90°, left (+90°) -> -180°, right (-90°) -> 0°.
+        // The Sun's position already determines waxing/waning; never flip again.
+        return -90 - localBrightLimbDegrees
     }
 
     private static func sunEquatorial(days: Double) -> (ra: Double, dec: Double) {
