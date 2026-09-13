@@ -38,17 +38,23 @@ class HoverPanel: NSPanel {
         frameAnimationTimer != nil
     }
 
-    func containsCompactHoverPoint(_ screenPoint: NSPoint) -> Bool {
+    func containsCompactHoverPoint(
+        _ screenPoint: NSPoint,
+        activationThreshold: CGFloat
+    ) -> Bool {
         guard state.isCompact else { return false }
 
         let localPoint = CGPoint(
             x: screenPoint.x - frame.minX,
             y: frame.maxY - screenPoint.y
         )
-        let localBounds = CGRect(origin: .zero, size: frame.size)
+        let activationBounds = PanelActivationGeometry.localTopPinnedBounds(
+            size: frame.size,
+            threshold: activationThreshold
+        )
 
         return NotchPanelShape()
-            .path(in: localBounds)
+            .path(in: activationBounds)
             .contains(localPoint)
     }
 

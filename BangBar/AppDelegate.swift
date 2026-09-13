@@ -176,19 +176,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let activationThreshold = BangBarSettings.panelActivationThreshold
-        let activationZone = triggerZone.insetBy(
-            dx: -activationThreshold,
-            dy: -activationThreshold
+        let activationZone = PanelActivationGeometry.zone(
+            around: triggerZone,
+            threshold: activationThreshold,
+            screenFrame: screenFrame
         )
         let stableTriggerZone = triggerZone.insetBy(dx: -10, dy: -6)
         let isCompactMode = hoverPanel?.isCompactMode == true
-        let compactActivationFrame = hoverPanel?.frame.insetBy(
-            dx: -activationThreshold,
-            dy: -activationThreshold
-        ) ?? .zero
-        let panelIsOnMouseScreen = hoverPanel?.screen == screen
+        let panelIsOnMouseScreen = hoverPanel?.frame.intersects(screenFrame) == true
         let shouldOpenPanel = if isCompactMode && panelIsOnMouseScreen {
-            compactActivationFrame.contains(mouseLocation)
+            hoverPanel?.containsCompactHoverPoint(
+                mouseLocation,
+                activationThreshold: activationThreshold
+            ) == true
         } else {
             activationZone.contains(mouseLocation)
         }

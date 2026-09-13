@@ -56,8 +56,9 @@ The panel background is pure sRGB black (`0,0,0`) inside the clipped notch shape
 ### Hover Stability
 
 - The panel activation threshold is configurable from `−20...+40 px` and defaults to `0`.
-- At `0`, the hidden panel opens exactly at the built-in notch bounds; in compact mode it opens exactly at the compact window bounds.
+- At `0`, the hidden panel opens exactly at the built-in notch bounds; in compact mode it opens at the visible `NotchPanelShape` contour. Transparent margins of the compact window never trigger expansion.
 - Positive values expand the activation rect and negative values inset it.
+- Because both hidden and compact activation areas are pinned to the physical top edge, the threshold moves their reachable bottom edge once. A negative threshold must not also inset the unreachable top edge and collapse the compact area's height.
 - Closing logic uses a small buffer around the panel and trigger zone to avoid boundary flicker.
 - `HoverHostingView` forwards `mouseEntered` and `mouseMoved` from inside the panel to the same hover handler used by global tracking. This keeps hover behavior stable over interactive SwiftUI content such as album artwork.
 - `syncCompactVisibility` must not repeatedly call `enterCompactMode()` while the panel is already compact; now-playing updates happen frequently and should not restart compact animations.
