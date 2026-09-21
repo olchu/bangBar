@@ -247,7 +247,7 @@ final class CalendarAlertService {
                 calendarTitle: "Work",
                 calendarColor: .systemBlue,
                 location: "Conference room",
-                notes: "Review the latest product direction and agree on the next steps.",
+                notes: "**Review:** the latest product direction.\n- Agree on the next steps",
                 organizerName: "Olchu Studio",
                 attendeeCount: 4,
                 attendees: [
@@ -485,9 +485,7 @@ private struct CalendarAlertView: View {
                             .tracking(2)
                             .foregroundStyle(calendarColor)
 
-                        Text(notes)
-                            .font(.system(size: 16, weight: .regular, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.78))
+                        CalendarAlertNotesText(notes: notes, accentColor: calendarColor)
                             .lineLimit(3)
                     }
                     .frame(width: 690, alignment: .leading)
@@ -610,6 +608,128 @@ private struct CalendarAlertView: View {
         case .none:
             EmptyView()
         }
+    }
+}
+
+private struct CalendarAlertNotesText: View {
+    let notes: String
+    let accentColor: Color
+
+    var body: some View {
+        Text(CalendarAlertNotesFormatter.attributedString(from: notes))
+            .font(.system(size: 16, weight: .regular, design: .rounded))
+            .foregroundStyle(.white.opacity(0.78))
+            .tint(accentColor)
+    }
+}
+
+private enum CalendarAlertNotesFormatter {
+    static func attributedString(from source: String) -> AttributedString {
+        if containsHTML(in: source), let attributedHTML = attributedHTML(from: source) {
+            return AttributedString(attributedHTML)
+        }
+
+        return (try? AttributedString(
+            markdown: normalizedMarkdown(source),
+            options: .init(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace,
+                failurePolicy: .returnPartiallyParsedIfPossible
+            )
+        )) ?? AttributedString(source)
+    }
+
+    private static func normalizedMarkdown(_ source: String) -> String {
+        source
+            .components(separatedBy: .newlines)
+            .map { line in
+                if let headingPrefix = line.range(
+                    of: #"^\s{0,3}#{1,6}\s+"#,
+                    options: .regularExpression
+                ) {
+                    return "**\(line[headingPrefix.upperBound...])**"
+                }
+
+                return line
+                    .replacingOccurrences(
+                        of: #"^(\s*)[-+*]\s+\[[xX]\]\s+"#,
+                        with: "$1☑ ",
+                        options: .regularExpression
+                    )
+                    .replacingOccurrences(
+                        of: #"^(\s*)[-+*]\s+\[ \]\s+"#,
+                        with: "$1☐ ",
+                        options: .regularExpression
+                    )
+                    .replacingOccurrences(
+                        of: #"^(\s*)[-+*]\s+"#,
+                        with: "$1• ",
+                        options: .regularExpression
+                    )
+                    .replacingOccurrences(
+                        of: #"^(\s*)>\s?"#,
+                        with: "$1› ",
+                        options: .regularExpression
+                    )
+            }
+            .joined(separator: "\n")
+    }
+
+    private static func containsHTML(in source: String) -> Bool {
+        source.range(
+            of: #"</?(?:a|b|strong|i|em|u|br|p|div|ul|ol|li|code|pre|blockquote|h[1-6])(?:\s[^>]*)?/?>"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    private static func attributedHTML(from source: String) -> NSAttributedString? {
+        let safeSource = source
+            .replacingOccurrences(
+                of: #"<(script|style|iframe|object)\b[^>]*>.*?</\1\s*>"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            .replacingOccurrences(
+                of: #"<(?:img|link|meta|embed)\b[^>]*>"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+
+        guard let data = safeSource.data(using: .utf8),
+              let imported = try? NSMutableAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return nil
+        }
+
+        let fullRange = NSRange(location: 0, length: imported.length)
+        imported.removeAttribute(.foregroundColor, range: fullRange)
+        imported.removeAttribute(.backgroundColor, range: fullRange)
+        imported.enumerateAttribute(.font, in: fullRange) { value, range, _ in
+            let sourceFont = value as? NSFont
+            let traits = sourceFont?.fontDescriptor.symbolicTraits ?? []
+            let weight: NSFont.Weight = traits.contains(.bold) ? .semibold : .regular
+            var font = NSFont.systemFont(ofSize: 16, weight: weight)
+
+            if traits.contains(.italic) {
+                font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+            }
+
+            imported.addAttribute(.font, value: font, range: range)
+        }
+
+        if let trailingWhitespace = imported.string.range(
+            of: #"\s+$"#,
+            options: .regularExpression
+        ) {
+            imported.deleteCharacters(in: NSRange(trailingWhitespace, in: imported.string))
+        }
+
+        return imported
     }
 }
 
