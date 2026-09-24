@@ -18,6 +18,7 @@ struct DayPlanGroup: Codable, Hashable, Identifiable {
 @MainActor
 final class DayPlanService: ObservableObject {
     static let shared = DayPlanService()
+    static let maximumGroupCount = 5
 
     @Published private(set) var items: [DayPlanItem] = []
     @Published private(set) var groups: [DayPlanGroup] = []
@@ -174,7 +175,10 @@ final class DayPlanService: ObservableObject {
     @discardableResult
     func addGroup(name: String, colorHex: String) -> DayPlanGroup? {
         let normalizedName = Self.normalizedGroupName(name)
-        guard !normalizedName.isEmpty else { return nil }
+        guard groups.count < Self.maximumGroupCount,
+              !normalizedName.isEmpty else {
+            return nil
+        }
 
         let group = DayPlanGroup(
             id: UUID(),

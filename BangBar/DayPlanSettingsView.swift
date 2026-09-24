@@ -35,7 +35,7 @@ struct DayPlanSettingsContent: View {
                 }
             }
 
-            Text("Tasks are created and edited from the Tasks window. Groups add one color marker and one widget filter per group.")
+            Text(groupLimitDescription)
                 .font(SettingsTheme.captionFont)
                 .foregroundStyle(SettingsTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -57,6 +57,7 @@ struct DayPlanSettingsContent: View {
 
             Button("Add", action: addGroup)
                 .buttonStyle(.plain)
+                .disabled(!canAddGroup)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(canAddGroup ? Color.white : SettingsTheme.secondaryText)
                 .padding(.horizontal, 14)
@@ -72,7 +73,15 @@ struct DayPlanSettingsContent: View {
     }
 
     private var canAddGroup: Bool {
-        !newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        service.groups.count < DayPlanService.maximumGroupCount
+            && !newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var groupLimitDescription: String {
+        if service.groups.count >= DayPlanService.maximumGroupCount {
+            return "Maximum \(DayPlanService.maximumGroupCount) groups reached. All group filters fit in the widget."
+        }
+        return "Tasks are created and edited from the Tasks window. You can create up to \(DayPlanService.maximumGroupCount) groups so every color filter fits in the widget."
     }
 
     private func addGroup() {

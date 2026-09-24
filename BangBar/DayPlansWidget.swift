@@ -187,7 +187,7 @@ struct DayPlansWidget: View {
 
     private var groupFilterDots: some View {
         HStack(spacing: 1) {
-            ForEach(service.groups) { group in
+            ForEach(service.groups.prefix(DayPlanService.maximumGroupCount)) { group in
                 Button {
                     selectedGroupFilterID = selectedGroupFilterID == group.id ? nil : group.id
                 } label: {
