@@ -5,7 +5,7 @@ struct HabitDefinition: Codable, Hashable, Identifiable {
     let id: UUID
     var title: String
     var sortOrder: Int
-    let creationDay: String
+    var creationDay: String
 }
 
 struct HabitDayRecord: Codable, Hashable, Identifiable {
@@ -167,9 +167,31 @@ final class HabitService: ObservableObject {
     }
 
     func toggleToday(_ habit: HabitDefinition, now: Date = Date()) {
-        refreshDay(now: now)
-        var record = records[currentDay] ?? HabitDayRecord(day: currentDay, completedHabitIDs: [])
+        toggle(habit, on: now, now: now)
+    }
 
+    func dayState(for habit: HabitDefinition, on date: Date) -> HabitDayState {
+        let day = Self.dayIdentifier(for: date, calendar: calendar)
+        guard day >= habit.creationDay, day <= currentDay else { return .ineligible }
+        return records[day]?.completedHabitIDs.contains(habit.id) == true ? .complete : .incomplete
+    }
+
+    func toggle(_ habit: HabitDefinition, on date: Date, now: Date = Date()) {
+        refreshDay(now: now)
+        let day = Self.dayIdentifier(for: date, calendar: calendar)
+        guard day <= currentDay,
+              let habitIndex = habits.firstIndex(where: { $0.id == habit.id }) else {
+            return
+        }
+
+        // Marking a day before the habit existed backfills it, so the habit starts on that day.
+        if day < habits[habitIndex].creationDay {
+            var updatedHabits = habits
+            updatedHabits[habitIndex].creationDay = day
+            habits = updatedHabits
+        }
+
+        var record = records[day] ?? HabitDayRecord(day: day, completedHabitIDs: [])
         if record.completedHabitIDs.contains(habit.id) {
             record.completedHabitIDs.remove(habit.id)
         } else {
@@ -177,9 +199,9 @@ final class HabitService: ObservableObject {
         }
 
         if record.completedHabitIDs.isEmpty {
-            records.removeValue(forKey: currentDay)
+            records.removeValue(forKey: day)
         } else {
-            records[currentDay] = record
+            records[day] = record
         }
         persist()
     }
