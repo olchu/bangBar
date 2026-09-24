@@ -14,6 +14,8 @@ extension Notification.Name {
 struct SettingsView: View {
     @ObservedObject var clipboardHistory: ClipboardHistoryService
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
+    @AppStorage(BangBarSettings.Key.preferredMusicPlayer)
+    private var preferredMusicPlayerRaw = MusicPlayer.appleMusic.rawValue
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
@@ -326,6 +328,8 @@ struct SettingsView: View {
         switch selectedWidgetTab {
         case .general:
             generalWidgetSettings(accentColor: accentColor)
+        case .music:
+            musicWidgetSettings(accentColor: accentColor)
         case .calendar:
             calendarWidgetSettings(accentColor: accentColor)
         case .moon:
@@ -365,6 +369,35 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsSectionLabel("PAGE SWIPE")
                 pageSwipeCard(accentColor: accentColor)
+            }
+        }
+    }
+
+    private func musicWidgetSettings(accentColor: Color) -> some View {
+        widgetSpecificSettings(
+            widget: .nowPlaying,
+            description: "Opens when you click the idle music artwork."
+        ) {
+            SettingsCard {
+                HStack(spacing: 16) {
+                    Text("Player")
+                        .font(SettingsTheme.rowFont)
+                        .foregroundStyle(SettingsTheme.primaryText)
+
+                    Spacer()
+
+                    Picker("", selection: $preferredMusicPlayerRaw) {
+                        ForEach(MusicPlayer.allCases) { player in
+                            Text(player.title).tag(player.rawValue)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 230)
+                    .tint(accentColor)
+                    .environment(\.colorScheme, .dark)
+                }
+                .frame(height: 56)
             }
         }
     }
@@ -1095,6 +1128,7 @@ struct SettingsView: View {
 
 private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     case general
+    case music
     case calendar
     case moon
     case reminders
@@ -1108,6 +1142,7 @@ private enum WidgetConfigurationTab: CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: return "General"
+        case .music: return "Music"
         case .calendar: return "Calendar"
         case .moon: return "Moon"
         case .reminders: return "Reminders"

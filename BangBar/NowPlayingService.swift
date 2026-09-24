@@ -43,19 +43,9 @@ enum RepeatMode: String {
     case all
 }
 
-private enum Player: String, CaseIterable {
-    case spotify = "Spotify"
-    case music   = "Music"
-
-    var bundleId: String {
-        switch self {
-        case .spotify: "com.spotify.client"
-        case .music:   "com.apple.Music"
-        }
-    }
-
+private extension MusicPlayer {
     var isRunning: Bool {
-        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleId }
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleIdentifier }
     }
 
     // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration\nshuffle\nrepeat\nfavorite\ncanFavorite
@@ -91,7 +81,7 @@ private enum Player: String, CaseIterable {
                 end if
             end tell
             """
-        case .music:
+        case .appleMusic:
             return """
             tell application "Music"
                 if player state is not stopped then
@@ -144,15 +134,15 @@ private enum Player: String, CaseIterable {
         }
     }
 
-    var playPauseScript: String { "tell application \"\(rawValue)\" to playpause" }
-    var nextScript: String      { "tell application \"\(rawValue)\" to next track" }
-    var prevScript: String      { "tell application \"\(rawValue)\" to previous track" }
+    var playPauseScript: String { "tell application \"\(applicationName)\" to playpause" }
+    var nextScript: String      { "tell application \"\(applicationName)\" to next track" }
+    var prevScript: String      { "tell application \"\(applicationName)\" to previous track" }
 
     var toggleShuffleScript: String {
         switch self {
         case .spotify:
             return "tell application \"Spotify\" to set shuffling to not shuffling"
-        case .music:
+        case .appleMusic:
             return "tell application \"Music\" to set shuffle enabled to not shuffle enabled"
         }
     }
@@ -161,7 +151,7 @@ private enum Player: String, CaseIterable {
         switch self {
         case .spotify:
             return "tell application \"Spotify\" to set repeating to not repeating"
-        case .music:
+        case .appleMusic:
             return """
             tell application "Music"
                 if song repeat is off then
@@ -180,7 +170,7 @@ private enum Player: String, CaseIterable {
         switch self {
         case .spotify:
             return nil
-        case .music:
+        case .appleMusic:
             if isFavorited {
                 return """
                 tell application "Music"
@@ -240,7 +230,7 @@ final class NowPlayingService: ObservableObject {
 
     private var pollTimer: Timer?
     private var tickTimer: Timer?
-    private var activePlayer: Player?
+    private var activePlayer: MusicPlayer?
     private var artworkCacheKey: String = ""
     private var artworkCacheImage: NSImage?
     private var pendingFavorite: PendingFavorite?
@@ -272,7 +262,7 @@ final class NowPlayingService: ObservableObject {
         isPollInFlight = true
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            for player in Player.allCases where player.isRunning {
+            for player in MusicPlayer.allCases where player.isRunning {
                 guard let result = self?.runScript(player.trackInfoScript), !result.isEmpty else { continue }
                 let parts     = result.components(separatedBy: "\n")
                 let title     = parts.count > 0 ? parts[0] : ""
@@ -349,7 +339,7 @@ final class NowPlayingService: ObservableObject {
         poll()
     }
 
-    private func loadArtwork(hint: String, player: Player, title: String, artist: String) -> NSImage? {
+    private func loadArtwork(hint: String, player: MusicPlayer, title: String, artist: String) -> NSImage? {
         let cacheKey = "\(player.rawValue)|\(hint)|\(title)|\(artist)"
         if cacheKey == artworkCacheKey, let cached = artworkCacheImage {
             return cached
@@ -367,7 +357,7 @@ final class NowPlayingService: ObservableObject {
                   let url = URL(string: hint),
                   let data = try? Data(contentsOf: url) else { return nil }
             return cache(NSImage(data: data))
-        case .music:
+        case .appleMusic:
             if !hint.isEmpty, let img = NSImage(contentsOfFile: hint) {
                 return cache(img)
             }
@@ -433,7 +423,7 @@ final class NowPlayingService: ObservableObject {
         switch player {
         case .spotify:
             info.repeatMode = info.repeatMode == .off ? .all : .off
-        case .music:
+        case .appleMusic:
             info.repeatMode = switch info.repeatMode {
             case .off: .all
             case .all: .one
@@ -462,15 +452,20 @@ final class NowPlayingService: ObservableObject {
         switch player {
         case .spotify:
             script = "tell application \"Spotify\" to set player position to \(Int(clamped))"
-        case .music:
+        case .appleMusic:
             script = "tell application \"Music\" to set player position to \(clamped)"
         }
         sendCommand(script)
     }
 
     func openPlayer() {
-        guard let player = activePlayer,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: player.bundleId) else { return }
+        let player = activePlayer ?? BangBarSettings.preferredMusicPlayer
+        guard let url = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: player.bundleIdentifier
+        ) else {
+            Self.logger.error("Unable to find \(player.title, privacy: .public)")
+            return
+        }
         NSWorkspace.shared.open(url)
     }
 

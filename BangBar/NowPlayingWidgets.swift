@@ -52,7 +52,7 @@ struct NowPlayingWidget: View {
                 transaction.animation = nil
             }
             .onHover { isArtworkHovered = $0 }
-            .allowsHitTesting(service.isAvailable && !hideArtwork)
+            .allowsHitTesting(!hideArtwork)
 
             VStack(alignment: .leading, spacing: 6) {
                 VStack(alignment: .leading, spacing: 3) {

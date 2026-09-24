@@ -1,6 +1,34 @@
 import Foundation
 import SwiftUI
 
+enum MusicPlayer: String, CaseIterable, Identifiable {
+    case spotify
+    case appleMusic
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .spotify: "Spotify"
+        case .appleMusic: "Apple Music"
+        }
+    }
+
+    var applicationName: String {
+        switch self {
+        case .spotify: "Spotify"
+        case .appleMusic: "Music"
+        }
+    }
+
+    var bundleIdentifier: String {
+        switch self {
+        case .spotify: "com.spotify.client"
+        case .appleMusic: "com.apple.Music"
+        }
+    }
+}
+
 enum ClipboardButtonPosition: String, CaseIterable, Identifiable {
     case nearNotch
     case panelEdge
@@ -151,6 +179,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
 enum BangBarSettings {
     enum Key {
         static let showNowPlayingWidget = "showNowPlayingWidget"
+        static let preferredMusicPlayer = "preferredMusicPlayer"
         static let showClockWidget = "showClockWidget"
         static let showMoonWidget = "showMoonWidget"
         static let showMirrorWidget = "showMirrorWidget"
@@ -209,6 +238,7 @@ enum BangBarSettings {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             Key.showNowPlayingWidget: true,
+            Key.preferredMusicPlayer: MusicPlayer.appleMusic.rawValue,
             Key.showClockWidget: true,
             Key.showMoonWidget: true,
             Key.showMirrorWidget: true,
@@ -316,6 +346,13 @@ enum BangBarSettings {
 
     static var showNowPlayingWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showNowPlayingWidget) as? Bool ?? true
+    }
+
+    static var preferredMusicPlayer: MusicPlayer {
+        guard let rawValue = UserDefaults.standard.string(forKey: Key.preferredMusicPlayer) else {
+            return .appleMusic
+        }
+        return MusicPlayer(rawValue: rawValue) ?? .appleMusic
     }
 
     static var panelActivationThreshold: CGFloat {
