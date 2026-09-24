@@ -535,22 +535,23 @@ Today  Buy milk
 **Scope and states:**
 - Every configured habit is daily; custom weekdays, frequencies, reminders, quantities, notes, and partial progress are out of scope for the first version.
 - A habit has exactly two states for the current local day: incomplete and complete.
-- Incomplete is the default. Clicking a row or its status control toggles it to complete; clicking again returns it to incomplete.
+- Incomplete is the default. Clicking a row's status control or title toggles today to complete; clicking again returns it to incomplete.
+- Past days can be corrected: clicking a day in a habit's history strip (widget or Settings) toggles that day. Marking a day before the habit's creation day backfills it by moving the creation day back to that date.
 - Completed habits remain in their configured position. They are never hidden, moved to the bottom, or removed from the day's list.
 - A newly created habit is incomplete for the current day. Renaming or reordering a habit preserves its identity and history.
 
 **Layout and interaction:**
 - Fixed `220×110` expanded widget, implemented in `HabitsWidget.swift`.
-- Header shows a Monday–Sunday completion strip: each dot fills from bottom to top in proportion to that day's eligible habits completed, future or ineligible days remain faint, and the current local day is outlined in the accent color. Hovering a dot shows the exact daily count. A compact circular accent progress ring contains today's completion value such as `3/5`.
-- The header reserves only the height required by its visible content; it must not leave a large blank band between the weekday dots and the first habit row.
-- Each habit row shows seven compact history dots for the trailing seven local calendar days and the current streak in days. Accent dots mean complete, neutral dots mean incomplete, and very faint dots mean the habit did not exist yet.
+- Header is a single 16pt line matching other widget headers: an accent `checklist` icon, today's value such as `3/5`, and a segmented progress bar with one segment per habit. When every habit is done, the icon becomes `checkmark.seal.fill` and the value reads `All done`.
+- The header reserves only the height required by its visible content so four rows fit before scrolling.
+- Each habit row shows a seven-day history strip of small rounded squares for the trailing seven local calendar days (today last, outlined in the accent color while incomplete) and the current streak. Accent squares mean complete, neutral squares mean incomplete, and very faint squares mean the habit did not exist yet. Hovering a square shows its date and state; clicking toggles that day.
+- The streak shows an accent `flame.fill` when today is done, an outlined dim `flame` when a streak exists but today is not done yet, and `–` without a streak.
 - The habit list occupies the remaining height and scrolls vertically when it does not fit. The scroll view must not show a permanent scrollbar and must retain comfortable row hit targets.
-- The weekday strip uses the available header width rather than bunching its seven columns together.
 - Whenever the panel closes, the habit list is reset to its first row without animation while hidden. The next opening must already be at the top; no visible reverse scrolling or opening jitter is allowed.
 - Habit row buttons must not trigger AppKit focus-preserving auto-scroll. The ScrollView uses a native top default anchor and its identity is reset only after panel content becomes hidden; no programmatic `scrollTo` is allowed during view appearance.
-- An incomplete row uses the current accent color for its status circle and near-white text, matching the approved visual reference.
-- A complete row uses dim white, shows a checkmark, and strikes through the title. Completed rows remain readable but visibly recede behind incomplete work.
-- State changes animate quickly without changing row order. The whole row is clickable.
+- An incomplete row uses an accent-outlined status circle and near-white text.
+- A complete row fills the status circle with the accent color and a black checkmark, and dims the title. Completed rows remain readable but visibly recede behind incomplete work.
+- State changes animate with a short spring without changing row order. Rows highlight on hover.
 - Long names truncate to one line in the widget; the full title is available through the shared tooltip behavior.
 - Empty state reads `Add habits in Settings` with a small accent-colored status mark.
 - The widget has no add, delete, rename, or reorder controls; configuration belongs to Settings.
@@ -573,11 +574,9 @@ Today  Buy milk
 **History and statistics:**
 - Statistics count only dates on or after a habit's creation date; days before the habit existed are excluded from denominators.
 - Settings → Widgets → Habits shows:
-  - today's completed count and percentage;
-  - aggregate completion rate for the last 7 days;
-  - aggregate completion rate for the last 30 days;
-  - each habit's current streak, best streak within retained history, and 30-day completion rate;
-  - a compact day-by-day history for the latest 30 days, where each day exposes completed versus available habits.
+  - a summary strip: today's completed count, aggregate completion rates for the last 7 and 30 days, and the best streak with its habit;
+  - a tracker with one row per habit: in-place name editing (saved on Return or focus loss), a clickable strip of the trailing 7–21 days sized to the available width, current streak, and 30-day completion rate; the drag handle and delete button appear on hover, and delete is also in the context menu;
+  - a GitHub-style weekly activity heatmap filling the available width (up to 53 weeks) with month and weekday labels, a Less→More legend, and per-day completed versus available counts on hover.
 - A streak is a run of consecutive eligible local days with that habit completed. Today's incomplete state does not break the current streak until the day has ended.
 - Aggregate daily completion is `completed eligible habits / eligible habits`. Days with no eligible habits are excluded.
 - Undoing today's completion updates the widget and all statistics immediately.
@@ -585,7 +584,7 @@ Today  Buy milk
 **Settings:**
 - Enabled/disabled through a `Habits` toggle in Widgets → General and included in drag-and-drop widget ordering as `BangBarWidget.habits`.
 - Widgets → Habits is a real secondary tab because it contains configuration and statistics.
-- The Habits settings tab uses a two-column desktop layout: management on the left; completion cards, 30-day heatmap, and the per-habit statistics table on the right.
+- The Habits settings tab is a single column: summary strip, tracker (with the new-habit row as its last row), then activity heatmap. It uses the monospaced settings typography throughout.
 - The configuration list supports adding, renaming, deleting, and drag-and-drop reordering.
 - Habit titles are trimmed, must not be empty, and are limited to 80 characters. Duplicate titles are allowed because identity is UUID-based.
 - Add and rename changes are persisted immediately. Delete presents a confirmation explaining that the habit's history will also be removed.

@@ -103,72 +103,54 @@ struct HabitsWidget: View {
     }
 
     private var habitRows: some View {
-        VStack(spacing: 1) {
+        let dates = recentDates
+        return VStack(spacing: 1) {
             ForEach(service.habits) { habit in
                 HabitWidgetRow(
                     habit: habit,
+                    dates: dates,
+                    dayStates: dates.map { service.dayState(for: habit, on: $0) },
                     isCompleted: service.isCompletedToday(habit),
-                    recentStates: service.recentStates(for: habit),
                     currentStreak: service.currentStreak(for: habit),
-                    accentColor: accentColor
-                ) {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        service.toggleToday(habit)
-                    }
-                }
+                    accentColor: accentColor,
+                    isPanelContentVisible: isPanelContentVisible,
+                    onToggleDay: { toggle(habit, on: $0) }
+                )
             }
         }
-        .padding(.top, 3)
+        .padding(.top, 2)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 5) {
-                    ForEach(weekDates, id: \.self) { date in
-                        let summary = service.daySummary(for: date)
+        let isAllDone = !service.habits.isEmpty
+            && service.completedTodayCount == service.habits.count
 
-                        VStack(spacing: 3) {
-                            Text(weekdayLabel(for: date))
-                                .font(.system(size: 7, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.56))
+        return HStack(spacing: 6) {
+            Image(systemName: isAllDone ? "checkmark.seal.fill" : "checklist")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(accentColor)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 14, height: 16)
 
-                            WeeklyCompletionDot(
-                                summary: summary,
-                                isToday: isToday(date),
-                                accentColor: accentColor
-                            )
-                        }
-                        .frame(width: 17)
-                    }
-                }
+            if !service.habits.isEmpty {
+                Text(isAllDone ? "All done" : "\(service.completedTodayCount)/\(service.habits.count)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .fixedSize()
+
+                TodayProgressSegments(
+                    total: service.habits.count,
+                    completed: service.completedTodayCount,
+                    accentColor: accentColor
+                )
+                .padding(.leading, 2)
             }
-
-            Spacer(minLength: 0)
-
-            ZStack {
-                Circle()
-                    .stroke(.white.opacity(0.12), lineWidth: 2)
-
-                Circle()
-                    .trim(from: 0, to: service.todayCompletionRate)
-                    .stroke(
-                        accentColor,
-                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-
-                VStack(spacing: 0) {
-                    Text("\(service.completedTodayCount)/\(service.habits.count)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .contentTransition(.numericText())
-                }
-            }
-            .frame(width: 31, height: 31)
-            .animation(.easeInOut(duration: 0.18), value: service.todayCompletionRate)
         }
-        .frame(height: 31)
+        .frame(height: 16)
+        .padding(.bottom, 6)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: service.completedTodayCount)
     }
 
     private var emptyState: some View {
@@ -184,27 +166,19 @@ struct HabitsWidget: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
-    private var weekDates: [Date] {
+    private var recentDates: [Date] {
         let calendar = Calendar.autoupdatingCurrent
         let today = calendar.startOfDay(for: Date())
-        let weekday = calendar.component(.weekday, from: today)
-        let daysSinceMonday = (weekday + 5) % 7
-        guard let monday = calendar.date(byAdding: .day, value: -daysSinceMonday, to: today) else {
-            return [today]
-        }
-        return (0..<7).compactMap {
-            calendar.date(byAdding: .day, value: $0, to: monday)
+        return (0..<7).reversed().compactMap {
+            calendar.date(byAdding: .day, value: -$0, to: today)
         }
     }
 
-    private func weekdayLabel(for date: Date) -> String {
-        date.formatted(.dateTime.weekday(.narrow)).uppercased()
+    private func toggle(_ habit: HabitDefinition, on date: Date) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+            service.toggle(habit, on: date)
+        }
     }
-
-    private func isToday(_ date: Date) -> Bool {
-        Calendar.autoupdatingCurrent.isDateInToday(date)
-    }
-
 }
 
 struct PanelSwipeExclusionRegion: NSViewRepresentable {
@@ -221,113 +195,192 @@ final class PanelSwipeExclusionView: NSView {
     }
 }
 
-private struct WeeklyCompletionDot: View {
-    let summary: HabitDaySummary
-    let isToday: Bool
+private struct TodayProgressSegments: View {
+    let total: Int
+    let completed: Int
     let accentColor: Color
 
-    private let size: CGFloat = 7
-
-    private var helpText: String {
-        let weekday = summary.date.formatted(.dateTime.weekday(.wide))
-        guard summary.eligibleCount > 0 else {
-            return "\(weekday) · No habits"
-        }
-        return "\(weekday) · \(summary.completedCount) of \(summary.eligibleCount)"
-    }
-
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Circle()
-                .fill(.white.opacity(summary.eligibleCount > 0 ? 0.16 : 0.06))
-
-            Rectangle()
-                .fill(accentColor)
-                .frame(height: size * summary.completionRate)
+        HStack(spacing: total > 10 ? 1 : 2) {
+            ForEach(0..<max(total, 1), id: \.self) { index in
+                Capsule()
+                    .fill(index < completed ? accentColor : Color.white.opacity(0.14))
+            }
         }
-        .clipShape(Circle())
-        .overlay {
-            Circle()
-                .stroke(isToday ? accentColor : .clear, lineWidth: 1.2)
-        }
-        .frame(width: size, height: size)
-        .animation(.easeInOut(duration: 0.18), value: summary.completionRate)
-        .help(helpText)
-        .accessibilityLabel(helpText)
+        .frame(maxWidth: .infinity)
+        .frame(height: 3)
     }
 }
 
 private struct HabitWidgetRow: View {
     let habit: HabitDefinition
+    let dates: [Date]
+    let dayStates: [HabitDayState]
     let isCompleted: Bool
-    let recentStates: [HabitDayState]
     let currentStreak: Int
     let accentColor: Color
+    let isPanelContentVisible: Bool
+    let onToggleDay: (Date) -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                if let today = dates.last { onToggleDay(today) }
+            } label: {
+                HStack(spacing: 6) {
+                    HabitCheckbox(isCompleted: isCompleted, accentColor: accentColor)
+
+                    Text(habit.title)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(isCompleted ? 0.42 : 0.9))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help(habit.title)
+            .accessibilityLabel(habit.title)
+            .accessibilityValue(isCompleted ? "Completed today" : "Not completed today")
+            .accessibilityHint("Toggles today's completion")
+
+            HStack(spacing: 0) {
+                ForEach(Array(dates.enumerated()), id: \.offset) { index, date in
+                    HabitWidgetDayCell(
+                        date: date,
+                        state: dayStates[index],
+                        isToday: index == dates.count - 1,
+                        accentColor: accentColor,
+                        isPanelContentVisible: isPanelContentVisible
+                    ) {
+                        onToggleDay(date)
+                    }
+                }
+            }
+
+            streakBadge
+                .frame(width: 24, alignment: .trailing)
+        }
+        .padding(.horizontal, 4)
+        .frame(height: 20)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(.white.opacity(isHovered ? 0.05 : 0))
+        )
+        .onHover { isHovered = $0 }
+    }
+
+    private var streakBadge: some View {
+        // An outlined flame marks a streak that today's check-in has not extended yet.
+        HStack(spacing: 2) {
+            if currentStreak > 0 {
+                Image(systemName: isCompleted ? "flame.fill" : "flame")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(isCompleted ? accentColor : .white.opacity(0.42))
+            }
+
+            Text(currentStreak > 0 ? "\(currentStreak)" : "–")
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(isCompleted && currentStreak > 0 ? 0.85 : 0.42))
+                .contentTransition(.numericText())
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            guard hovering, isPanelContentVisible else {
+                TooltipManager.shared.hide()
+                return
+            }
+            TooltipManager.shared.show(text: streakTooltip)
+        }
+    }
+
+    private var streakTooltip: String {
+        guard currentStreak > 0 else { return "No streak yet" }
+        let days = currentStreak == 1 ? "1 day" : "\(currentStreak) days"
+        return isCompleted ? "\(days) streak" : "\(days) streak · check in today to keep it"
+    }
+}
+
+private struct HabitCheckbox: View {
+    let isCompleted: Bool
+    let accentColor: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(accentColor.opacity(isCompleted ? 0 : 1), lineWidth: 1.25)
+
+            Circle()
+                .fill(accentColor)
+                .scaleEffect(isCompleted ? 1 : 0.2)
+                .opacity(isCompleted ? 1 : 0)
+
+            Image(systemName: "checkmark")
+                .font(.system(size: 7, weight: .heavy))
+                .foregroundStyle(.black)
+                .scaleEffect(isCompleted ? 1 : 0.4)
+                .opacity(isCompleted ? 1 : 0)
+        }
+        .frame(width: 14, height: 14)
+    }
+}
+
+private struct HabitWidgetDayCell: View {
+    let date: Date
+    let state: HabitDayState
+    let isToday: Bool
+    let accentColor: Color
+    let isPanelContentVisible: Bool
     let action: () -> Void
 
-    private var titleColor: Color {
-        isCompleted ? .white.opacity(0.42) : .white.opacity(0.9)
-    }
-
-    private var statusColor: Color {
-        isCompleted ? .white.opacity(0.58) : accentColor
-    }
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
-                ZStack {
-                    Circle()
-                        .stroke(statusColor, lineWidth: 1.25)
-                        .frame(width: 15, height: 15)
-
-                    if isCompleted {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(statusColor)
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(fillColor)
+                .overlay {
+                    if isToday, state != .complete {
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .strokeBorder(accentColor.opacity(0.85), lineWidth: 1)
                     }
                 }
-
-                Text(habit.title)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(titleColor)
-                    .strikethrough(isCompleted, color: titleColor)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                HStack(spacing: 3) {
-                    ForEach(Array(recentStates.enumerated()), id: \.offset) { _, state in
-                        Circle()
-                            .fill(color(for: state))
-                            .frame(width: 5, height: 5)
-                    }
-                }
-
-                Text("\(currentStreak)d")
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.48))
-                    .frame(width: 20, alignment: .trailing)
-            }
-            .padding(.horizontal, 2)
-            .frame(height: 19)
-            .contentShape(Rectangle())
+                .frame(width: 7, height: 7)
+                .scaleEffect(isHovered ? 1.3 : 1)
+                .frame(width: 9.5, height: 20)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help(habit.title)
-        .accessibilityLabel(habit.title)
-        .accessibilityValue(isCompleted ? "Completed today" : "Not completed today")
-        .accessibilityHint("Toggles today's completion")
+        .animation(.easeOut(duration: 0.1), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+            guard hovering, isPanelContentVisible else {
+                TooltipManager.shared.hide()
+                return
+            }
+            TooltipManager.shared.show(text: tooltip)
+        }
+        .accessibilityLabel(tooltip)
     }
 
-    private func color(for state: HabitDayState) -> Color {
+    private var fillColor: Color {
         switch state {
-        case .ineligible:
-            return .white.opacity(0.06)
-        case .incomplete:
-            return .white.opacity(0.18)
-        case .complete:
-            return accentColor
+        case .complete: accentColor
+        case .incomplete: .white.opacity(isHovered ? 0.3 : 0.16)
+        case .ineligible: .white.opacity(isHovered ? 0.16 : 0.06)
+        }
+    }
+
+    private var tooltip: String {
+        let dateText = isToday ? "Today" : date.formatted(.dateTime.weekday(.abbreviated).day())
+        return switch state {
+        case .complete: "\(dateText) · done"
+        case .incomplete: "\(dateText) · not done"
+        case .ineligible: "\(dateText) · before start"
         }
     }
 }

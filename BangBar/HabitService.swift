@@ -275,20 +275,6 @@ final class HabitService: ObservableObject {
         )
     }
 
-    func recentStates(
-        for habit: HabitDefinition,
-        days: Int = 7,
-        now: Date = Date()
-    ) -> [HabitDayState] {
-        datesEndingToday(count: days, now: now).reversed().map { date in
-            let day = Self.dayIdentifier(for: date, calendar: calendar)
-            guard day >= habit.creationDay else { return .ineligible }
-            return records[day]?.completedHabitIDs.contains(habit.id) == true
-                ? .complete
-                : .incomplete
-        }
-    }
-
     static func dayIdentifier(for date: Date, calendar: Calendar) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         return String(
