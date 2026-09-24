@@ -79,7 +79,7 @@ struct DayPlansWidget: View {
             service.refreshDay()
             service.reload()
         }
-        .onChange(of: isPanelContentVisible) { _, isVisible in
+        .onChange(of: isPanelContentVisible, initial: true) { _, isVisible in
             pendingScrollReset?.cancel()
             pendingScrollEnable?.cancel()
 
