@@ -220,9 +220,11 @@ private extension MusicPlayer {
 
 final class NowPlayingService: ObservableObject {
     private static let logger = Logger(subsystem: "BangBar", category: "NowPlaying")
+    private static let idleAudioLevels = [0.18, 0.28, 0.22, 0.34]
 
     @Published var info = NowPlayingInfo()
     @Published var isAvailable = false
+    @Published private(set) var liveAudioLevels = idleAudioLevels
 
     var isCurrentlyPlaying: Bool {
         isAvailable && info.isPlaying
@@ -236,6 +238,8 @@ final class NowPlayingService: ObservableObject {
     private var pendingFavorite: PendingFavorite?
     private var isPollInFlight = false
     private var pollRequested = false
+    private var audioLevelMonitor: AudioLevelMonitor?
+    private var isAudioLevelMonitoringRequested = false
 
     private struct PendingFavorite {
         let trackKey: String
@@ -318,6 +322,7 @@ final class NowPlayingService: ObservableObject {
                             canFavorite: canFavorite
                         )
                     }
+                    self.updateAudioLevelMonitoring()
                     self.finishPoll()
                 }
                 return
@@ -327,6 +332,7 @@ final class NowPlayingService: ObservableObject {
                 self.activePlayer = nil
                 self.isAvailable  = false
                 self.info = NowPlayingInfo()
+                self.updateAudioLevelMonitoring()
                 self.finishPoll()
             }
         }
@@ -397,6 +403,7 @@ final class NowPlayingService: ObservableObject {
     func togglePlayPause() {
         guard isAvailable else { return }
         info.isPlaying.toggle()
+        updateAudioLevelMonitoring()
         sendCommand(activePlayer?.playPauseScript)
     }
 
@@ -467,6 +474,36 @@ final class NowPlayingService: ObservableObject {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    func setAudioLevelMonitoringRequested(_ isRequested: Bool) {
+        guard isAudioLevelMonitoringRequested != isRequested else { return }
+        isAudioLevelMonitoringRequested = isRequested
+        updateAudioLevelMonitoring()
+    }
+
+    private func updateAudioLevelMonitoring() {
+        guard isAudioLevelMonitoringRequested,
+              isAvailable,
+              info.isPlaying,
+              let activePlayer else {
+            audioLevelMonitor?.stop()
+            audioLevelMonitor = nil
+            liveAudioLevels = Self.idleAudioLevels
+            return
+        }
+
+        if audioLevelMonitor == nil {
+            audioLevelMonitor = AudioLevelMonitor { [weak self] levels in
+                self?.receiveLiveAudioLevels(levels)
+            }
+        }
+        audioLevelMonitor?.start(bundleIdentifier: activePlayer.bundleIdentifier)
+    }
+
+    private func receiveLiveAudioLevels(_ levels: [Double]) {
+        guard isAudioLevelMonitoringRequested, info.isPlaying else { return }
+        liveAudioLevels = levels
     }
 
     private func sendCommand(_ source: String?) {

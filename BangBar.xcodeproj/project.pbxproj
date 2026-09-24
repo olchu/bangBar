@@ -15,9 +15,22 @@
 		BB0000010000000000000002 /* man.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = man.mp4; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BB0000020000000000000001 /* Exceptions for "BangBar" folder in "BangBar" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A54429412FB5CF5300AB5D82 /* BangBar */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A54429442FB5CF5300AB5D82 /* BangBar */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BB0000020000000000000001 /* Exceptions for "BangBar" folder in "BangBar" target */,
+			);
 			path = BangBar;
 			sourceTree = "<group>";
 		};
@@ -265,14 +278,8 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "BangBar uses AppleScript to show Now Playing info from Spotify and Apple Music.";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "BangBar shows your next upcoming meeting for today.";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "BangBar shows your next upcoming meeting for today.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "BangBar uses the camera for the mirror widget.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSLocationUsageDescription = "BangBar uses your location to show the Moon's real orientation in the sky.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "BangBar shows your tasks due today.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BangBar/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -303,14 +310,8 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "BangBar uses AppleScript to show Now Playing info from Spotify and Apple Music.";
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "BangBar shows your next upcoming meeting for today.";
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "BangBar shows your next upcoming meeting for today.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "BangBar uses the camera for the mirror widget.";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSLocationUsageDescription = "BangBar uses your location to show the Moon's real orientation in the sky.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "BangBar shows your tasks due today.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BangBar/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

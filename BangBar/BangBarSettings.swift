@@ -29,6 +29,20 @@ enum MusicPlayer: String, CaseIterable, Identifiable {
     }
 }
 
+enum MusicVisualizerMode: String, CaseIterable, Identifiable {
+    case animated
+    case live
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .animated: "Animated"
+        case .live: "Live"
+        }
+    }
+}
+
 enum ClipboardButtonPosition: String, CaseIterable, Identifiable {
     case nearNotch
     case panelEdge
@@ -180,6 +194,7 @@ enum BangBarSettings {
     enum Key {
         static let showNowPlayingWidget = "showNowPlayingWidget"
         static let preferredMusicPlayer = "preferredMusicPlayer"
+        static let musicVisualizerMode = "musicVisualizerMode"
         static let showClockWidget = "showClockWidget"
         static let showMoonWidget = "showMoonWidget"
         static let showMirrorWidget = "showMirrorWidget"
@@ -239,6 +254,7 @@ enum BangBarSettings {
         UserDefaults.standard.register(defaults: [
             Key.showNowPlayingWidget: true,
             Key.preferredMusicPlayer: MusicPlayer.appleMusic.rawValue,
+            Key.musicVisualizerMode: MusicVisualizerMode.animated.rawValue,
             Key.showClockWidget: true,
             Key.showMoonWidget: true,
             Key.showMirrorWidget: true,

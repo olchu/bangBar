@@ -217,6 +217,8 @@ struct CompactNowPlayingWidget: View {
     let animateArtworkReveal: Bool
     let hideArtwork: Bool
 
+    @AppStorage(BangBarSettings.Key.musicVisualizerMode)
+    private var musicVisualizerModeRaw = MusicVisualizerMode.animated.rawValue
     @State private var artworkRevealIsReady = false
     @State private var indicatorRevealIsReady = false
     @State private var revealTask: Task<Void, Never>?
@@ -246,7 +248,11 @@ struct CompactNowPlayingWidget: View {
                 }
                 HStack {
                     Spacer()
-                    PlayingIndicator(isPlaying: service.info.isPlaying, maxHeight: indicatorHeight)
+                    PlayingIndicator(
+                        isPlaying: service.info.isPlaying,
+                        maxHeight: indicatorHeight,
+                        liveLevels: musicVisualizerMode == .live ? service.liveAudioLevels : nil
+                    )
                         .frame(width: indicatorWidth, height: indicatorHeight)
                         .scaleEffect(shouldShowIndicator ? 1.0 : 0.28)
                         .opacity(shouldShowIndicator ? 1.0 : 0.0)
@@ -274,17 +280,29 @@ struct CompactNowPlayingWidget: View {
                     indicatorAllowed: indicatorRevealAllowed, indicatorHasSpace: hasEnoughCompactContentSpace
                 )
             }
+            .onChange(of: shouldShowIndicator) { _, isVisible in
+                updateAudioLevelMonitoring(indicatorIsVisible: isVisible)
+            }
+            .onChange(of: musicVisualizerModeRaw) { _, _ in
+                updateAudioLevelMonitoring(indicatorIsVisible: shouldShowIndicator)
+            }
             .onAppear {
                 scheduleReveal(
                     artworkAllowed: artworkRevealAllowed, artworkHasSpace: hasEnoughCompactContentSpace,
                     indicatorAllowed: indicatorRevealAllowed, indicatorHasSpace: hasEnoughCompactContentSpace
                 )
+                updateAudioLevelMonitoring(indicatorIsVisible: shouldShowIndicator)
             }
             .onDisappear {
                 revealTask?.cancel()
                 revealTask = nil
+                service.setAudioLevelMonitoringRequested(false)
             }
         }
+    }
+
+    private var musicVisualizerMode: MusicVisualizerMode {
+        MusicVisualizerMode(rawValue: musicVisualizerModeRaw) ?? .animated
     }
 
     private var artworkView: some View {
@@ -328,6 +346,12 @@ struct CompactNowPlayingWidget: View {
             }
             indicatorRevealIsReady = shouldRevealIndicator
         }
+    }
+
+    private func updateAudioLevelMonitoring(indicatorIsVisible: Bool) {
+        service.setAudioLevelMonitoringRequested(
+            indicatorIsVisible && musicVisualizerMode == .live
+        )
     }
 }
 
@@ -395,6 +419,7 @@ struct ArtworkHeroView: View {
 struct PlayingIndicator: View {
     let isPlaying: Bool
     let maxHeight: CGFloat
+    let liveLevels: [Double]?
 
     @State private var isAnimating = false
     private let idleHeights: [CGFloat] = [0.46, 0.68, 0.86, 0.58]
@@ -404,15 +429,12 @@ struct PlayingIndicator: View {
         HStack(alignment: .bottom, spacing: 3) {
             ForEach(idleHeights.indices, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.white.opacity(isPlaying ? 0.36 : 0.16))
-                    .frame(width: 2.5, height: maxHeight * heightMultiplier(for: index))
+                    .fill(Color.white.opacity(playingOpacity))
+                    .frame(width: 2.5, height: maxHeight)
+                    .scaleEffect(y: heightMultiplier(for: index), anchor: .bottom)
                     .animation(
-                        isPlaying
-                            ? .easeInOut(duration: 0.46 + Double(index) * 0.08)
-                                .repeatForever(autoreverses: true)
-                                .delay(Double(index) * 0.07)
-                            : .easeOut(duration: 0.18),
-                        value: isAnimating
+                        animation(for: index),
+                        value: animationValue(for: index)
                     )
             }
         }
@@ -426,7 +448,30 @@ struct PlayingIndicator: View {
 
     private func heightMultiplier(for index: Int) -> CGFloat {
         guard isPlaying else { return idleHeights[index] }
+        if let liveLevels, liveLevels.indices.contains(index) {
+            return 0.08 + CGFloat(liveLevels[index]) * 0.92
+        }
         return isAnimating ? activeHeights[index] : idleHeights[index]
+    }
+
+    private func animation(for index: Int) -> Animation {
+        if liveLevels != nil {
+            return .linear(duration: 0.1)
+        }
+        return isPlaying
+            ? .easeInOut(duration: 0.46 + Double(index) * 0.08)
+                .repeatForever(autoreverses: true)
+                .delay(Double(index) * 0.07)
+            : .easeOut(duration: 0.18)
+    }
+
+    private func animationValue(for index: Int) -> CGFloat {
+        heightMultiplier(for: index)
+    }
+
+    private var playingOpacity: Double {
+        guard isPlaying else { return 0.16 }
+        return liveLevels == nil ? 0.36 : 0.58
     }
 }
 

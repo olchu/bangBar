@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
     @AppStorage(BangBarSettings.Key.preferredMusicPlayer)
     private var preferredMusicPlayerRaw = MusicPlayer.appleMusic.rawValue
+    @AppStorage(BangBarSettings.Key.musicVisualizerMode)
+    private var musicVisualizerModeRaw = MusicVisualizerMode.animated.rawValue
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
@@ -376,28 +378,52 @@ struct SettingsView: View {
     private func musicWidgetSettings(accentColor: Color) -> some View {
         widgetSpecificSettings(
             widget: .nowPlaying,
-            description: "Opens when you click the idle music artwork."
+            description: "Choose the player and compact playback indicator."
         ) {
             SettingsCard {
-                HStack(spacing: 16) {
-                    Text("Player")
-                        .font(SettingsTheme.rowFont)
-                        .foregroundStyle(SettingsTheme.primaryText)
+                VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        Text("Player")
+                            .font(SettingsTheme.rowFont)
+                            .foregroundStyle(SettingsTheme.primaryText)
 
-                    Spacer()
+                        Spacer()
 
-                    Picker("", selection: $preferredMusicPlayerRaw) {
-                        ForEach(MusicPlayer.allCases) { player in
-                            Text(player.title).tag(player.rawValue)
+                        Picker("", selection: $preferredMusicPlayerRaw) {
+                            ForEach(MusicPlayer.allCases) { player in
+                                Text(player.title).tag(player.rawValue)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 230)
+                        .tint(accentColor)
+                        .environment(\.colorScheme, .dark)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .frame(width: 230)
-                    .tint(accentColor)
-                    .environment(\.colorScheme, .dark)
+                    .frame(height: 56)
+
+                    SettingsDivider()
+
+                    HStack(spacing: 16) {
+                        Text("Bars")
+                            .font(SettingsTheme.rowFont)
+                            .foregroundStyle(SettingsTheme.primaryText)
+
+                        Spacer()
+
+                        Picker("", selection: $musicVisualizerModeRaw) {
+                            ForEach(MusicVisualizerMode.allCases) { mode in
+                                Text(mode.title).tag(mode.rawValue)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 230)
+                        .tint(accentColor)
+                        .environment(\.colorScheme, .dark)
+                    }
+                    .frame(height: 56)
                 }
-                .frame(height: 56)
             }
         }
     }
