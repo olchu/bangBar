@@ -108,7 +108,7 @@ final class CompanionService: ObservableObject {
 
     private func startTimer() {
         let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+            MainActor.assumeIsolated { self?.tick() }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -178,25 +178,25 @@ final class CompanionService: ObservableObject {
     private func observeSystemState() {
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.isSystemAvailable = false
                 self?.persist()
             }
         }
         center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.isSystemAvailable = true
                 self?.lastTick = Date()
             }
         }
         center.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.isSystemAvailable = false
                 self?.persist()
             }
         }
         center.addObserver(forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.isSystemAvailable = true
                 self?.lastTick = Date()
             }

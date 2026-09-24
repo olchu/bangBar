@@ -95,11 +95,8 @@ final class CalendarAlertService {
     }
 
     private func checkEvents(now: Date = Date()) {
-        let authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        let hasCalendarAccess = authorizationStatus == .fullAccess
-            || authorizationStatus == .authorized
         guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.calendarAlertsEnabled),
-              hasCalendarAccess else {
+              EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
             return
         }
 

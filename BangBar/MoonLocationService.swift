@@ -1,6 +1,7 @@
 import CoreLocation
 import Combine
 import Foundation
+import MapKit
 
 @MainActor
 final class MoonLocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -11,7 +12,6 @@ final class MoonLocationService: NSObject, ObservableObject, CLLocationManagerDe
     @Published private(set) var searchError: String?
 
     private let manager = CLLocationManager()
-    private let geocoder = CLGeocoder()
 
     override private init() {
         authorizationStatus = manager.authorizationStatus
@@ -40,12 +40,15 @@ final class MoonLocationService: NSObject, ObservableObject, CLLocationManagerDe
         defer { isSearching = false }
 
         do {
-            guard let placemark = try await geocoder.geocodeAddressString(query).first,
-                  let location = placemark.location else {
+            guard let request = MKGeocodingRequest(addressString: query),
+                  let mapItem = try await request.mapItems.first else {
                 searchError = "City not found"
                 return false
             }
-            saveCity(location: location, name: placemark.locality ?? placemark.name ?? query)
+            saveCity(
+                location: mapItem.location,
+                name: mapItem.addressRepresentations?.cityName ?? mapItem.name ?? query
+            )
             return true
         } catch {
             searchError = "City not found"

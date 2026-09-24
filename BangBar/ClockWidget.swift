@@ -182,6 +182,7 @@ struct ClockWidget: View {
         }
 
         func updateNSView(_ view: VideoContainerView, context: Context) {
+            context.coordinator.wantsPlaying = isPlaying
             if let player = context.coordinator.player {
                 isPlaying ? player.play() : player.pause()
                 return
@@ -189,24 +190,32 @@ struct ClockWidget: View {
 
             guard let url = Bundle.main.url(forResource: resourceName, withExtension: "mp4") else { return }
 
-            let item = Self.loopingItem(from: url)
             let player = AVQueuePlayer()
             player.isMuted = true
             player.actionAtItemEnd = .none
             player.automaticallyWaitsToMinimizeStalling = false
-            context.coordinator.player = player
-            context.coordinator.looper = AVPlayerLooper(player: player, templateItem: item)
+            let coordinator = context.coordinator
+            coordinator.player = player
             view.playerLayer.player = player
             if isPlaying {
                 player.play()
             }
+
+            Task { @MainActor in
+                let item = await Self.loopingItem(from: url)
+                guard coordinator.player === player else { return }
+                coordinator.looper = AVPlayerLooper(player: player, templateItem: item)
+                // The queue was empty when playback was first requested; apply the latest state now that it has items.
+                coordinator.wantsPlaying ? player.play() : player.pause()
+            }
         }
 
-        private static func loopingItem(from url: URL) -> AVPlayerItem {
+        private static func loopingItem(from url: URL) async -> AVPlayerItem {
             let asset = AVURLAsset(url: url)
             let composition = AVMutableComposition()
 
-            guard let sourceTrack = asset.tracks(withMediaType: .video).first,
+            guard let sourceTrack = try? await asset.loadTracks(withMediaType: .video).first,
+                  let properties = try? await sourceTrack.load(.nominalFrameRate, .timeRange, .preferredTransform),
                   let compositionTrack = composition.addMutableTrack(
                     withMediaType: .video,
                     preferredTrackID: kCMPersistentTrackID_Invalid
@@ -214,14 +223,15 @@ struct ClockWidget: View {
                 return AVPlayerItem(url: url)
             }
 
-            let frameRate = max(Double(sourceTrack.nominalFrameRate), 1)
-            let frameDuration = CMTime(seconds: 1 / frameRate, preferredTimescale: sourceTrack.timeRange.duration.timescale)
-            let duration = CMTimeMaximum(.zero, sourceTrack.timeRange.duration - frameDuration)
-            let timeRange = CMTimeRange(start: sourceTrack.timeRange.start, duration: duration)
+            let (nominalFrameRate, sourceRange, preferredTransform) = properties
+            let frameRate = max(Double(nominalFrameRate), 1)
+            let frameDuration = CMTime(seconds: 1 / frameRate, preferredTimescale: sourceRange.duration.timescale)
+            let duration = CMTimeMaximum(.zero, sourceRange.duration - frameDuration)
+            let timeRange = CMTimeRange(start: sourceRange.start, duration: duration)
 
             do {
                 try compositionTrack.insertTimeRange(timeRange, of: sourceTrack, at: .zero)
-                compositionTrack.preferredTransform = sourceTrack.preferredTransform
+                compositionTrack.preferredTransform = preferredTransform
             } catch {
                 return AVPlayerItem(url: url)
             }
@@ -241,6 +251,7 @@ struct ClockWidget: View {
         final class Coordinator {
             var player: AVQueuePlayer?
             var looper: AVPlayerLooper?
+            var wantsPlaying = false
         }
 
         final class VideoContainerView: NSView {

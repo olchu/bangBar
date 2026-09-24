@@ -298,7 +298,8 @@ class HoverPanel: NSPanel {
                     progress: { [weak self] progress in
                         self?.state.artworkHeroProgress = progress
                     }
-                ) {
+                ) { [weak self] in
+                    guard let self else { return }
                     self.state.artworkHeroProgress = 1
                     self.state.isCompact = false
                     self.state.isExpanded = true
