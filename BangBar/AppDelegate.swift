@@ -124,7 +124,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.recoverPanel(reason: "active-space-changed")
+            self?.recoverPanel(reason: "active-space-changed", isSpaceChange: true)
         })
         applicationObservers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -135,12 +135,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         })
     }
 
-    private func recoverPanel(reason: String) {
+    private func recoverPanel(reason: String, isSpaceChange: Bool = false) {
         logger.notice("Recovering panel after \(reason, privacy: .public)")
         nextHoverOpenAttempt = 0
         compactExpansionGraceUntil = .distantPast
         startMouseTracking()
-        hoverPanel?.recoverAfterSystemTransition(on: screenContainingMouse())
+        if isSpaceChange {
+            hoverPanel?.handleActiveSpaceChange(on: screenContainingMouse())
+        } else {
+            hoverPanel?.recoverAfterSystemTransition(on: screenContainingMouse())
+        }
     }
 
     func handleMouseMove(_ event: NSEvent) {

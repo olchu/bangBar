@@ -342,6 +342,15 @@ class HoverPanel: NSPanel {
         collectionBehavior = Self.spaceBehavior
     }
 
+    func handleActiveSpaceChange(on preferredScreen: NSScreen?) {
+        // The panel joins all Spaces, so a settled panel already followed the switch;
+        // a full recovery here would replay its reveal animation.
+        if isVisible, isOnActiveSpace, !isHiding, !isAnimatingFrame, screen != nil {
+            return
+        }
+        recoverAfterSystemTransition(on: preferredScreen)
+    }
+
     func recoverAfterSystemTransition(on preferredScreen: NSScreen?) {
         let restoreExpanded = wantsExpandedPanel
         let restoreCompact = clipboardHistory.isCollectingImages
