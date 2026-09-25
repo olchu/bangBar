@@ -7,12 +7,21 @@ final class TooltipManager {
     private var hostingView: NSHostingView<TooltipContent>?
     private var currentText: String?
     private var suppressedUntil: Date?
+    private var isPresentationEnabled = true
 
     private init() {}
 
     var canShow: Bool {
+        guard isPresentationEnabled else { return false }
         guard let suppressedUntil else { return true }
         return Date() >= suppressedUntil
+    }
+
+    func setPresentationEnabled(_ isEnabled: Bool) {
+        isPresentationEnabled = isEnabled
+        if !isEnabled {
+            hide()
+        }
     }
 
     func suppressShowing(for interval: TimeInterval) {

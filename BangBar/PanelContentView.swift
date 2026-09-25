@@ -132,9 +132,13 @@ struct PanelContentView: View {
             dayPlans.refreshDay(now: date)
         }
         .onAppear {
+            TooltipManager.shared.setPresentationEnabled(!state.showsClipboardHistory)
             if showClockWidget { calendarEvents.start() }
             if showRemindersWidget { reminders.start() }
             if showDayPlansWidget { dayPlans.reload() }
+        }
+        .onChange(of: state.showsClipboardHistory) { _, isPresented in
+            TooltipManager.shared.setPresentationEnabled(!isPresented)
         }
         .onChange(of: state.isExpanded) { _, isExpanded in
             if !isExpanded {

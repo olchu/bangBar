@@ -352,7 +352,6 @@ private struct ClipboardTextRow: View {
             Button(item.isPinned ? "Unpin" : "Pin", action: onTogglePin)
             Button("Delete", role: .destructive, action: onRemove)
         }
-        .help(item.text ?? "Click to copy")
     }
 
     private func copyWithFeedback() {
