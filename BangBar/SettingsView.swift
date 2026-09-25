@@ -227,7 +227,7 @@ struct SettingsView: View {
                                 .lineSpacing(5)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text(verbatim: "ochurkin@gmail.com")
+                            Text(verbatim: "info@olchustudio.com")
                                 .font(.system(size: 14, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(accentColor)
                                 .contentShape(Rectangle())
@@ -239,7 +239,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 .onTapGesture {
-                                    if let url = URL(string: "mailto:ochurkin@gmail.com") {
+                                    if let url = URL(string: "mailto:info@olchustudio.com") {
                                         NSWorkspace.shared.open(url)
                                     }
                                 }
