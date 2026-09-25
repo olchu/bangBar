@@ -240,6 +240,7 @@ final class NowPlayingService: ObservableObject {
     private var pollRequested = false
     private var audioLevelMonitor: AudioLevelMonitor?
     private var isAudioLevelMonitoringRequested = false
+    private var positionUpdatesRequested = false
 
     private struct PendingFavorite {
         let trackKey: String
@@ -252,10 +253,12 @@ final class NowPlayingService: ObservableObject {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             self?.poll()
         }
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, self.info.isPlaying, self.info.duration > 0 else { return }
-            self.info.position = min(self.info.position + 1, self.info.duration)
-        }
+        pollTimer?.tolerance = 0.5
+    }
+
+    deinit {
+        pollTimer?.invalidate()
+        tickTimer?.invalidate()
     }
 
     private func poll() {
@@ -299,7 +302,9 @@ final class NowPlayingService: ObservableObject {
                     }
 
                     self.activePlayer = player
-                    self.isAvailable = true
+                    if !self.isAvailable {
+                        self.isAvailable = true
+                    }
                     if self.info.matchesMetadata(
                         title: title,
                         artist: artist,
@@ -310,7 +315,9 @@ final class NowPlayingService: ObservableObject {
                         isFavorited: displayedFavorite,
                         canFavorite: canFavorite
                     ) {
-                        self.info.position = position
+                        if self.positionUpdatesRequested {
+                            self.info.position = position
+                        }
                     } else {
                         self.info = NowPlayingInfo(
                             title: title, artist: artist,
@@ -330,8 +337,10 @@ final class NowPlayingService: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.activePlayer = nil
-                self.isAvailable  = false
-                self.info = NowPlayingInfo()
+                if self.isAvailable {
+                    self.isAvailable = false
+                    self.info = NowPlayingInfo()
+                }
                 self.updateAudioLevelMonitoring()
                 self.finishPoll()
             }
@@ -480,6 +489,23 @@ final class NowPlayingService: ObservableObject {
         guard isAudioLevelMonitoringRequested != isRequested else { return }
         isAudioLevelMonitoringRequested = isRequested
         updateAudioLevelMonitoring()
+    }
+
+    func setPositionUpdatesRequested(_ isRequested: Bool) {
+        guard positionUpdatesRequested != isRequested else { return }
+        positionUpdatesRequested = isRequested
+        tickTimer?.invalidate()
+        tickTimer = nil
+
+        guard isRequested else { return }
+        poll()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, self.info.isPlaying, self.info.duration > 0 else { return }
+            self.info.position = min(self.info.position + 1, self.info.duration)
+        }
+        timer.tolerance = 0.1
+        RunLoop.main.add(timer, forMode: .common)
+        tickTimer = timer
     }
 
     private func updateAudioLevelMonitoring() {

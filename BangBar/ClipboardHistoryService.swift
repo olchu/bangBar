@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CryptoKit
+import ImageIO
 import UniformTypeIdentifiers
 
 enum ClipboardItemKind: String, Codable {
@@ -96,6 +97,12 @@ private struct LegacyClipboardHistoryItem: Codable {
     let createdAt: Date
 }
 
+private enum ClipboardImageSource: Sendable {
+    case pngData(Data)
+    case encodedData(Data)
+    case file(URL)
+}
+
 @MainActor
 final class ClipboardHistoryService: ObservableObject {
     static let maximumItemCount = 200
@@ -113,7 +120,11 @@ final class ClipboardHistoryService: ObservableObject {
     private let indexURL: URL
     private let legacyIndexURL: URL
     private let groupsURL: URL
-    private let imageCache = NSCache<NSString, NSImage>()
+    private let thumbnailCache = NSCache<NSString, NSImage>()
+    private let imageProcessingQueue = DispatchQueue(
+        label: "BangBar.ClipboardImageProcessing",
+        qos: .utility
+    )
     private var timer: Timer?
     private var settingsObserver: AnyCancellable?
     private var lastChangeCount: Int
@@ -121,6 +132,7 @@ final class ClipboardHistoryService: ObservableObject {
     private var lastGroupCaptureAt: Date?
     private var pendingCaptureDeadline: Date?
     private var lastStableFingerprint: String?
+    private var imageCaptureGeneration = 0
     private var shortcutKeyDownMonitor: Any?
     private var shortcutKeyUpMonitor: Any?
     private var shortcutFlagsMonitor: Any?
@@ -169,6 +181,9 @@ final class ClipboardHistoryService: ObservableObject {
         legacyIndexURL = bangBarDirectory.appendingPathComponent("clipboard-history.json")
         groupsURL = rootDirectory.appendingPathComponent("groups.json")
 
+        thumbnailCache.countLimit = 40
+        thumbnailCache.totalCostLimit = 32 * 1_024 * 1_024
+
         prepareDirectories()
         load()
         lastStableFingerprint = currentPasteboardFingerprint()
@@ -187,15 +202,38 @@ final class ClipboardHistoryService: ObservableObject {
 
     func image(for item: ClipboardHistoryItem) -> NSImage? {
         guard let fileName = item.imageFileName else { return nil }
+        return NSImage(contentsOf: imagesDirectory.appendingPathComponent(fileName))
+    }
+
+    func releaseCachedImages() {
+        thumbnailCache.removeAllObjects()
+    }
+
+    func thumbnail(for item: ClipboardHistoryItem) -> NSImage? {
+        guard let fileName = item.imageFileName else { return nil }
         let key = fileName as NSString
-        if let cached = imageCache.object(forKey: key) {
+        if let cached = thumbnailCache.object(forKey: key) {
             return cached
         }
 
-        guard let image = NSImage(contentsOf: imagesDirectory.appendingPathComponent(fileName)) else {
+        let url = imagesDirectory.appendingPathComponent(fileName) as CFURL
+        guard let source = CGImageSourceCreateWithURL(url, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(
+                source,
+                0,
+                [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 320,
+                    kCGImageSourceShouldCacheImmediately: true
+                ] as CFDictionary
+              ) else {
             return nil
         }
-        imageCache.setObject(image, forKey: key)
+
+        let image = NSImage(cgImage: cgImage, size: .zero)
+        let decodedByteCost = cgImage.bytesPerRow * cgImage.height
+        thumbnailCache.setObject(image, forKey: key, cost: decodedByteCost)
         return image
     }
 
@@ -295,6 +333,7 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func delete(_ group: ClipboardImageGroup) {
+        imageCaptureGeneration += 1
         if activeGroupID == group.id {
             stopCollecting()
         }
@@ -319,6 +358,7 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     func clear() {
+        imageCaptureGeneration += 1
         stopCollecting()
         let pinnedGroupIDs = Set(groups.filter(\.isPinned).map(\.id))
         let removedItems = items.filter {
@@ -341,6 +381,7 @@ final class ClipboardHistoryService: ObservableObject {
                 self?.capturePasteboardIfNeeded()
             }
         }
+        timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
@@ -386,21 +427,26 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     private func captureCurrentPasteboardIfNew() {
-        let fingerprint = currentPasteboardFingerprint()
-        guard fingerprint != lastStableFingerprint else { return }
-        lastStableFingerprint = fingerprint
-
         let fileURLs = fileURLs(from: pasteboard)
         if !fileURLs.isEmpty {
+            let fingerprint = fileFingerprint(fileURLs)
+            guard fingerprint != lastStableFingerprint else { return }
+            lastStableFingerprint = fingerprint
             for url in fileURLs where isImageFile(url) {
-                guard let imageData = normalizedImageData(from: url) else { continue }
-                insertImage(imageData)
+                scheduleImageCapture(from: .file(url), groupID: activeGroupID)
             }
-        } else if let imageData = normalizedImageData(from: pasteboard) {
-            insertImage(imageData)
+        } else if let (source, fingerprintData) = imageSource(from: pasteboard) {
+            let fingerprint = dataFingerprint(fingerprintData, prefix: "image-source:")
+            guard fingerprint != lastStableFingerprint else { return }
+            lastStableFingerprint = fingerprint
+            scheduleImageCapture(from: source, groupID: activeGroupID)
         } else if let text = pasteboard.string(forType: .string), !text.isEmpty,
                   let data = text.data(using: .utf8) {
-            insertText(text, data: data)
+            let contentHash = Self.dataHash(data)
+            let fingerprint = "text:" + contentHash
+            guard fingerprint != lastStableFingerprint else { return }
+            lastStableFingerprint = fingerprint
+            insertText(text, data: data, contentHash: contentHash)
         }
     }
 
@@ -469,18 +515,30 @@ final class ClipboardHistoryService: ObservableObject {
     private func currentPasteboardFingerprint() -> String? {
         let fileURLs = fileURLs(from: pasteboard)
         if !fileURLs.isEmpty {
-            let value = fileURLs.map(\.path).sorted().joined(separator: "\n")
-            guard let data = value.data(using: .utf8) else { return nil }
-            return "files:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            return fileFingerprint(fileURLs)
         }
-        if let imageData = normalizedImageData(from: pasteboard) {
-            return "image:" + SHA256.hash(data: imageData).map { String(format: "%02x", $0) }.joined()
+        if let (_, fingerprintData) = imageSource(from: pasteboard) {
+            return dataFingerprint(fingerprintData, prefix: "image-source:")
         }
         if let text = pasteboard.string(forType: .string),
            let data = text.data(using: .utf8) {
-            return "text:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            return dataFingerprint(data, prefix: "text:")
         }
         return nil
+    }
+
+    private func fileFingerprint(_ urls: [URL]) -> String? {
+        let value = urls.map(\.path).sorted().joined(separator: "\n")
+        guard let data = value.data(using: .utf8) else { return nil }
+        return dataFingerprint(data, prefix: "files:")
+    }
+
+    private func dataFingerprint(_ data: Data, prefix: String) -> String {
+        prefix + Self.dataHash(data)
+    }
+
+    private nonisolated static func dataHash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
@@ -499,57 +557,120 @@ final class ClipboardHistoryService: ObservableObject {
         return type.conforms(to: .image)
     }
 
-    private func normalizedImageData(from url: URL) -> Data? {
-        guard let image = NSImage(contentsOf: url) else { return nil }
-        return pngData(from: image)
-    }
-
-    private func normalizedImageData(from pasteboard: NSPasteboard) -> Data? {
-        for type in [NSPasteboard.PasteboardType.png, .tiff] {
-            guard let sourceData = pasteboard.data(forType: type),
-                  let image = NSImage(data: sourceData),
-                  let png = pngData(from: image) else {
-                continue
-            }
-            return png
+    private func imageSource(from pasteboard: NSPasteboard) -> (ClipboardImageSource, Data)? {
+        if let png = pasteboard.data(forType: .png) {
+            return (.pngData(png), png)
+        }
+        if let encodedData = pasteboard.data(forType: .tiff) {
+            return (.encodedData(encodedData), encodedData)
         }
         return nil
     }
 
-    private func pngData(from image: NSImage) -> Data? {
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
-        return bitmap.representation(using: .png, properties: [:])
-    }
+    private func scheduleImageCapture(from source: ClipboardImageSource, groupID: UUID?) {
+        let imagesDirectory = imagesDirectory
+        let maximumItemBytes = Self.maximumItemBytes
+        let generation = imageCaptureGeneration
+        imageProcessingQueue.async { [weak self] in
+            guard self != nil else { return }
+            guard let data = Self.normalizedImageData(from: source),
+                  data.count <= maximumItemBytes else { return }
 
-    private func insertText(_ text: String, data: Data) {
-        guard data.count <= Self.maximumItemBytes else { return }
-        insert(kind: .text, payload: text, data: data)
-    }
-
-    private func insertImage(_ data: Data) {
-        guard data.count <= Self.maximumItemBytes else { return }
-        let fileName = "\(UUID().uuidString).png"
-        do {
-            try data.write(to: imagesDirectory.appendingPathComponent(fileName), options: .atomic)
-            insert(kind: .image, payload: fileName, data: data, groupID: activeGroupID)
-            if activeGroupID != nil {
-                lastGroupCaptureAt = Date()
-                updateCollectionSession()
+            let contentHash = Self.dataHash(data)
+            let fileName = "\(UUID().uuidString).png"
+            let fileURL = imagesDirectory.appendingPathComponent(fileName)
+            do {
+                try data.write(to: fileURL, options: .atomic)
+            } catch {
+                NSLog("BangBar clipboard image save failed: %@", error.localizedDescription)
+                return
             }
-        } catch {
-            NSLog("BangBar clipboard image save failed: %@", error.localizedDescription)
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else {
+                    try? FileManager.default.removeItem(at: fileURL)
+                    return
+                }
+                guard self.imageCaptureGeneration == generation,
+                      groupID == nil || self.groups.contains(where: { $0.id == groupID }) else {
+                    try? FileManager.default.removeItem(at: fileURL)
+                    return
+                }
+                self.insertStoredImage(
+                    fileName: fileName,
+                    byteCount: data.count,
+                    contentHash: contentHash,
+                    groupID: groupID
+                )
+            }
+        }
+    }
+
+    private nonisolated static func normalizedImageData(from source: ClipboardImageSource) -> Data? {
+        switch source {
+        case .pngData(let data):
+            return data
+        case .encodedData(let data):
+            return pngData(from: data)
+        case .file(let url):
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+            if url.pathExtension.lowercased() == "png" { return data }
+            return pngData(from: data)
+        }
+    }
+
+    private nonisolated static func pngData(from encodedData: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(encodedData as CFData, nil),
+              let output = CFDataCreateMutable(nil, 0),
+              let destination = CGImageDestinationCreateWithData(
+                output,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+              ) else { return nil }
+
+        CGImageDestinationAddImageFromSource(destination, source, 0, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return output as Data
+    }
+
+    private func insertText(_ text: String, data: Data, contentHash: String? = nil) {
+        guard data.count <= Self.maximumItemBytes else { return }
+        insert(
+            kind: .text,
+            payload: text,
+            byteCount: data.count,
+            contentHash: contentHash ?? Self.dataHash(data)
+        )
+    }
+
+    private func insertStoredImage(
+        fileName: String,
+        byteCount: Int,
+        contentHash: String,
+        groupID: UUID?
+    ) {
+        insert(
+            kind: .image,
+            payload: fileName,
+            byteCount: byteCount,
+            contentHash: contentHash,
+            groupID: groupID
+        )
+        if groupID != nil, activeGroupID == groupID {
+            lastGroupCaptureAt = Date()
+            updateCollectionSession()
         }
     }
 
     private func insert(
         kind: ClipboardItemKind,
         payload: String,
-        data: Data,
+        byteCount: Int,
+        contentHash: String,
         groupID: UUID? = nil
     ) {
-        let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let existing = items.first { $0.kind == kind && $0.contentHash == hash }
+        let existing = items.first { $0.kind == kind && $0.contentHash == contentHash }
         if let existing {
             deletePayload(for: existing)
             items.removeAll { $0.id == existing.id }
@@ -560,8 +681,8 @@ final class ClipboardHistoryService: ObservableObject {
                 id: UUID(),
                 kind: kind,
                 payload: payload,
-                contentHash: hash,
-                byteCount: data.count,
+                contentHash: contentHash,
+                byteCount: byteCount,
                 createdAt: Date(),
                 groupID: groupID,
                 isPinned: existing?.isPinned ?? false
@@ -646,7 +767,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func deletePayload(for item: ClipboardHistoryItem) {
         guard let fileName = item.imageFileName else { return }
-        imageCache.removeObject(forKey: fileName as NSString)
+        thumbnailCache.removeObject(forKey: fileName as NSString)
         try? FileManager.default.removeItem(at: imagesDirectory.appendingPathComponent(fileName))
     }
 

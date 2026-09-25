@@ -48,6 +48,15 @@ final class ReminderService: ObservableObject {
         }
     }
 
+    func stop() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+        if let storeObserver {
+            NotificationCenter.default.removeObserver(storeObserver)
+            self.storeObserver = nil
+        }
+    }
+
     func requestAccessFromUserAction() {
         if case .denied = authorizationState {
             openPrivacySettings()
@@ -166,6 +175,7 @@ final class ReminderService: ObservableObject {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.refresh()
         }
+        pollTimer?.tolerance = 5
         guard storeObserver == nil else { return }
         storeObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,

@@ -10,6 +10,7 @@ struct DayPlansWidget: View {
     @State private var pendingScrollReset: Task<Void, Never>?
     @State private var pendingScrollEnable: Task<Void, Never>?
     @State private var isScrollEnabled = false
+    @State private var isMonitoringExternalChanges = false
     @State private var selectedGroupFilterID: UUID?
 
     private var accentColor: Color { Color(hex: accentColorHex) }
@@ -42,6 +43,7 @@ struct DayPlansWidget: View {
                         if isScrollEnabled {
                             ScrollView(.vertical, showsIndicators: true) {
                                 planRows
+                                    .background { ScrollElasticityDisabler() }
                             }
                             .id(scrollViewIdentity)
                             .scrollClipDisabled(false)
@@ -80,6 +82,7 @@ struct DayPlansWidget: View {
             service.reload()
         }
         .onChange(of: isPanelContentVisible, initial: true) { _, isVisible in
+            setExternalMonitoringActive(isVisible)
             pendingScrollReset?.cancel()
             pendingScrollEnable?.cancel()
 
@@ -117,6 +120,17 @@ struct DayPlansWidget: View {
         .onDisappear {
             pendingScrollReset?.cancel()
             pendingScrollEnable?.cancel()
+            setExternalMonitoringActive(false)
+        }
+    }
+
+    private func setExternalMonitoringActive(_ isActive: Bool) {
+        guard isActive != isMonitoringExternalChanges else { return }
+        isMonitoringExternalChanges = isActive
+        if isActive {
+            service.beginExternalStorageMonitoring()
+        } else {
+            service.endExternalStorageMonitoring()
         }
     }
 

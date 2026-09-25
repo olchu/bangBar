@@ -14,6 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var applicationObservers: [NSObjectProtocol] = []
     private var settingsWindow: NSWindow?
     private let calendarAlerts = CalendarAlertService()
+    private let healthMonitor = AppHealthMonitor()
     private var compactExpansionGraceUntil: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -25,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         startMouseTracking()
         startWorkspaceTracking()
         calendarAlerts.start()
+        healthMonitor.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -33,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         workspaceObservers.removeAll()
         applicationObservers.forEach(NotificationCenter.default.removeObserver)
         applicationObservers.removeAll()
+        healthMonitor.markCleanShutdown()
     }
 
     // MARK: - Status Bar
@@ -87,11 +90,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
         // Reevaluate a stationary pointer after an animation or a busy main run loop.
-        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             guard NSEvent.pressedMouseButtons == 0 else { return }
             self?.evaluateHover()
         }
-        timer.tolerance = 0.05
+        timer.tolerance = 0.15
         RunLoop.main.add(timer, forMode: .common)
         hoverPollTimer = timer
         logger.info("Mouse tracking started")
@@ -137,6 +140,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func recoverPanel(reason: String, isSpaceChange: Bool = false) {
         logger.notice("Recovering panel after \(reason, privacy: .public)")
+        healthMonitor.checkpoint("panel-recovery-\(reason)")
         nextHoverOpenAttempt = 0
         compactExpansionGraceUntil = .distantPast
         startMouseTracking()
@@ -207,6 +211,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     compactExpansionGraceUntil = Date().addingTimeInterval(0.85)
                 }
                 logger.debug("Opening panel from hover; visible=\(panel.isVisible) hiding=\(panel.isHiding) compact=\(panel.isCompactMode)")
+                healthMonitor.checkpoint("panel-open-hover")
                 panel.slideIn(on: screen)
             }
         } else {
@@ -229,6 +234,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showPanel() {
         logger.info("Opening panel from status menu")
+        healthMonitor.checkpoint("panel-open-menu")
         hoverPanel?.slideIn(on: screenContainingMouse())
     }
 
@@ -239,6 +245,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
+        healthMonitor.checkpoint("settings-open")
         var isNewSettingsWindow = false
 
         if settingsWindow == nil {

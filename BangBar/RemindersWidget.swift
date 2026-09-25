@@ -37,6 +37,16 @@ struct RemindersWidget: View {
             height: PanelLayout.nowPlayingWidgetHeight,
             alignment: .topLeading
         )
+        .onChange(of: isPanelContentVisible, initial: true) { _, isVisible in
+            if isVisible {
+                service.start()
+            } else {
+                service.stop()
+            }
+        }
+        .onDisappear {
+            service.stop()
+        }
     }
 
     private var headerRow: some View {
@@ -143,20 +153,19 @@ private struct ReminderRow: View {
         if cal.isDateInToday(date) { return "today" }
         if item.isOverdue {
             let now = Date()
-            let f = DateFormatter()
             if cal.isDate(date, equalTo: now, toGranularity: .weekOfYear) {
-                f.dateFormat = "EEE"
+                return date.formatted(.dateTime.weekday(.abbreviated)).lowercased()
             } else if cal.isDate(date, equalTo: now, toGranularity: .month) {
-                f.dateFormat = "d EEE"
+                return date.formatted(.dateTime.day().weekday(.abbreviated)).lowercased()
             } else {
-                f.dateFormat = "d MMM"
+                return date.formatted(.dateTime.day().month(.abbreviated)).lowercased()
             }
-            return f.string(from: date).lowercased()
         }
         if cal.isDateInTomorrow(date) { return "tmr" }
-        let f = DateFormatter()
-        f.dateFormat = cal.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) ? "EEE" : "d MMM"
-        return f.string(from: date).lowercased()
+        if cal.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) {
+            return date.formatted(.dateTime.weekday(.abbreviated)).lowercased()
+        }
+        return date.formatted(.dateTime.day().month(.abbreviated)).lowercased()
     }
 
     var body: some View {
@@ -225,11 +234,12 @@ private struct ReminderRow: View {
             let cal = Calendar.current
             let comps = cal.dateComponents([.hour, .minute], from: date)
             let hasTime = comps.hour != 0 || comps.minute != 0
-            let f = DateFormatter()
-            f.dateStyle = .full
-            f.timeStyle = hasTime ? .short : .none
+            let formattedDate = date.formatted(
+                date: .complete,
+                time: hasTime ? .shortened : .omitted
+            )
             let prefix = item.isOverdue ? "Overdue · " : "Due: "
-            lines.append(prefix + f.string(from: date))
+            lines.append(prefix + formattedDate)
         } else if item.isOverdue {
             lines.append("Overdue · no date")
         }

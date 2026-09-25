@@ -16,6 +16,7 @@ final class MirrorCameraService: ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "BangBar.MirrorCameraService.session")
     private var isConfigured = false
+    private var wantsRunning = false
 
     func toggle() {
         if state == .running || state == .requesting {
@@ -27,6 +28,7 @@ final class MirrorCameraService: ObservableObject {
 
     func start() {
         guard state != .requesting, state != .running, state != .stopping else { return }
+        wantsRunning = true
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -36,8 +38,10 @@ final class MirrorCameraService: ObservableObject {
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
                     guard let self else { return }
-                    if granted {
+                    if granted, self.wantsRunning {
                         self.configureAndStart()
+                    } else if granted {
+                        self.state = .off
                     } else {
                         self.state = .denied
                     }
@@ -51,6 +55,7 @@ final class MirrorCameraService: ObservableObject {
     }
 
     func stop() {
+        wantsRunning = false
         guard state == .running || state == .requesting else { return }
         state = .stopping
 
@@ -81,7 +86,11 @@ final class MirrorCameraService: ObservableObject {
                 }
 
                 DispatchQueue.main.async {
-                    self.state = .running
+                    if self.wantsRunning {
+                        self.state = .running
+                    } else {
+                        self.stop()
+                    }
                 }
             } catch {
                 self.session.stopRunning()

@@ -9,6 +9,7 @@ final class DayPlansWindowController: NSWindowController {
     private let service = DayPlanService.shared
     private var localMouseDownMonitor: Any?
     private var globalMouseDownMonitor: Any?
+    private var isMonitoringExternalChanges = false
 
     private init() {
         let window = NSWindow(
@@ -36,6 +37,10 @@ final class DayPlansWindowController: NSWindowController {
     func show() {
         service.refreshDay()
         service.reload()
+        if !isMonitoringExternalChanges {
+            isMonitoringExternalChanges = true
+            service.beginExternalStorageMonitoring()
+        }
         window?.center()
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
@@ -74,6 +79,10 @@ final class DayPlansWindowController: NSWindowController {
 
     func windowWillClose(_ notification: Notification) {
         stopOutsideClickMonitoring()
+        if isMonitoringExternalChanges {
+            isMonitoringExternalChanges = false
+            service.endExternalStorageMonitoring()
+        }
     }
 }
 

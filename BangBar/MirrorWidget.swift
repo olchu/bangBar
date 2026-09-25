@@ -4,6 +4,7 @@ import AppKit
 
 struct MirrorWidget: View {
     @ObservedObject var service: MirrorCameraService
+    let isActive: Bool
 
     var body: some View {
         ZStack {
@@ -63,6 +64,11 @@ struct MirrorWidget: View {
             }
         }
         .animation(.spring(response: 0.30, dampingFraction: 0.78), value: service.state)
+        .onChange(of: isActive) { _, isActive in
+            if !isActive {
+                service.stop()
+            }
+        }
         .onDisappear {
             service.stop()
         }

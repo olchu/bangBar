@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AIUsageWidget: View {
     @ObservedObject var service: AIUsageService
+    let isActive: Bool
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
 
     var body: some View {
@@ -29,7 +30,8 @@ struct AIUsageWidget: View {
             }
         }
         .frame(width: PanelLayout.aiUsageWidgetWidth, height: PanelLayout.nowPlayingWidgetHeight, alignment: .topLeading)
-        .task {
+        .task(id: isActive) {
+            guard isActive else { return }
             while !Task.isCancelled {
                 let needsRetry = await service.refresh()
                 let interval = needsRetry ? AIUsageService.retryInterval : AIUsageService.refreshInterval

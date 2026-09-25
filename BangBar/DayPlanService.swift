@@ -47,6 +47,8 @@ final class DayPlanService: ObservableObject {
     private let storageURL: URL
     private var calendar: Calendar
     private var cancellables: Set<AnyCancellable> = []
+    private var externalStorageCancellable: AnyCancellable?
+    private var externalStorageMonitoringClients = 0
     private var lastKnownStorageModificationDate: Date?
 
     init(calendar: Calendar = .autoupdatingCurrent) {
@@ -55,7 +57,6 @@ final class DayPlanService: ObservableObject {
         currentDay = Self.dayIdentifier(for: Date(), calendar: calendar)
         reload()
         observeCalendarChanges()
-        observeExternalStorageChanges()
     }
 
     var todaysItems: [DayPlanItem] {
@@ -135,6 +136,25 @@ final class DayPlanService: ObservableObject {
         let modificationDate = storageModificationDate()
         guard modificationDate != lastKnownStorageModificationDate else { return }
         reload()
+    }
+
+    func beginExternalStorageMonitoring() {
+        externalStorageMonitoringClients += 1
+        guard externalStorageMonitoringClients == 1 else { return }
+
+        syncFromStorageIfChanged()
+        externalStorageCancellable = Timer.publish(every: 8, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.syncFromStorageIfChanged()
+            }
+    }
+
+    func endExternalStorageMonitoring() {
+        externalStorageMonitoringClients = max(externalStorageMonitoringClients - 1, 0)
+        guard externalStorageMonitoringClients == 0 else { return }
+        externalStorageCancellable?.cancel()
+        externalStorageCancellable = nil
     }
 
     @discardableResult
@@ -320,14 +340,6 @@ final class DayPlanService: ObservableObject {
         }
     }
 
-    private func observeExternalStorageChanges() {
-        Timer.publish(every: 8, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.syncFromStorageIfChanged()
-            }
-            .store(in: &cancellables)
-    }
 }
 
 private extension Array {

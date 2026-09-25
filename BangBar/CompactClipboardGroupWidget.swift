@@ -53,7 +53,7 @@ struct CompactClipboardGroupWidget: View {
 
     private func previewStack(size: CGFloat) -> some View {
         let images = service.activeGroup.map { group in
-            Array(service.items(in: group).prefix(2)).compactMap { service.image(for: $0) }
+            Array(service.items(in: group).prefix(2)).compactMap { service.thumbnail(for: $0) }
         } ?? []
 
         return ZStack {

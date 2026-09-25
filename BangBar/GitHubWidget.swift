@@ -5,6 +5,7 @@ import SwiftUI
 
 struct GitHubWidget: View {
     @ObservedObject var contributions: GitHubContributionsService
+    let isActive: Bool
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.githubUsername) private var username = ""
 
@@ -32,7 +33,8 @@ struct GitHubWidget: View {
             height: PanelLayout.nowPlayingWidgetHeight,
             alignment: .topLeading
         )
-        .task(id: username) {
+        .task(id: RefreshTaskID(username: username, isActive: isActive)) {
+            guard isActive else { return }
             while !Task.isCancelled {
                 await contributions.load(username: username)
 
@@ -43,6 +45,11 @@ struct GitHubWidget: View {
                 }
             }
         }
+    }
+
+    private struct RefreshTaskID: Hashable {
+        let username: String
+        let isActive: Bool
     }
 
     private var accentColor: Color { Color(hex: accentColorHex) }

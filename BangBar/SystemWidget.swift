@@ -5,6 +5,7 @@ import IOKit.ps
 import SwiftUI
 
 struct SystemWidget: View {
+    let isActive: Bool
     @StateObject private var metrics = SystemMetricsService()
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @State private var isPulsing = false
@@ -87,10 +88,10 @@ struct SystemWidget: View {
         }
         .frame(width: PanelLayout.systemWidgetWidth, height: PanelLayout.nowPlayingWidgetHeight)
         .onAppear {
-            metrics.start()
-            withAnimation(.easeInOut(duration: 1.55).repeatForever(autoreverses: true)) {
-                isPulsing = true
-            }
+            updateActivity()
+        }
+        .onChange(of: isActive) { _, _ in
+            updateActivity()
         }
         .onDisappear {
             metrics.stop()
@@ -122,6 +123,24 @@ struct SystemWidget: View {
 
     private var diskLabel: String {
         return "\(metrics.diskFreeGB)GB"
+    }
+
+    private func updateActivity() {
+        guard isActive else {
+            metrics.stop()
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isPulsing = false
+            }
+            return
+        }
+
+        metrics.start()
+        guard !isPulsing else { return }
+        withAnimation(.easeInOut(duration: 1.55).repeatForever(autoreverses: true)) {
+            isPulsing = true
+        }
     }
 
     private func copyIPAddress() {
@@ -298,6 +317,8 @@ final class SystemMetricsService: NSObject, ObservableObject {
 
     private var timer: Timer?
     private var previousCPUTicks: [UInt64]?
+    private var lastAuxiliaryRefresh: Date?
+    private var lastDiskRefresh: Date?
 
     var cpuLabel: String { "\(cpuUsage)%" }
     var memoryLabel: String { "\(memoryUsage)%" }
@@ -328,14 +349,13 @@ final class SystemMetricsService: NSObject, ObservableObject {
 
     func start() {
         guard timer == nil else { return }
-        refresh()
-        timer = Timer.scheduledTimer(
-            timeInterval: 2,
-            target: self,
-            selector: #selector(refreshTimerFired),
-            userInfo: nil,
-            repeats: true
-        )
+        refresh(forceSlowMetrics: true)
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        timer.tolerance = 0.25
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     func stop() {
@@ -343,17 +363,28 @@ final class SystemMetricsService: NSObject, ObservableObject {
         timer = nil
     }
 
-    private func refresh() {
+    private func refresh(forceSlowMetrics: Bool = false) {
+        let now = Date()
         cpuUsage = readCPUUsage()
         memoryUsage = Self.readMemoryUsage()
         append(Double(cpuUsage), to: &cpuHistory)
         append(Double(memoryUsage), to: &memoryHistory)
-        let battery = Self.readBattery()
-        batteryLevel = battery?.level
-        isCharging = battery?.isCharging ?? false
-        diskFreeGB = Self.readDiskFreeGB()
-        ipAddress = Self.readLocalIPv4Address()
         thermalState = ProcessInfo.processInfo.thermalState
+
+        if forceSlowMetrics
+            || lastAuxiliaryRefresh.map({ now.timeIntervalSince($0) >= 30 }) != false {
+            let battery = Self.readBattery()
+            batteryLevel = battery?.level
+            isCharging = battery?.isCharging ?? false
+            ipAddress = Self.readLocalIPv4Address()
+            lastAuxiliaryRefresh = now
+        }
+
+        if forceSlowMetrics
+            || lastDiskRefresh.map({ now.timeIntervalSince($0) >= 5 * 60 }) != false {
+            diskFreeGB = Self.readDiskFreeGB()
+            lastDiskRefresh = now
+        }
     }
 
     private func append(_ value: Double, to history: inout [Double]) {
@@ -361,10 +392,6 @@ final class SystemMetricsService: NSObject, ObservableObject {
         if history.count > 24 {
             history.removeFirst(history.count - 24)
         }
-    }
-
-    @objc private func refreshTimerFired() {
-        refresh()
     }
 
     private func readCPUUsage() -> Int {

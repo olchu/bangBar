@@ -25,6 +25,7 @@ struct HabitsWidget: View {
                         if isScrollEnabled {
                             ScrollView(.vertical, showsIndicators: true) {
                                 habitRows
+                                    .background { ScrollElasticityDisabler() }
                             }
                             .id(scrollViewIdentity)
                             .scrollClipDisabled(false)
@@ -192,6 +193,37 @@ struct PanelSwipeExclusionRegion: NSViewRepresentable {
 final class PanelSwipeExclusionView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
+    }
+}
+
+// Rubber-banding in these short clipped lists reads as a jolt at the edges, and SwiftUI has no modifier to turn it off.
+struct ScrollElasticityDisabler: NSViewRepresentable {
+    func makeNSView(context: Context) -> ScrollElasticityDisablerView {
+        ScrollElasticityDisablerView()
+    }
+
+    func updateNSView(_ nsView: ScrollElasticityDisablerView, context: Context) {
+        nsView.disableElasticity()
+    }
+}
+
+final class ScrollElasticityDisablerView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        disableElasticity()
+        DispatchQueue.main.async { [weak self] in
+            self?.disableElasticity()
+        }
+    }
+
+    func disableElasticity() {
+        guard let scrollView = enclosingScrollView else { return }
+        scrollView.verticalScrollElasticity = .none
+        scrollView.horizontalScrollElasticity = .none
     }
 }
 

@@ -30,8 +30,7 @@ struct PanelContentView: View {
     @StateObject private var aiUsage = AIUsageService()
     @StateObject private var habits = HabitService.shared
     @StateObject private var dayPlans = DayPlanService.shared
-    @State private var currentTime = Date()
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @StateObject private var panelClock = PanelClock()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
 
     var body: some View {
@@ -57,15 +56,15 @@ struct PanelContentView: View {
                             .allowsHitTesting(!state.showsClipboardHistory)
                             .accessibilityHidden(state.showsClipboardHistory)
 
-                        ClipboardHistoryView(
-                            service: clipboardHistory,
-                            filter: state.clipboardFilter,
-                            topSafeInset: state.topSafeInset,
-                            isPresented: state.showsClipboardHistory
-                        )
-                        .opacity(state.showsClipboardHistory ? 1 : 0)
-                        .allowsHitTesting(state.showsClipboardHistory)
-                        .accessibilityHidden(!state.showsClipboardHistory)
+                        if state.showsClipboardHistory {
+                            ClipboardHistoryView(
+                                service: clipboardHistory,
+                                filter: state.clipboardFilter,
+                                topSafeInset: state.topSafeInset,
+                                isPresented: true
+                            )
+                            .transition(.opacity)
+                        }
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.10), value: state.contentVisible)
@@ -123,29 +122,32 @@ struct PanelContentView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.66), value: state.isExpanded)
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onReceive(timer) { date in
-            if state.isExpanded, state.contentVisible {
-                currentTime = date
+        .onChange(of: timeUpdateInterval, initial: true) { _, interval in
+            panelClock.setUpdateInterval(interval)
+            if interval == 1 {
+                calendarEvents.start()
+                calendarEvents.refreshIfNeeded(now: panelClock.date)
             }
-            calendarEvents.refreshIfNeeded(now: date)
-            habits.refreshDay(now: date)
-            dayPlans.refreshDay(now: date)
+        }
+        .onChange(of: panelClock.date) { _, date in
+            if timeUpdateInterval == 1 {
+                calendarEvents.refreshIfNeeded(now: date)
+            }
         }
         .onAppear {
             TooltipManager.shared.setPresentationEnabled(!state.showsClipboardHistory)
-            if showClockWidget { calendarEvents.start() }
-            if showRemindersWidget { reminders.start() }
             if showDayPlansWidget { dayPlans.reload() }
         }
         .onChange(of: state.showsClipboardHistory) { _, isPresented in
             TooltipManager.shared.setPresentationEnabled(!isPresented)
+            if !isPresented {
+                clipboardHistory.releaseCachedImages()
+            }
         }
         .onChange(of: state.isExpanded) { _, isExpanded in
             if !isExpanded {
                 mirror.stop()
             } else {
-                if showClockWidget { calendarEvents.start() }
-                if showRemindersWidget { reminders.refresh() }
                 if showDayPlansWidget { dayPlans.reload() }
             }
         }
@@ -153,12 +155,6 @@ struct PanelContentView: View {
             if isCompact {
                 mirror.stop()
             }
-        }
-        .onChange(of: showClockWidget) { _, isVisible in
-            if isVisible { calendarEvents.start() }
-        }
-        .onChange(of: showRemindersWidget) { _, isVisible in
-            if isVisible { reminders.start() }
         }
         .onChange(of: showDayPlansWidget) { _, isVisible in
             if isVisible { dayPlans.reload() }
@@ -168,12 +164,30 @@ struct PanelContentView: View {
                 mirror.stop()
             }
         }
+        .onDisappear {
+            panelClock.stop()
+            reminders.stop()
+            mirror.stop()
+        }
     }
 
     private var panelScale: CGFloat {
         if state.isExpanded { return 0.955 }
         if state.isCompact { return 1.0 }
         return 0.22
+    }
+
+    private var timeUpdateInterval: TimeInterval? {
+        guard state.isExpanded,
+              state.contentVisible,
+              !state.showsClipboardHistory else {
+            return nil
+        }
+
+        let visibleWidgets = activeWidgets(forPage: state.currentPage)
+        if visibleWidgets.contains(.clock) { return 1 }
+        if visibleWidgets.contains(.moon) { return 60 }
+        return nil
     }
 
     @ViewBuilder
@@ -211,7 +225,15 @@ struct PanelContentView: View {
     @ViewBuilder
     private func pageLayer(page: Int, hideExpandedArtwork: Bool) -> some View {
         let widgets = activeWidgets(forPage: page)
-        widgetRow(for: widgets, hideExpandedArtwork: hideExpandedArtwork)
+        let isActive = state.isExpanded
+            && state.contentVisible
+            && !state.showsClipboardHistory
+            && state.currentPage == page
+        widgetRow(
+            for: widgets,
+            hideExpandedArtwork: hideExpandedArtwork,
+            isActive: isActive
+        )
             .offset(x: pageLayerOffset(page: page, widgets: widgets))
     }
 
@@ -240,7 +262,11 @@ struct PanelContentView: View {
     }
 
     @ViewBuilder
-    private func widgetRow(for widgets: [BangBarWidget], hideExpandedArtwork: Bool) -> some View {
+    private func widgetRow(
+        for widgets: [BangBarWidget],
+        hideExpandedArtwork: Bool,
+        isActive: Bool
+    ) -> some View {
         Group {
             if widgets.isEmpty {
                 EmptyWidgetsView()
@@ -251,7 +277,11 @@ struct PanelContentView: View {
                     )
             } else {
                 HStack(spacing: PanelLayout.expandedWidgetSpacing) {
-                    widgetContent(for: widgets, hideExpandedArtwork: hideExpandedArtwork)
+                    widgetContent(
+                        for: widgets,
+                        hideExpandedArtwork: hideExpandedArtwork,
+                        isActive: isActive
+                    )
                 }
             }
         }
@@ -261,7 +291,11 @@ struct PanelContentView: View {
     }
 
     @ViewBuilder
-    private func widgetContent(for widgets: [BangBarWidget], hideExpandedArtwork: Bool) -> some View {
+    private func widgetContent(
+        for widgets: [BangBarWidget],
+        hideExpandedArtwork: Bool,
+        isActive: Bool
+    ) -> some View {
         Group {
             ForEach(Array(widgets.enumerated()), id: \.element) { index, widget in
                 if index > 0 {
@@ -279,7 +313,8 @@ struct PanelContentView: View {
                         if state.contentVisible {
                             NowPlayingWidget(
                                 service: nowPlaying,
-                                hideArtwork: hideExpandedArtwork
+                                hideArtwork: hideExpandedArtwork,
+                                isActive: isActive
                             )
                         } else {
                             EmptyView()
@@ -292,13 +327,13 @@ struct PanelContentView: View {
                     )
                 case .clock:
                     ClockWidget(
-                        date: currentTime,
+                        date: panelClock.date,
                         calendarEvents: calendarEvents,
-                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                        isPanelContentVisible: isActive
                     )
                         .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                 case .moon:
-                    MoonWidget(date: currentTime)
+                    MoonWidget(date: panelClock.date)
                         .frame(
                             width: PanelLayout.moonWidgetWidth,
                             height: PanelLayout.nowPlayingWidgetHeight,
@@ -309,7 +344,7 @@ struct PanelContentView: View {
                 case .reminders:
                     RemindersWidget(
                         service: reminders,
-                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                        isPanelContentVisible: isActive
                     )
                         .frame(
                             width: PanelLayout.remindersWidgetWidth,
@@ -317,30 +352,30 @@ struct PanelContentView: View {
                             alignment: .topLeading
                         )
                 case .mirror:
-                    MirrorWidget(service: mirror)
+                    MirrorWidget(service: mirror, isActive: isActive)
                         .frame(
                             width: PanelLayout.mirrorWidgetWidth,
                             height: PanelLayout.mirrorWidgetHeight
                         )
                 case .system:
-                    SystemWidget()
+                    SystemWidget(isActive: isActive)
                 case .github:
-                    GitHubWidget(contributions: githubContributions)
+                    GitHubWidget(contributions: githubContributions, isActive: isActive)
                 case .aiUsage:
-                    AIUsageWidget(service: aiUsage)
+                    AIUsageWidget(service: aiUsage, isActive: isActive)
                 case .companion:
                     EmptyView()
                 case .habits:
                     HabitsWidget(
                         service: habits,
-                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                        isPanelContentVisible: isActive
                     )
                 case .translator:
                     TranslatorWidget(isPanelExpanded: state.isExpanded)
                 case .dayPlans:
                     DayPlansWidget(
                         service: dayPlans,
-                        isPanelContentVisible: state.contentVisible && !state.showsClipboardHistory
+                        isPanelContentVisible: isActive
                     )
                 }
             }
@@ -387,6 +422,40 @@ struct PanelContentView: View {
         case .dayPlans:
             return showDayPlansWidget
         }
+    }
+}
+
+@MainActor
+private final class PanelClock: ObservableObject {
+    @Published private(set) var date = Date()
+
+    private var timer: Timer?
+    private var updateInterval: TimeInterval?
+
+    deinit {
+        timer?.invalidate()
+    }
+
+    func setUpdateInterval(_ interval: TimeInterval?) {
+        guard interval != updateInterval else { return }
+        stop()
+        guard let interval else { return }
+
+        updateInterval = interval
+        date = Date()
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.date = Date()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+        updateInterval = nil
     }
 }
 

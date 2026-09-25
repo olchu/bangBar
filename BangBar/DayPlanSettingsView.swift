@@ -6,6 +6,7 @@ struct DayPlanSettingsContent: View {
 
     @State private var newGroupName = ""
     @State private var newGroupColor = Color.red
+    @State private var isMonitoringExternalChanges = false
     @FocusState private var isNewGroupFieldFocused: Bool
 
     var body: some View {
@@ -42,6 +43,14 @@ struct DayPlanSettingsContent: View {
         }
         .onAppear {
             service.reload()
+            guard !isMonitoringExternalChanges else { return }
+            isMonitoringExternalChanges = true
+            service.beginExternalStorageMonitoring()
+        }
+        .onDisappear {
+            guard isMonitoringExternalChanges else { return }
+            isMonitoringExternalChanges = false
+            service.endExternalStorageMonitoring()
         }
     }
 

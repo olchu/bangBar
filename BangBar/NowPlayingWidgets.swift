@@ -4,6 +4,7 @@ import AppKit
 struct NowPlayingWidget: View {
     @ObservedObject var service: NowPlayingService
     let hideArtwork: Bool
+    let isActive: Bool
 
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     private var accentColor: Color { Color(hex: accentColorHex) }
@@ -146,6 +147,15 @@ struct NowPlayingWidget: View {
             height: PanelLayout.nowPlayingWidgetHeight,
             alignment: .topLeading
         )
+        .onAppear {
+            service.setPositionUpdatesRequested(isActive)
+        }
+        .onChange(of: isActive) { _, isActive in
+            service.setPositionUpdatesRequested(isActive)
+        }
+        .onDisappear {
+            service.setPositionUpdatesRequested(false)
+        }
     }
 }
 

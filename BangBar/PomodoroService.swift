@@ -46,6 +46,7 @@ final class PomodoroService: ObservableObject {
     }
 
     deinit {
+        ticker?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
 

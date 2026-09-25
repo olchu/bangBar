@@ -133,12 +133,13 @@ struct ClipboardHistoryView: View {
                             ForEach(displayEntries) { entry in
                                 switch entry {
                                 case .group(let group):
+                                    let groupItems = service.items(in: group)
                                     ClipboardGroupCard(
                                         group: group,
-                                        images: Array(service.items(in: group).prefix(3)).compactMap {
-                                            service.image(for: $0)
+                                        images: Array(groupItems.prefix(3)).compactMap {
+                                            service.thumbnail(for: $0)
                                         },
-                                        itemCount: service.items(in: group).count,
+                                        itemCount: groupItems.count,
                                         isCollecting: service.activeGroupID == group.id,
                                         onOpen: { selectedGroupID = group.id },
                                         onCopy: { service.copy(group) },
@@ -149,7 +150,7 @@ struct ClipboardHistoryView: View {
                                 case .image(let item):
                                     ClipboardHistoryCard(
                                         item: item,
-                                        image: service.image(for: item),
+                                        image: service.thumbnail(for: item),
                                         onCopy: { service.copy(item) },
                                         onTogglePin: { service.togglePin(item) },
                                         onRemove: { service.remove(item) }
@@ -217,7 +218,7 @@ struct ClipboardHistoryView: View {
                     ForEach(service.items(in: group)) { item in
                         ClipboardHistoryCard(
                             item: item,
-                            image: service.image(for: item),
+                            image: service.thumbnail(for: item),
                             onCopy: { service.copy(item) },
                             onTogglePin: { service.togglePin(item) },
                             onRemove: { service.remove(item) }
