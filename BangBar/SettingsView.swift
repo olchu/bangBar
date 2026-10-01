@@ -2246,6 +2246,10 @@ private struct ColorPanelClickOverlay: NSViewRepresentable {
         Coordinator(selection: $selection)
     }
 
+    static func dismantleNSView(_ nsView: ClickView, coordinator: Coordinator) {
+        coordinator.detachFromColorPanel()
+    }
+
     final class ClickView: NSView {
         var onClick: (() -> Void)?
 
@@ -2261,19 +2265,33 @@ private struct ColorPanelClickOverlay: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject {
+        // NSColorPanel keeps its target unretained, so we track ownership to clear it before we're deallocated.
+        private static weak var colorPanelOwner: Coordinator?
+
         var selection: Binding<Color>
 
         init(selection: Binding<Color>) {
             self.selection = selection
         }
 
+        func detachFromColorPanel() {
+            guard Self.colorPanelOwner === self else { return }
+            NSColorPanel.shared.setTarget(nil)
+            NSColorPanel.shared.setAction(nil)
+            Self.colorPanelOwner = nil
+        }
+
         func openColorPanel() {
             let panel = NSColorPanel.shared
             let color = NSColor(selection.wrappedValue).usingColorSpace(.sRGB) ?? NSColor(selection.wrappedValue)
+            // Setting color fires the action immediately, which would hit a stale target from a previous view.
+            panel.setTarget(nil)
+            panel.setAction(nil)
             panel.showsAlpha = false
             panel.color = color
             panel.setTarget(self)
             panel.setAction(#selector(colorChanged(_:)))
+            Self.colorPanelOwner = self
             panel.makeKeyAndOrderFront(nil)
         }
 
