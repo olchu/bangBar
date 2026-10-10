@@ -57,6 +57,7 @@ struct ClipboardHistoryView: View {
     let topSafeInset: CGFloat
     let isPresented: Bool
     @State private var selectedGroupID: UUID?
+    @State private var imageOpenFailed = false
 
     private var selectedGroup: ClipboardImageGroup? {
         guard let selectedGroupID else { return nil }
@@ -151,6 +152,7 @@ struct ClipboardHistoryView: View {
                                     ClipboardHistoryCard(
                                         item: item,
                                         image: service.thumbnail(for: item),
+                                        onOpen: { openImage(item) },
                                         onCopy: { service.copy(item) },
                                         onTogglePin: { service.togglePin(item) },
                                         onRemove: { service.remove(item) }
@@ -178,6 +180,11 @@ struct ClipboardHistoryView: View {
         .padding(.horizontal, PanelLayout.expandedHorizontalPadding)
         .padding(.top, topSafeInset)
         .padding(.bottom, PanelLayout.expandedVisibleEdgePadding)
+        .alert("Unable to Open Image", isPresented: $imageOpenFailed) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("The image may no longer be available.")
+        }
         .onChange(of: filter) { _, newFilter in
             if newFilter == .text {
                 selectedGroupID = nil
@@ -188,6 +195,14 @@ struct ClipboardHistoryView: View {
                 self.selectedGroupID = nil
             }
         }
+    }
+
+    private func openImage(_ item: ClipboardHistoryItem) {
+        guard let image = service.image(for: item) else {
+            imageOpenFailed = true
+            return
+        }
+        ClipboardImagePreviewWindowController.shared.show(image)
     }
 
     private func groupDetail(_ group: ClipboardImageGroup) -> some View {
@@ -219,6 +234,7 @@ struct ClipboardHistoryView: View {
                         ClipboardHistoryCard(
                             item: item,
                             image: service.thumbnail(for: item),
+                            onOpen: { openImage(item) },
                             onCopy: { service.copy(item) },
                             onTogglePin: { service.togglePin(item) },
                             onRemove: { service.remove(item) }
@@ -544,6 +560,7 @@ private struct ClipboardGroupCard: View {
 private struct ClipboardHistoryCard: View {
     let item: ClipboardHistoryItem
     let image: NSImage?
+    let onOpen: () -> Void
     let onCopy: () -> Void
     let onTogglePin: () -> Void
     let onRemove: () -> Void
@@ -594,6 +611,27 @@ private struct ClipboardHistoryCard: View {
                 .contentShape(.rect)
             }
             .buttonStyle(ClipboardCardButtonStyle())
+            .overlay(alignment: .topLeading) {
+                if item.kind == .image && isHovering {
+                    Button(action: onOpen) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 24, height: 24)
+                            .background(Color.black.opacity(0.78))
+                            .clipShape(.rect(cornerRadius: 7))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 7)
+                                    .stroke(Color.white.opacity(0.12))
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open image")
+                    .help("Open full-size image")
+                    .padding(7)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                }
+            }
 
             if item.isPinned || isHovering {
                 HStack(spacing: 5) {
@@ -639,6 +677,10 @@ private struct ClipboardHistoryCard: View {
             }
         }
         .contextMenu {
+            if item.kind == .image {
+                Button("Open Image", systemImage: "magnifyingglass", action: onOpen)
+                Divider()
+            }
             Button("Copy", action: copyWithFeedback)
             Button(item.isPinned ? "Unpin" : "Pin", action: onTogglePin)
             Button("Delete", role: .destructive, action: onRemove)

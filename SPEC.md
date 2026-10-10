@@ -165,6 +165,7 @@ Album artwork should read visually as one continuous element between compact and
 - History has `All`, `Text`, and `Images` filters. Image groups appear in `All` and `Images`, but not in `Text`.
 - The top bar retains the Settings button and, while history is open, also provides Clear History and image-group collection controls.
 - Text and image cards are shown in a horizontally scrolling row. Clicking a card writes it back to the system pasteboard; hover and context-menu actions allow individual deletion.
+- Image cards (including those inside a group) show an open button in the top-left corner on hover, plus an `Open Image` context-menu item; both open the persisted full-size image in BangBar's own preview window, centered on the screen under the pointer and fitted to 80% of its visible area (never upscaled). `Esc` or the close button dismisses it. If the file is missing, an alert is shown.
 - Image-group cards show a stacked preview and item count, open into a group detail view, and support copy, rename, and delete actions.
 - Copying a group writes its persisted image file URLs as separate pasteboard items so Finder and destination editors receive a real multi-file paste.
 
