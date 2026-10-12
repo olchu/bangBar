@@ -891,7 +891,8 @@ struct NotionTask: Identifiable {
 - `SelectedTextConverter.swift` — selection conversion through a pasteboard round-trip.
 - `SyntheticKeyboard.swift` — posting marked synthetic key events (Backspace, Unicode text, ⌘C/⌘V, ⇧←), either at session level or through the tap proxy.
 - `KeyboardAutoSwitchRules.swift` — pure decision rules for automatic conversion.
-- `KeyboardAutoSwitcher.swift` — spell-checker languages, remembered words, excluded apps; produces an `AutoSwitchPlan` for a finished word.
+- `KeyboardAutoSwitcher.swift` — spell-checker languages, ignored and learned words, excluded apps; produces an `AutoSwitchPlan` for a finished word and learns manual conversions.
+- `KeyboardLearnedWords.swift` — pure storage for learned words.
 - `KeyboardSwitcherSettingsView.swift` — Settings › Keyboard section.
 - `KeyboardSwitchNotice.swift` — the notch notice shown after an automatic switch.
 
@@ -958,20 +959,29 @@ Off by default; enabled with "Switch automatically" in Settings › Keyboard (on
   - Candidates of 3+ letters must pass `NSSpellChecker`. Two-letter candidates convert only into a short list of common words (`не`, `да`, `на`, … / `it`, `is`, `to`, …). Single letters never convert on their own.
 - **Words before a switched word:** when a word switches, the words right before it in the history (same original layout, not yet converted) switch with it while each becomes a common short word in the target language, including single letters (`я в с к у о и а` / `I a`): `z nt,z` → `я тебя`, `vs c nj,jq` → `мы с тобой`. The switched word is the evidence a dictionary cannot give for `z` alone. English `a` / `I` typed in Russian become `ф` / `Ш`, which are not Russian words, so English text is unaffected.
 - Unknown in both dictionaries (`kubernetes`, slang) → nothing happens.
-- Words in the user's remembered list are skipped.
+- Words in the ignored list are skipped.
+- **Learned words** convert without any dictionary check — this is how slang and terms the dictionaries lack (`гитхаб`, `деплой`) get switched. See below.
 - Measured on this machine's U.S. International – PC / Russian – PC dictionaries: zero false positives on a mixed English/Russian/code-word sample; ~70–80% of wrong-layout words fixed (misses are slang, abbreviations, single letters).
 - Dictionaries are warmed up when the feature turns on, so the first check never stalls the tap.
 
 **Correction:** done synchronously inside the tap callback and posted with `CGEventTapPostEvent` through the tap proxy, so the deletes, the replacement, and a copy of the boundary key reach the app in order before any key the user pressed afterward. The original boundary event is swallowed. The target layout is selected and the buffer keeps the word (in the new layout) plus the space.
 
 **Undo:**
-- Backspace immediately after an automatic switch on Space restores the typed words (including short words switched with it), consumes the space (as Backspace would), switches back to the original layout, and adds the switched word to the remembered list.
-- Triggering a manual conversion right after an automatic switch also adds the word to the remembered list.
+- Backspace immediately after an automatic switch on Space restores the typed words (including short words switched with it), consumes the space (as Backspace would), switches back to the original layout, adds the switched word to the ignored list, and forgets it if it was learned.
+- Triggering a manual conversion right after an automatic switch counts as the same undo (and is not learned).
 - Any other key, click, or app switch ends the undo window. Return has no undo (the text may already be sent).
+
+**Learning from manual conversions** (`KeyboardLearnedWords`, covered by `Tests/KeyboardLearnedWordsTests.swift`):
+- Converting the last word with the trigger records `(source layout, target layout, converted word core)`, e.g. `us → ru, гитхаб`. From then on automatic switching converts that word from that layout whenever its candidate core matches, regardless of case or edge punctuation (`Гитхаб`, `гитхаб,`). Learned words work only while automatic switching is on.
+- The lesson is relative to the word as first typed: pressing the trigger repeatedly (cycling layouts) re-learns the final result and forgets the intermediate ones; converting back to the layout it was typed in forgets it.
+- Never learned: words whose typed core is a real word in the typed layout (so a stray conversion of `hello` cannot break English), results shorter than 2 letters, manual reverts of an automatic switch, and selection conversions.
+- Learning a word removes it from the ignored list; undoing a learned switch forgets it and ignores it.
+- At most 500 entries; re-learning moves an entry to the end and the oldest drop out first.
 
 **Settings** (stored as newline-separated strings):
 - `keyboardSwitcherAutoEnabled` — default `false`.
-- `keyboardSwitcherExceptions` — remembered words (lowercased typed form), shown in Settings with a Clear button.
+- `keyboardSwitcherExceptions` — ignored words (lowercased typed form), shown in Settings as "Ignored words" with a Clear button.
+- `keyboardSwitcherLearnedWords` — learned words, one tab-separated `source target word` per line, shown as "Learned words" with a Clear button.
 - `keyboardSwitcherExcludedApps` — bundle IDs with no automatic switching (the manual trigger still works). Defaults: Terminal, iTerm2, Ghostty, Warp, Xcode, VS Code. Apps are added via an open panel and removed per row.
 
 **Notch notice** (`KeyboardSwitchNotice.swift`, setting `keyboardSwitcherShowsNotice`, default on, "Show at the notch" in the Automatic card):
@@ -981,7 +991,7 @@ Off by default; enabled with "Switch automatically" in Settings › Keyboard (on
 - Reveal: spring (`response 0.32`, `damping 0.82`) of the body height from 0; hide: `0.22 s` ease-in, then the window is ordered out.
 - Its own borderless, non-activating, click-through `NSPanel` one level above the hover panel, on all Spaces and over full-screen apps, on `NSScreen.main`. It never touches the hover panel's lifecycle, and is skipped while the hover panel is expanded.
 
-**Not yet implemented:** n-gram plausibility for words missing from both dictionaries.
+**Not yet implemented:** n-gram plausibility for words missing from both dictionaries (learning covers the common case first).
 
 ---
 
@@ -1066,7 +1076,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Layout Switcher card: toggle "Convert wrong layout" (default off), trigger picker (`Double Shift` / `Custom shortcut`), shortcut recorder when the trigger is custom.
 - Accessibility row inside the card shows trust status with Request/Open actions while the switcher needs it.
 - Layouts row lists the enabled keyboard layouts in cycle order (`ABC → Russian – PC`) and warns when fewer than two are enabled.
-- Automatic card (shown while the switcher is on): "Switch automatically" toggle; when on, "Show at the notch", the remembered-words row (with Clear) and the excluded-apps list (icon, name, bundle ID, Remove; "Add App…").
+- Automatic card (shown while the switcher is on): "Switch automatically" toggle; when on, "Show at the notch", the learned-words and ignored-words rows (each with Clear) (with Clear) and the excluded-apps list (icon, name, bundle ID, Remove; "Add App…").
 
 **Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, `HabitsWidget` (incomplete rows and progress), and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 

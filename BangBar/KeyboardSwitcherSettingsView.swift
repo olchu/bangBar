@@ -158,6 +158,7 @@ private struct KeyboardAutoSwitchCard: View {
     @AppStorage(BangBarSettings.Key.keyboardSwitcherAutoEnabled) private var isAutoEnabled = false
     @AppStorage(BangBarSettings.Key.keyboardSwitcherShowsNotice) private var showsNotice = true
     @AppStorage(BangBarSettings.Key.keyboardSwitcherExceptions) private var exceptionsRaw = ""
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherLearnedWords) private var learnedWordsRaw = ""
     @AppStorage(BangBarSettings.Key.keyboardSwitcherExcludedApps)
     private var excludedAppsRaw = BangBarSettings.defaultKeyboardSwitcherExcludedApps
 
@@ -166,7 +167,7 @@ private struct KeyboardAutoSwitchCard: View {
             VStack(spacing: 0) {
                 SettingsToggleRow(
                     title: "Switch automatically",
-                    subtitle: "Fixes a word typed in the wrong layout when you press Space or Return. Press Backspace right after to undo — the word is remembered and left alone.",
+                    subtitle: "Fixes a word typed in the wrong layout when you press Space or Return. Press Backspace right after to undo — the word is then ignored.",
                     isOn: $isAutoEnabled,
                     accentColor: accentColor
                 )
@@ -179,7 +180,19 @@ private struct KeyboardAutoSwitchCard: View {
                         accentColor: accentColor
                     )
                     SettingsDivider()
-                    rememberedWordsRow
+                    wordListRow(
+                        title: "Learned words",
+                        emptyText: "Words you convert with the trigger are learned here and switched automatically next time.",
+                        words: KeyboardLearnedWords(rawValue: learnedWordsRaw).words,
+                        onClear: { learnedWordsRaw = "" }
+                    )
+                    SettingsDivider()
+                    wordListRow(
+                        title: "Ignored words",
+                        emptyText: "Words you undo appear here and are never switched again.",
+                        words: BangBarSettings.lines(exceptionsRaw),
+                        onClear: { exceptionsRaw = "" }
+                    )
                     SettingsDivider()
                     excludedAppsHeader
                     ForEach(BangBarSettings.lines(excludedAppsRaw), id: \.self) { bundleID in
@@ -190,20 +203,19 @@ private struct KeyboardAutoSwitchCard: View {
         }
     }
 
-    private var rememberedWordsRow: some View {
-        let words = BangBarSettings.lines(exceptionsRaw)
-        return HStack(spacing: 16) {
+    private func wordListRow(title: String, emptyText: String, words: [String], onClear: @escaping () -> Void) -> some View {
+        HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 7) {
-                Text("Remembered words")
+                Text(title)
                     .font(SettingsTheme.rowFont)
                     .foregroundStyle(SettingsTheme.primaryText)
-                Text(words.isEmpty ? "Words you undo appear here and are never switched again." : words.joined(separator: ", "))
+                Text(words.isEmpty ? emptyText : words.joined(separator: ", "))
                     .font(SettingsTheme.descriptionFont)
                     .foregroundStyle(SettingsTheme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Clear") { exceptionsRaw = "" }
+            Button("Clear", action: onClear)
                 .buttonStyle(SettingsOutlineButtonStyle())
                 .disabled(words.isEmpty)
         }

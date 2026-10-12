@@ -29,31 +29,40 @@ enum KeyboardAutoSwitchRules {
         isTypedValid: (String) -> Bool,
         isCandidateValid: (String) -> Bool
     ) -> Bool {
+        guard let cores = cores(typed: typed, candidate: candidate),
+              !isWord(typedCore: cores.typed, isValid: isTypedValid) else { return false }
+
+        let letterCount = cores.candidate.count(where: \.isLetter)
+        if letterCount >= minimumLetters {
+            return isCandidateValid(cores.candidate)
+        }
+        return letterCount == 2 && candidateShortWords.contains(cores.candidate.lowercased())
+    }
+
+    /// The word itself without edge punctuation, in both layouts: `ghbdtn?` / `привет,` → `ghbdtn` / `привет`.
+    /// nil when the candidate is not word-shaped (no letters, digits inside, or a typed letter that would turn
+    /// into something other than sentence punctuation).
+    static func cores(typed: [String], candidate: [String]) -> (typed: String, candidate: String)? {
         guard typed.count == candidate.count,
               let first = candidate.firstIndex(where: { isLetter($0) }),
-              let last = candidate.lastIndex(where: { isLetter($0) }) else { return false }
+              let last = candidate.lastIndex(where: { isLetter($0) }) else { return nil }
 
         // Keys outside the candidate's letters are edge punctuation (`ghbdtn?` → `привет,`, `руддщб` → `hello,`)
         // and are not spell-checked. A typed letter may only become sentence punctuation there; otherwise
         // `ещё` would lose its `ё` to `§` and be judged as `to`.
         for index in Array(0..<first) + Array((last + 1)..<typed.count)
         where isLetter(typed[index]) && !sentencePunctuation.contains(candidate[index]) {
-            return false
+            return nil
         }
         let candidateCore = candidate[first...last].joined()
-        guard candidateCore.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" }) else { return false }
+        guard candidateCore.allSatisfy({ $0.isLetter || $0 == "-" || $0 == "'" }) else { return nil }
+        return (typed[first...last].joined(), candidateCore)
+    }
 
-        // The spell checker skips punctuation, so `dc§` (`всё`) would pass as `dc`. A real word has no
-        // punctuation where the other layout has letters.
-        let typedCore = typed[first...last].joined()
-        let isTypedWord = typedCore.allSatisfy { $0.isLetter || $0 == "-" } && isTypedValid(typedCore)
-        guard !isTypedWord else { return false }
-
-        let letterCount = candidateCore.count(where: \.isLetter)
-        if letterCount >= minimumLetters {
-            return isCandidateValid(candidateCore)
-        }
-        return letterCount == 2 && candidateShortWords.contains(candidateCore.lowercased())
+    /// The spell checker skips punctuation, so `dc§` (`всё`) would pass as `dc`. A real word has no
+    /// punctuation where the other layout has letters.
+    static func isWord(typedCore: String, isValid: (String) -> Bool) -> Bool {
+        typedCore.allSatisfy { $0.isLetter || $0 == "-" } && isValid(typedCore)
     }
 
     /// A word right before an automatically switched one converts with it when it becomes a common short word

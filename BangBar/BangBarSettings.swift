@@ -266,6 +266,7 @@ enum BangBarSettings {
         static let keyboardSwitcherShowsNotice = "keyboardSwitcherShowsNotice"
         static let keyboardSwitcherExcludedApps = "keyboardSwitcherExcludedApps"
         static let keyboardSwitcherExceptions = "keyboardSwitcherExceptions"
+        static let keyboardSwitcherLearnedWords = "keyboardSwitcherLearnedWords"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -337,7 +338,8 @@ enum BangBarSettings {
             Key.keyboardSwitcherAutoEnabled: false,
             Key.keyboardSwitcherShowsNotice: true,
             Key.keyboardSwitcherExcludedApps: defaultKeyboardSwitcherExcludedApps,
-            Key.keyboardSwitcherExceptions: ""
+            Key.keyboardSwitcherExceptions: "",
+            Key.keyboardSwitcherLearnedWords: ""
         ])
     }
 
@@ -349,6 +351,11 @@ enum BangBarSettings {
     static var keyboardSwitcherExceptions: Set<String> {
         get { Set(lines(forKey: Key.keyboardSwitcherExceptions)) }
         set { UserDefaults.standard.set(newValue.sorted().joined(separator: "\n"), forKey: Key.keyboardSwitcherExceptions) }
+    }
+
+    static var keyboardSwitcherLearnedWords: KeyboardLearnedWords {
+        get { KeyboardLearnedWords(rawValue: UserDefaults.standard.string(forKey: Key.keyboardSwitcherLearnedWords) ?? "") }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.keyboardSwitcherLearnedWords) }
     }
 
     static func lines(_ rawValue: String) -> [String] {

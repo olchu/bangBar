@@ -22,6 +22,9 @@ final class KeyboardSwitcherService: NSObject {
     private var isConvertingSelection = false
     private let autoSwitcher = KeyboardAutoSwitcher()
     private var undoableAutoSwitch: AutoSwitchPlan?
+    /// The word as first typed, kept across repeated manual conversions so cycling through layouts learns
+    /// the final result relative to the original rather than to an intermediate layout.
+    private var manualConversionOrigin: (keystrokes: [TypedKeystroke], layoutID: String)?
     var onAutoSwitch: ((_ original: String, _ replacement: String) -> Void)?
     var onAutoSwitchUndo: (() -> Void)?
 
@@ -305,6 +308,7 @@ final class KeyboardSwitcherService: NSObject {
         shiftTaps.interrupt()
         swallowedKeyUpCode = nil
         undoableAutoSwitch = nil
+        manualConversionOrigin = nil
     }
 
     // MARK: - Conversion
@@ -323,12 +327,14 @@ final class KeyboardSwitcherService: NSObject {
         if buffer.isEmpty {
             convertSelection()
         } else {
-            // Reverting an automatic switch by hand counts as an undo.
+            // Reverting an automatic switch by hand counts as an undo, not as something to learn.
             if let undoable = undoableAutoSwitch {
-                autoSwitcher.rememberException(undoable.typedWord)
+                autoSwitcher.rememberException(for: undoable)
                 undoableAutoSwitch = nil
+                convertLastWord(learns: false)
+            } else {
+                convertLastWord(learns: true)
             }
-            convertLastWord()
         }
     }
 
@@ -342,7 +348,7 @@ final class KeyboardSwitcherService: NSObject {
         }
     }
 
-    private func convertLastWord() {
+    private func convertLastWord(learns: Bool) {
         guard let wordLayoutID = buffer.layoutID else { return }
         let layouts = KeyboardLayouts.enabled()
         guard layouts.count > 1,
@@ -360,6 +366,15 @@ final class KeyboardSwitcherService: NSObject {
 
         KeyboardLayouts.select(target)
         currentLayout = target
+
+        if !learns {
+            manualConversionOrigin = nil
+        } else if manualConversionOrigin?.keystrokes != buffer.keystrokes {
+            manualConversionOrigin = (buffer.keystrokes, wordLayoutID)
+        }
+        if let origin = manualConversionOrigin {
+            autoSwitcher.learnManualConversion(of: origin.keystrokes, from: origin.layoutID, to: target.id)
+        }
         buffer.markConverted(to: target.id)
     }
 
@@ -410,7 +425,7 @@ final class KeyboardSwitcherService: NSObject {
         currentLayout = plan.source
         buffer.deleteBackward()
         buffer.markConverted(to: plan.source.id, includingPrevious: plan.previousWordCount)
-        autoSwitcher.rememberException(plan.typedWord)
+        autoSwitcher.rememberException(for: plan)
         DispatchQueue.main.async { [weak self] in
             self?.onAutoSwitchUndo?()
         }
