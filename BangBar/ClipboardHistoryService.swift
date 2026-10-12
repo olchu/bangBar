@@ -399,7 +399,7 @@ final class ClipboardHistoryService: ObservableObject {
 
         if let pendingCaptureDeadline,
            Date() >= pendingCaptureDeadline,
-           !isShortcutSuppressionActive,
+           !isCaptureSuppressed,
            pasteboard.changeCount == lastChangeCount {
             self.pendingCaptureDeadline = nil
             captureCurrentPasteboardIfNew()
@@ -408,7 +408,7 @@ final class ClipboardHistoryService: ObservableObject {
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
-        if isShortcutSuppressionActive {
+        if isCaptureSuppressed {
             pendingCaptureDeadline = nil
             lastStableFingerprint = currentPasteboardFingerprint()
             return
@@ -448,6 +448,18 @@ final class ClipboardHistoryService: ObservableObject {
             lastStableFingerprint = fingerprint
             insertText(text, data: data, contentHash: contentHash)
         }
+    }
+
+    private static var externalSuppressionUntil = Date.distantPast
+
+    /// Lets other features use the pasteboard as a scratch space (copy → transform → paste → restore)
+    /// without their intermediate contents landing in the history.
+    static func suppressCapture(for duration: TimeInterval) {
+        externalSuppressionUntil = max(externalSuppressionUntil, Date().addingTimeInterval(duration))
+    }
+
+    private var isCaptureSuppressed: Bool {
+        isShortcutSuppressionActive || Date() < Self.externalSuppressionUntil
     }
 
     private var isShortcutSuppressionActive: Bool {

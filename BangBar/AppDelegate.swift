@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private let calendarAlerts = CalendarAlertService()
     private let healthMonitor = AppHealthMonitor()
+    private let keyboardSwitcher = KeyboardSwitcherService()
     private var compactExpansionGraceUntil: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -26,11 +27,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         startMouseTracking()
         startWorkspaceTracking()
         calendarAlerts.start()
+        keyboardSwitcher.start()
         healthMonitor.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         stopMouseTracking()
+        keyboardSwitcher.stop()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceObservers.removeAll()
         applicationObservers.forEach(NotificationCenter.default.removeObserver)

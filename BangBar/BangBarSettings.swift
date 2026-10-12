@@ -190,6 +190,20 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     }
 }
 
+enum KeyboardSwitcherTrigger: String, CaseIterable, Identifiable {
+    case doubleShift
+    case custom
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .doubleShift: return "Double Shift"
+        case .custom: return "Custom shortcut"
+        }
+    }
+}
+
 enum BangBarSettings {
     enum Key {
         static let showNowPlayingWidget = "showNowPlayingWidget"
@@ -243,6 +257,11 @@ enum BangBarSettings {
         static let clipboardIgnoreShortcutModifiers = "clipboardIgnoreShortcutModifiers"
         static let clipboardIgnoreShortcutLabel = "clipboardIgnoreShortcutLabel"
         static let clipboardIgnoreShortcutGraceMS = "clipboardIgnoreShortcutGraceMS"
+        static let keyboardSwitcherEnabled = "keyboardSwitcherEnabled"
+        static let keyboardSwitcherTrigger = "keyboardSwitcherTrigger"
+        static let keyboardSwitcherShortcutKeyCode = "keyboardSwitcherShortcutKeyCode"
+        static let keyboardSwitcherShortcutModifiers = "keyboardSwitcherShortcutModifiers"
+        static let keyboardSwitcherShortcutLabel = "keyboardSwitcherShortcutLabel"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -297,7 +316,12 @@ enum BangBarSettings {
             Key.clipboardIgnoreShortcutKeyCode: -1,
             Key.clipboardIgnoreShortcutModifiers: 0,
             Key.clipboardIgnoreShortcutLabel: "Not set",
-            Key.clipboardIgnoreShortcutGraceMS: 1500
+            Key.clipboardIgnoreShortcutGraceMS: 1500,
+            Key.keyboardSwitcherEnabled: false,
+            Key.keyboardSwitcherTrigger: KeyboardSwitcherTrigger.doubleShift.rawValue,
+            Key.keyboardSwitcherShortcutKeyCode: -1,
+            Key.keyboardSwitcherShortcutModifiers: 0,
+            Key.keyboardSwitcherShortcutLabel: "Not set"
         ])
     }
 

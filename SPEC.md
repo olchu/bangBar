@@ -338,6 +338,8 @@ Album artwork should read visually as one continuous element between compact and
 12. ✅ `HabitsWidget` is implemented with daily completion, local history/statistics, and Settings management according to the plan below.
 13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 14. ✅ Swipeable widget pages/surfaces are implemented — see "Planned: Widget Pages (Swipe Between Surfaces)" below.
+15. ✅ Keyboard Layout Switcher, Phase 1 (manual conversion by hotkey) — see "Keyboard Layout Switcher" below.
+16. ⬜ Keyboard Layout Switcher, Phase 2 (automatic conversion).
 
 ### MoonWidget
 
@@ -875,6 +877,78 @@ struct NotionTask: Identifiable {
 
 ---
 
+## Keyboard Layout Switcher
+
+**Goal:** Fix text typed in the wrong keyboard layout (`ghbdtn` → `привет`, `руддщ` → `hello`) without retyping it by hand. Delivered in two phases: manual conversion by hotkey first, automatic detection later on top of the same machinery.
+
+**Not a panel widget.** It is a background feature with no `BangBarWidget` case and no panel UI. `KeyboardSwitcherService` is owned by `AppDelegate`, starts at launch, and stays idle unless enabled in Settings.
+
+### Files
+
+- `KeyboardWordBuffer.swift` — pure logic with no AppKit/Carbon: the last-word keystroke buffer and the double-tap modifier detector. Covered by `Tests/KeyboardWordBufferTests.swift` (`scripts/test_keyboard_word_buffer.sh`).
+- `KeyboardLayouts.swift` — Text Input Sources wrapper: enabled keyboard layouts, current layout, selecting a layout, translating key codes to text with `UCKeyTranslate`, converting arbitrary text between layouts.
+- `KeyboardSwitcherService.swift` — `CGEventTap`, buffer bookkeeping, trigger detection, choosing word vs. selection mode, last-word correction.
+- `SelectedTextConverter.swift` — selection conversion through a pasteboard round-trip.
+- `SyntheticKeyboard.swift` — posting marked synthetic key events (Backspace, Unicode text, ⌘C/⌘V, ⇧←).
+
+### Phase 1 — Manual Conversion (Implemented)
+
+**Trigger** (Settings › Keyboard):
+- `Double Shift` (default): two taps of either Shift within `0.4 s`. Each tap must be a clean press/release (held under `0.3 s`) with no other key, modifier, or mouse click in between, so typing capitals never triggers it. Shift events are passed through to apps unchanged.
+- `Custom shortcut`: recorded with `ShortcutRecorderField` (key + modifiers, or `fn`). The matching key-down and key-up are swallowed so the focused app never sees them.
+
+**Action:** converts text in the focused app into the next enabled keyboard layout and switches the system input source to that layout, so typing continues correctly.
+- **Word mode** — when the word buffer is not empty (the user was just typing): converts the last typed word.
+- **Selection mode** — when the word buffer is empty: converts the selected text. Selecting text by mouse, arrows, or ⌘A always resets the word buffer, and typing replaces any selection, so the two modes never compete.
+- Pressing the trigger again without typing cycles to the next layout; with two layouts it toggles back to the original text (selection mode reselects the pasted text for this).
+- If there is nothing to convert (empty buffer and no selection, or fewer than two enabled layouts) the trigger does nothing — no beep.
+- A trigger while a selection conversion is still running is ignored.
+
+**Word buffer** (keystrokes, not characters):
+- Stores `(keyCode, shift, capsLock)` for each printable key-down, plus the layout the word was typed in. Storing key codes keeps the word layout-independent: the same keys are re-translated through any layout.
+- Every printable key belongs to the word, including keys that are punctuation in one layout and letters in another (`,` ↔ `б`, `;` ↔ `ж`, `[` ↔ `х`, `` ` `` ↔ `ё`).
+- Space after a word is kept as trailing spaces; the next printable key starts a new word. Conversion retypes the trailing spaces after the converted word.
+- Backspace removes trailing spaces first, then the last keystroke.
+- Reset on: Return, Tab, Escape, arrows, Home/End/Page keys, forward delete, function keys, any key with ⌘/⌃/⌥, any mouse click, frontmost app change, or a key typed in a different layout than the rest of the word.
+- Lives only in memory, holds at most the current word, is never logged or written to disk.
+
+**Conversion:**
+1. Translate the buffered keystrokes through the word's layout (text currently on screen) and through the next enabled layout (replacement), using `UCKeyTranslate` with the layout's `kTISPropertyUnicodeKeyLayoutData`.
+   - The on-screen text is translated with dead-key composition, so layouts like U.S. International delete the right number of characters (`'` + `e` → `é` is one character; a pending dead key counts as one). The replacement is translated without dead keys, producing literal characters.
+   - Whether a key is printable is decided by translating it through the current layout, not from the event's characters — dead keys (`'` = `э`, `` ` `` = `ё` in U.S. International) report no characters but are still part of the word.
+2. Post Backspace × (on-screen length + trailing spaces).
+3. Post the replacement text + trailing spaces as Unicode key events (`keyboardSetUnicodeString`), independent of the active layout, so there is no race with the input-source switch.
+4. `TISSelectInputSource` the target layout; the buffer keeps the keystrokes and records the new layout for further cycling.
+- All posted events carry explicit modifier flags (none for Backspace and text, so a held hotkey modifier never turns Backspace into ⌥⌫) and a private `eventSourceUserData` marker so the tap ignores its own events.
+
+**Selection conversion** (`SelectedTextConverter`):
+1. Check the focused element's `kAXSelectedTextRangeAttribute` (`0.25 s` messaging timeout). A zero-length selection aborts. Apps that do not expose it (many Electron apps and web views) fall through to the clipboard probe.
+2. Snapshot every pasteboard item and type, suppress Clipboard History capture (`ClipboardHistoryService.suppressCapture(for:)`), post ⌘C, and wait up to `0.5 s` for `changeCount` to change. No change means nothing was selected — abort without touching the pasteboard.
+3. Abort and restore if there is no plain text, or if Accessibility could not confirm a selection and the copied text ends with a line break — VS Code and JetBrains copy the whole current line when nothing is selected.
+4. Source layout = the enabled layout that can type the most letters of the text; target = the next enabled layout. Each character is mapped back to its key in the source layout (`(keyCode, shift)`, main keys preferred over keypad) and translated through the target. Characters the source layout cannot type (text already in the target layout, emoji, line breaks) are kept as is, so mixed text like `ghbdtn мир` becomes `привет мир`.
+5. Write the result with `org.nspasteboard.TransientType` (so third-party clipboard managers skip it), post ⌘V, then ⇧← × length to reselect it (only up to 1,000 characters), and select the target layout.
+6. After `0.4 s` (the app reads the pasteboard while handling ⌘V) restore the snapshot and keep capture suppressed for another `1.5 s`.
+
+**Layouts:** enabled, selectable keyboard layouts (`kTISTypeKeyboardLayout`) with Unicode layout data, in system order. Input methods (e.g. Japanese) are ignored; their underlying keyboard layout is used.
+
+**Event tap:**
+- Session-level active `CGEventTap` on the main run loop for key-down, key-up, flags-changed, and mouse-down events.
+- Re-enabled automatically after `tapDisabledByTimeout` / `tapDisabledByUserInput`.
+- Secure input (password fields, Terminal secure keyboard entry) hides keystrokes from the tap, so passwords never enter the buffer.
+
+**Permission:** requires Accessibility (System Settings › Privacy & Security › Accessibility). Enabling the switcher without access shows the system prompt; while enabled and not yet trusted the service rechecks every `2 s` and installs the tap as soon as access is granted.
+
+### Phase 2 — Automatic Conversion (Planned)
+
+- On a word boundary (space or punctuation that is a boundary in both layouts), check the buffered word with `NSSpellChecker` in both languages: convert automatically only if the word is **not** valid in the layout it was typed in **and is** valid in the other one. Minimum word length 3.
+- Fallback for words missing from the dictionaries: bigram/trigram plausibility (e.g. `ghb` is implausible in English, `ъь` in Russian).
+- The boundary key is held by the tap until the correction is posted, then released.
+- Undo: Backspace immediately after an automatic correction restores the original text and adds the word to a user exception list.
+- Per-app exclusion list (by bundle ID), defaulting to terminals and IDEs.
+- Optional short notice in the compact panel near the notch (`ghbdtn → привет`).
+
+---
+
 ## Settings Panel
 
 Implemented as a custom dark macOS settings window (`SettingsView`), opened from the app menu or expanded-panel chrome button.
@@ -893,6 +967,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - `PERMISSIONS`
 - `APPEARANCE`
 - `CLIPBOARD`
+- `KEYBOARD`
 - `ABOUT`
 - Tabs are centered in the left sidebar and highlight with the current accent color.
 - Sidebar illustration uses the `settingsIllustration` asset from the asset catalog, is bottom-aligned inside its frame, and is grouped near the footer logo without a divider line below it.
@@ -940,6 +1015,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Calendar: shows authorization status, requests full access or opens System Settings
 - Location: requested from the Moon settings when automatic location is enabled; denial falls back to the saved city
 - Automation: opens System Settings › Privacy › Automation (required for Spotify/Music AppleScript control)
+- Accessibility: shows trust status, shows the system prompt or opens System Settings › Privacy › Accessibility (required for the keyboard layout switcher)
 
 **Appearance section:**
 - Accent color picker is shown as a wide swatch button with the current hex value; clicking it opens the system color panel, stores the value as a hex string in `UserDefaults`, and defaults to `#FF383C`. Reset button disables itself when the current value equals the default.
@@ -949,6 +1025,11 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Storage card selects the total history limit, shows current disk usage and the fixed item limits, and provides Clear History.
 - Temporary Changes card enables delayed stable-content capture and selects the wait duration.
 - Transcription card enables shortcut-based suppression, records the shortcut (including `fn`), and selects the post-release protection duration.
+
+**Keyboard section:**
+- Layout Switcher card: toggle "Convert wrong layout" (default off), trigger picker (`Double Shift` / `Custom shortcut`), shortcut recorder when the trigger is custom.
+- Accessibility row inside the card shows trust status with Request/Open actions while the switcher needs it.
+- Layouts row lists the enabled keyboard layouts in cycle order (`ABC → Russian – PC`) and warns when fewer than two are enabled.
 
 **Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, `HabitsWidget` (incomplete rows and progress), and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 

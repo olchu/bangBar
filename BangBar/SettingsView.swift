@@ -1,6 +1,7 @@
 import AVFoundation
 import AppKit
 import Carbon
+import Combine
 import CoreLocation
 import EventKit
 import ServiceManagement
@@ -196,6 +197,11 @@ struct SettingsView: View {
                     }
                 }
                 .frame(width: 884)
+            }
+        case .keyboard:
+            singleColumnContent(title: "KEYBOARD", accentColor: accentColor) {
+                KeyboardSwitcherSettingsSection(accentColor: accentColor)
+                    .frame(width: 884)
             }
         case .about:
             singleColumnContent(title: "ABOUT", accentColor: accentColor) {
@@ -1185,6 +1191,7 @@ private enum SettingsTab: CaseIterable, Identifiable {
     case permissions
     case appearance
     case clipboard
+    case keyboard
     case about
 
     var id: Self { self }
@@ -1199,6 +1206,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "APPEARANCE"
         case .clipboard:
             return "CLIPBOARD"
+        case .keyboard:
+            return "KEYBOARD"
         case .about:
             return "ABOUT"
         }
@@ -1214,6 +1223,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "sidebarAppearance"
         case .clipboard:
             return "sidebarClipboard"
+        case .keyboard:
+            return "sidebarKeyboard"
         case .about:
             return "sidebarAbout"
         }
@@ -1277,6 +1288,7 @@ private struct PrivacySettingsSection: View {
     @State private var calendarStatus = EKEventStore.authorizationStatus(for: .event)
     @State private var automationStatus = "Required to control Spotify and Music"
     @State private var isRequestingAutomation = false
+    @State private var isAccessibilityTrusted = AccessibilityAccess.isTrusted
     private let eventStore = EKEventStore()
 
     var body: some View {
@@ -1314,10 +1326,23 @@ private struct PrivacySettingsSection: View {
                     },
                     isPrimaryDisabled: isRequestingAutomation
                 )
+
+                SettingsDivider()
+
+                PermissionRow(
+                    title: "Accessibility",
+                    status: isAccessibilityTrusted ? "Allowed" : "Required for the keyboard layout switcher",
+                    systemImage: "keyboard",
+                    buttonTitle: isAccessibilityTrusted ? "Open" : "Request",
+                    action: { AccessibilityAccess.requestOrOpen() }
+                )
             }
         }
         .onAppear {
             refreshStatuses()
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            isAccessibilityTrusted = AccessibilityAccess.isTrusted
         }
     }
 
@@ -1360,6 +1385,7 @@ private struct PrivacySettingsSection: View {
     private func refreshStatuses() {
         cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
         calendarStatus = EKEventStore.authorizationStatus(for: .event)
+        isAccessibilityTrusted = AccessibilityAccess.isTrusted
     }
 
     private func handleCameraAccess() {
@@ -1513,23 +1539,172 @@ private struct PrivacySettingsSection: View {
             return "Apple Events error \(status)"
         }
     }
+}
 
-    private func openPrivacySettings(anchor: String) {
-        let urlStrings = [
-            "x-apple.systempreferences:com.apple.preference.security?\(anchor)",
-            "x-apple.systempreferences:com.apple.preference.security?Privacy"
-        ]
+private func openPrivacySettings(anchor: String) {
+    let urlStrings = [
+        "x-apple.systempreferences:com.apple.preference.security?\(anchor)",
+        "x-apple.systempreferences:com.apple.preference.security?Privacy"
+    ]
 
-        for urlString in urlStrings {
-            guard let url = URL(string: urlString) else { continue }
-            if NSWorkspace.shared.open(url) {
-                return
+    for urlString in urlStrings {
+        guard let url = URL(string: urlString) else { continue }
+        if NSWorkspace.shared.open(url) {
+            return
+        }
+    }
+
+    if let settingsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
+        NSWorkspace.shared.open(settingsURL)
+    }
+}
+
+private enum AccessibilityAccess {
+    static var isTrusted: Bool { AXIsProcessTrusted() }
+
+    static func requestOrOpen() {
+        guard !isTrusted else {
+            openPrivacySettings(anchor: "Privacy_Accessibility")
+            return
+        }
+        AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+    }
+}
+
+private struct KeyboardSwitcherSettingsSection: View {
+    let accentColor: Color
+
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherEnabled) private var isEnabled = false
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherTrigger)
+    private var triggerRaw = KeyboardSwitcherTrigger.doubleShift.rawValue
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherShortcutKeyCode) private var shortcutKeyCode = -1
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherShortcutModifiers) private var shortcutModifiers = 0
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherShortcutLabel) private var shortcutLabel = "Not set"
+    @State private var isTrusted = AccessibilityAccess.isTrusted
+    @State private var layoutNames: [String] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SettingsSectionLabel("LAYOUT SWITCHER")
+            SettingsCard {
+                VStack(spacing: 0) {
+                    SettingsToggleRow(
+                        title: "Convert wrong layout",
+                        subtitle: "Converts the last typed word, or the selected text, to the next keyboard layout and switches to it: ghbdtn → привет.",
+                        isOn: enabledBinding,
+                        accentColor: accentColor
+                    )
+                    if isEnabled {
+                        SettingsDivider()
+                        triggerRow
+                        if triggerRaw == KeyboardSwitcherTrigger.custom.rawValue {
+                            SettingsDivider()
+                            shortcutRow
+                        }
+                        SettingsDivider()
+                        layoutsRow
+                        if !isTrusted {
+                            SettingsDivider()
+                            PermissionRow(
+                                title: "Accessibility",
+                                status: "Required to read and retype text",
+                                systemImage: "keyboard",
+                                buttonTitle: "Request",
+                                action: { AccessibilityAccess.requestOrOpen() },
+                                secondaryButtonTitle: "Open",
+                                secondaryAction: { openPrivacySettings(anchor: "Privacy_Accessibility") }
+                            )
+                        }
+                    }
+                }
             }
         }
-
-        if let settingsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
-            NSWorkspace.shared.open(settingsURL)
+        .onAppear {
+            isTrusted = AccessibilityAccess.isTrusted
+            layoutNames = KeyboardLayouts.enabled().map(\.name)
         }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            isTrusted = AccessibilityAccess.isTrusted
+        }
+        .onReceive(DistributedNotificationCenter.default().publisher(
+            for: Notification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String)
+        )) { _ in
+            layoutNames = KeyboardLayouts.enabled().map(\.name)
+        }
+    }
+
+    private var enabledBinding: Binding<Bool> {
+        Binding(
+            get: { isEnabled },
+            set: { newValue in
+                isEnabled = newValue
+                if newValue && !AccessibilityAccess.isTrusted {
+                    AccessibilityAccess.requestOrOpen()
+                }
+            }
+        )
+    }
+
+    private var triggerRow: some View {
+        HStack(spacing: 16) {
+            rowLabel("Trigger", subtitle: "Double Shift: tap Shift twice quickly without typing in between.")
+            Spacer()
+            Picker("", selection: $triggerRaw) {
+                ForEach(KeyboardSwitcherTrigger.allCases) { trigger in
+                    Text(trigger.title).tag(trigger.rawValue)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 160)
+            .tint(accentColor)
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var shortcutRow: some View {
+        HStack(spacing: 16) {
+            rowLabel("Shortcut", subtitle: "Click, then press the shortcut. The focused app will not receive it.")
+            Spacer(minLength: 12)
+            ShortcutRecorderField(
+                keyCode: $shortcutKeyCode,
+                modifiers: $shortcutModifiers,
+                label: $shortcutLabel
+            )
+            .frame(width: 142, height: 30)
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var layoutsRow: some View {
+        HStack(spacing: 16) {
+            rowLabel(
+                "Layouts",
+                subtitle: layoutNames.count < 2
+                    ? "Add a second keyboard layout in System Settings › Keyboard › Text Input."
+                    : "Repeat the trigger to cycle through layouts in this order."
+            )
+            Spacer()
+            Text(layoutNames.isEmpty ? "None" : layoutNames.joined(separator: " → "))
+                .font(SettingsTheme.descriptionFont)
+                .foregroundStyle(layoutNames.count < 2 ? accentColor : SettingsTheme.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.vertical, 14)
+    }
+
+    private func rowLabel(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(SettingsTheme.rowFont)
+                .foregroundStyle(SettingsTheme.primaryText)
+            Text(subtitle)
+                .font(SettingsTheme.descriptionFont)
+                .foregroundStyle(SettingsTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
