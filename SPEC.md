@@ -331,7 +331,7 @@ Album artwork should read visually as one continuous element between compact and
 5. ✅ Clipboard History is implemented as a panel-level surface with `All`, `Text`, and `Images` filters, persistent text/image items, and image-group collection and management.
 6. ⬜ Implement Mirror photo capture according to the development plan above.
 7. ✅ Task hover tooltip appears next to the hovered row, clamped to the panel bounds.
-8. ⬜ Add `CountdownWidget` as a local, user-configured date countdown widget.
+8. ✅ `CountdownWidget` is implemented as a local, user-configured date countdown widget with a create/edit window, Settings toggle and widget ordering.
 9. ⬜ Consider `NotionWidget` after the local widgets and interaction fixes.
 10. ✅ Pinned Clipboard History cards stay first and survive Clear History.
 11. ❌ Companion is dropped and not planned. Its code stays in the project, hidden from the interface, with the runtime service not started.
@@ -632,65 +632,71 @@ Today  Buy milk
 
 ---
 
-### CountdownWidget
+### CountdownWidget — Implemented
+
+**Status:** ✅ Implemented.
 
 **Goal:** Show a user-created countdown to a chosen future date.
 
 **Data source:** Local app state only — no network or system permission required.
 
-**Layout:** Fixed 150×110 widget, implemented in `CountdownWidget.swift` plus a small persistence/service type if needed.
+**Layout:** Fixed 150×110 widget (`PanelLayout.countdownWidgetWidth`), implemented in `CountdownWidget.swift`, with `CountdownService.swift` (persistence), `CountdownEditorView.swift` (create/edit window) and `CountdownFormatter.swift` (pure remaining-time formatting).
 
 **Empty state:**
-- If no countdown exists, show a quiet empty state with:
-  - title text such as `No countdown`;
-  - secondary text such as `pick a date`;
-  - a small `plus` button.
-- The plus button opens a modal creation window.
+- Header row: dim `hourglass` icon on the left and a small `plus` button on the right, matching the Reminders header button.
+- Centered text: `No countdown` with `pick a date` below it.
+- The plus button, a click anywhere on the widget, or the context menu's `New Countdown…` opens the creation window.
 
 **Create/edit flow:**
-- Plus button opens a modal window similar in spirit to the add-reminder window.
-- Modal fields:
-  - countdown title;
-  - target date;
-  - optional target time.
+- `CountdownEditorWindowController` presents `CountdownEditorView` in a small dark titled window (`New Countdown` / `Edit Countdown`), the same way the add-reminder window is presented; the app is activated so the title field receives focus.
+- Fields:
+  - `TITLE` text field, trimmed, limited to 80 characters;
+  - `DATE` compact date picker (defaults to seven days from today for a new countdown);
+  - `TIME` switch; when on, a compact hour/minute picker appears and the countdown targets that exact time. When off, the countdown targets the start of the chosen local day.
+- A live status line under the fields previews the result, e.g. `In 2y 3m 4d`.
 - Actions:
-  - `Cancel` closes without saving;
-  - `Create` saves the countdown and updates the widget immediately.
-- The create action is disabled until title and target date are valid.
-- Target date should normally be in the future. If a past date is selected, the UI should either reject it or clearly mark it as elapsed.
+  - `Cancel` (Escape) closes without saving;
+  - `Create` (Return; labelled `Save` when editing) saves the countdown and updates the widget immediately, then shows a brief confirmation and closes;
+  - `Delete` (only when editing) removes the countdown and returns the widget to the empty state.
+- `Create`/`Save` is disabled until the trimmed title is non-empty. The date picker always holds a valid date.
+- **Past dates are allowed, not rejected:** the status line switches to an accent-colored `Elapsed · the widget will show done`, and the widget shows `done`. This keeps renaming or editing an already-elapsed countdown possible without forcing a new date.
 
 **Display:**
 ```
-[+] 
+[⌛]                 [✎]
+
 Trip to Tokyo
-1y 2m 14d 6h
+2y 3m 4d
+JAN 17, 2029 · 05:55
 ```
-- Shows the countdown title on the first line, truncated with `…` if needed.
-- Shows remaining time below the title.
-- Remaining time is calculated from `Date()` to the target date and updates at least once per minute while the panel is expanded.
-- If the target time includes hours/minutes, the countdown should include hours when useful.
-- Suggested compact format:
-  - `2y 3m 4d` for long ranges;
-  - `14d 6h` for ranges under one month;
-  - `6h 20m` for ranges under one day;
-  - `now` or `done` when the target date has arrived.
-- Use `.monospacedDigit()` for the numeric countdown so it does not visually jump.
-- Use the shared accent color for the most important number or small status mark.
+- Header: accent `hourglass` icon (`hourglass.bottomhalf.filled` once elapsed) and a small `pencil` edit button.
+- The title, remaining time and target date are bottom-aligned in the remaining space.
+- Title on one line, 12 pt semibold, truncated with `…`.
+- Remaining time: 26 pt bold rounded, `.monospacedDigit()`, scaled down to fit (minimum 0.6) for very long ranges. The first (most significant) number uses the shared accent color, later numbers are near-white, and unit letters are smaller and dim. `done` is shown entirely in the accent color.
+- Target date line: 9 pt monospaced, dim, uppercased, e.g. `JAN 17, 2029` or `JAN 17, 2029 · 05:55` when a time is set.
+- Remaining time is calculated from the panel clock (`PanelContentView`'s shared timer), which runs at least once per minute while the countdown is on the visible expanded page and is refreshed whenever the panel opens.
+- Compact format produced by `CountdownFormatter.remaining(now:target:includesTime:calendar:)`, using `Calendar.dateComponents` (so month ends follow Foundation clamping, e.g. Jan 31 → Feb 28 is `1m`):
+  - at least one month left: years, months and days, e.g. `2y 3m 4d`;
+  - under a month with a time: days and hours, e.g. `14d 6h`;
+  - under a day: hours and minutes, e.g. `6h 20m`; under a minute: `<1m`;
+  - date-only targets count whole calendar days from today and never show hours (`tomorrow` is `1d` even late in the evening);
+  - zero-valued units are omitted (`1y 4d`, `14d`, `20m`);
+  - `done` once the target instant (or, for date-only targets, the target day) has arrived.
 
 **Persistence:**
-- Store countdown data in `UserDefaults` via `BangBarSettings` or a small `CountdownService`.
-- Persist:
-  - title;
-  - target date/time;
-  - creation/update timestamp if useful for future editing.
-- V1 supports one active countdown in the widget. Multiple countdowns can be considered later if there is a clear UI need.
+- `CountdownService.shared` (`@MainActor final class`, `ObservableObject`) stores a versioned `Codable` JSON payload in `UserDefaults` under `BangBarSettings.Key.countdownData`.
+- Persisted fields: title, target date/time, `includesTime`, `createdAt`, `updatedAt`. Editing keeps `createdAt` and refreshes `updatedAt`.
+- Malformed or unknown-version data falls back to the empty state.
+- V1 supports one active countdown. Multiple countdowns can be considered later if there is a clear UI need.
 
 **Interactions:**
-- Clicking the plus button creates a countdown when empty.
-- When a countdown already exists, clicking the widget or a small edit affordance can reopen the modal to edit/replace it.
-- A delete/reset action should be available in the modal or a contextual control so the widget can return to empty state.
+- Empty: plus button / widget click creates a countdown.
+- Existing countdown: the pencil button or a click on the widget reopens the window to edit/replace it.
+- Delete is available in the edit window and as `Remove Countdown` in the widget's context menu.
 
-**Settings:** Enabled/disabled via a "Countdown" toggle in Settings and included in widget ordering.
+**Settings:** Enabled/disabled via a `Countdown` toggle (icon asset `widgetCountdown`, Tabler-style hourglass) in Widgets → General, default off (`BangBarSettings.Key.showCountdownWidget`), and included in drag-and-drop ordering and page assignment as `BangBarWidget.countdown`. Existing saved widget orders get it appended automatically. No separate Countdown settings tab.
+
+**Tests:** `bash scripts/test_countdown_formatter.sh` compiles `CountdownFormatter.swift` with `Tests/CountdownFormatterTests.swift` and checks long ranges, under a month, under a day, date-only targets, exactly-now/past `done`, month-end clamping and daylight-saving changes.
 
 ---
 
@@ -1076,9 +1082,9 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Layout Switcher card: toggle "Convert wrong layout" (default off), trigger picker (`Double Shift` / `Custom shortcut`), shortcut recorder when the trigger is custom.
 - Accessibility row inside the card shows trust status with Request/Open actions while the switcher needs it.
 - Layouts row lists the enabled keyboard layouts in cycle order (`ABC → Russian – PC`) and warns when fewer than two are enabled.
-- Automatic card (shown while the switcher is on): "Switch automatically" toggle; when on, "Show at the notch", the learned-words and ignored-words rows (each with Clear) (with Clear) and the excluded-apps list (icon, name, bundle ID, Remove; "Add App…").
+- Automatic card (shown while the switcher is on): "Switch automatically" toggle; when on, "Show at the notch", the learned-words and ignored-words rows (each with Clear), and the excluded-apps list (icon, name, bundle ID, Remove; "Add App…").
 
-**Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, `HabitsWidget` (incomplete rows and progress), and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
+**Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, `HabitsWidget` (incomplete rows and progress), `CountdownWidget` (leading number and status icon), and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 
 ---
 

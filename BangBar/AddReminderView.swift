@@ -138,7 +138,7 @@ struct AddReminderView: View {
     }
 }
 
-private struct ARPrimaryButtonStyle: ButtonStyle {
+struct ARPrimaryButtonStyle: ButtonStyle {
     let accentColor: Color
     let enabled: Bool
 
@@ -156,7 +156,7 @@ private struct ARPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct ARSecondaryButtonStyle: ButtonStyle {
+struct ARSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .regular, design: .monospaced))

@@ -62,6 +62,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
     case clock
     case moon
     case pomodoro
+    case countdown
     case reminders
     case mirror
     case system
@@ -88,6 +89,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Moon"
         case .pomodoro:
             return "Focus Timer"
+        case .countdown:
+            return "Countdown"
         case .reminders:
             return "Reminders"
         case .mirror:
@@ -119,6 +122,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "Moon phase and cycle"
         case .pomodoro:
             return "Focus timer and sessions"
+        case .countdown:
+            return "Time left until a date you pick"
         case .reminders:
             return "Today's tasks and overdue"
         case .mirror:
@@ -150,6 +155,8 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
             return "widgetMoon"
         case .pomodoro:
             return "widgetFocus"
+        case .countdown:
+            return "widgetCountdown"
         case .reminders:
             return "widgetReminders"
         case .mirror:
@@ -177,6 +184,7 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         case .clock: PanelLayout.clockWidgetWidth
         case .moon: PanelLayout.moonWidgetWidth
         case .pomodoro: PanelLayout.pomodoroWidgetWidth
+        case .countdown: PanelLayout.countdownWidgetWidth
         case .reminders: PanelLayout.remindersWidgetWidth
         case .mirror: PanelLayout.mirrorWidgetWidth
         case .system: PanelLayout.systemWidgetWidth
@@ -232,6 +240,8 @@ enum BangBarSettings {
         static let tintWalkingMan = "tintWalkingMan"
         static let panelActivationThreshold = "panelActivationThreshold"
         static let showPomodoroWidget = "showPomodoroWidget"
+        static let showCountdownWidget = "showCountdownWidget"
+        static let countdownData = "countdownData"
         static let showRemindersWidget = "showRemindersWidget"
         static let reminderListId = "reminderListId"
         static let selectedCalendarIds = "selectedCalendarIds"
@@ -307,6 +317,7 @@ enum BangBarSettings {
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,
             Key.showPomodoroWidget: true,
+            Key.showCountdownWidget: false,
             Key.showRemindersWidget: true,
             Key.calendarAlertsEnabled: false,
             Key.calendarAlertLeadMinutes: 0,
@@ -482,6 +493,10 @@ enum BangBarSettings {
 
     static var showPomodoroWidget: Bool {
         UserDefaults.standard.object(forKey: Key.showPomodoroWidget) as? Bool ?? true
+    }
+
+    static var showCountdownWidget: Bool {
+        UserDefaults.standard.object(forKey: Key.showCountdownWidget) as? Bool ?? false
     }
 
     static var showRemindersWidget: Bool {

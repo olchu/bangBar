@@ -33,6 +33,7 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.moonUsesCurrentLocation) private var moonUsesCurrentLocation = true
     @AppStorage(BangBarSettings.Key.moonLocationName) private var moonLocationName = "Istanbul"
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
+    @AppStorage(BangBarSettings.Key.showCountdownWidget) private var showCountdownWidget = false
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.reminderListId) private var reminderListId = ""
     @AppStorage(BangBarSettings.Key.selectedCalendarIds) private var selectedCalendarIdsRaw = ""
@@ -812,6 +813,8 @@ struct SettingsView: View {
             return $showMoonWidget
         case .pomodoro:
             return $showPomodoroWidget
+        case .countdown:
+            return $showCountdownWidget
         case .reminders:
             return $showRemindersWidget
         case .mirror:
@@ -2099,6 +2102,8 @@ private extension BangBarWidget {
             return 150
         case .pomodoro:
             return 174
+        case .countdown:
+            return 170
         case .reminders:
             return 178
         case .mirror:

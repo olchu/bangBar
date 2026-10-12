@@ -19,6 +19,7 @@ struct PanelContentView: View {
     @AppStorage(BangBarSettings.Key.showTranslatorWidget) private var showTranslatorWidget = false
     @AppStorage(BangBarSettings.Key.showDayPlansWidget) private var showDayPlansWidget = false
     @AppStorage(BangBarSettings.Key.showPomodoroWidget) private var showPomodoroWidget = true
+    @AppStorage(BangBarSettings.Key.showCountdownWidget) private var showCountdownWidget = false
     @AppStorage(BangBarSettings.Key.showRemindersWidget) private var showRemindersWidget = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
@@ -29,6 +30,7 @@ struct PanelContentView: View {
     @StateObject private var githubContributions = GitHubContributionsService()
     @StateObject private var aiUsage = AIUsageService()
     @StateObject private var habits = HabitService.shared
+    @StateObject private var countdown = CountdownService.shared
     @StateObject private var dayPlans = DayPlanService.shared
     @StateObject private var panelClock = PanelClock()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
@@ -186,7 +188,7 @@ struct PanelContentView: View {
 
         let visibleWidgets = activeWidgets(forPage: state.currentPage)
         if visibleWidgets.contains(.clock) { return 1 }
-        if visibleWidgets.contains(.moon) { return 60 }
+        if visibleWidgets.contains(.moon) || visibleWidgets.contains(.countdown) { return 60 }
         return nil
     }
 
@@ -341,6 +343,8 @@ struct PanelContentView: View {
                         )
                 case .pomodoro:
                     PomodoroWidget(service: pomodoro)
+                case .countdown:
+                    CountdownWidget(service: countdown, date: panelClock.date)
                 case .reminders:
                     RemindersWidget(
                         service: reminders,
@@ -403,6 +407,8 @@ struct PanelContentView: View {
             return showMoonWidget
         case .pomodoro:
             return showPomodoroWidget
+        case .countdown:
+            return showCountdownWidget
         case .reminders:
             return showRemindersWidget
         case .mirror:

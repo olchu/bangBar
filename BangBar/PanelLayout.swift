@@ -61,6 +61,7 @@ enum PanelLayout {
     static let clockWidgetWidth: CGFloat = 194
     static let moonWidgetWidth: CGFloat = 110
     static let pomodoroWidgetWidth: CGFloat = 110
+    static let countdownWidgetWidth: CGFloat = 150
     static let remindersWidgetWidth: CGFloat = 130
     static let calendarWidgetWidth: CGFloat = 140
     static let emptyWidgetWidth: CGFloat = 220
@@ -92,6 +93,7 @@ enum PanelLayout {
             case .clock: BangBarSettings.showClockWidget
             case .moon: BangBarSettings.showMoonWidget
             case .pomodoro: BangBarSettings.showPomodoroWidget
+            case .countdown: BangBarSettings.showCountdownWidget
             case .reminders: BangBarSettings.showRemindersWidget
             case .mirror: BangBarSettings.showMirrorWidget
             case .system: BangBarSettings.showSystemWidget
