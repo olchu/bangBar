@@ -8,6 +8,9 @@ struct KeyboardWordBufferTests {
         bufferBackspaceRemovesSpacesThenKeys()
         bufferResetsOnLayoutChangeMidWord()
         bufferKeepsKeystrokesAfterConversion()
+        bufferKeepsPreviousWordsSeparatedBySpaces()
+        bufferBackspaceReturnsToPreviousWord()
+        bufferMarksPreviousWordsConverted()
         doubleTapTriggersOnSecondQuickTap()
         doubleTapIgnoresSlowOrHeldTaps()
         doubleTapIgnoresInterruptedTaps()
@@ -76,6 +79,49 @@ struct KeyboardWordBufferTests {
         buffer.deleteBackward()
         buffer.appendCharacter(b, layoutID: "ru")
         precondition(buffer.keystrokes == [g, h, b], "Typing on in the converted layout continues the word")
+    }
+
+    private static func bufferKeepsPreviousWordsSeparatedBySpaces() {
+        var buffer = KeyboardWordBuffer()
+        for _ in 0..<5 {
+            buffer.appendCharacter(g, layoutID: "en")
+            buffer.appendSpace()
+        }
+        buffer.appendCharacter(h, layoutID: "en")
+        precondition(buffer.previousWords.count == KeyboardWordBuffer.maxPreviousWords, "History is capped")
+        precondition(buffer.previousWords.allSatisfy { $0.keystrokes == [g] && $0.trailingSpaces == 1 })
+        precondition(buffer.keystrokes == [h])
+
+        buffer.appendCharacter(b, layoutID: "ru")
+        precondition(buffer.previousWords.isEmpty && buffer.keystrokes == [b], "A layout change mid-word drops the history")
+
+        buffer.appendSpace()
+        buffer.reset()
+        precondition(buffer.previousWords.isEmpty && buffer.isEmpty)
+    }
+
+    private static func bufferBackspaceReturnsToPreviousWord() {
+        var buffer = KeyboardWordBuffer()
+        buffer.appendCharacter(g, layoutID: "en")
+        buffer.appendSpace()
+        buffer.appendCharacter(h, layoutID: "en")
+        buffer.deleteBackward()
+        precondition(buffer.keystrokes == [g] && buffer.trailingSpaces == 1, "Deleting a word restores the one before it")
+        precondition(buffer.previousWords.isEmpty)
+        buffer.appendCharacter(b, layoutID: "en")
+        precondition(buffer.previousWords.map(\.keystrokes) == [[g]] && buffer.keystrokes == [b])
+    }
+
+    private static func bufferMarksPreviousWordsConverted() {
+        var buffer = KeyboardWordBuffer()
+        for key in [g, h, b] {
+            buffer.appendCharacter(key, layoutID: "en")
+            buffer.appendSpace()
+        }
+        buffer.appendCharacter(g, layoutID: "en")
+        buffer.markConverted(to: "ru", includingPrevious: 2)
+        precondition(buffer.previousWords.map(\.layoutID) == ["en", "ru", "ru"])
+        precondition(buffer.layoutID == "ru")
     }
 
     private static func doubleTapTriggersOnSecondQuickTap() {

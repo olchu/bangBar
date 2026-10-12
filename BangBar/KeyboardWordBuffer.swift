@@ -6,48 +6,65 @@ struct TypedKeystroke: Equatable {
     let capsLock: Bool
 }
 
-struct KeyboardWordBuffer {
-    private(set) var keystrokes: [TypedKeystroke] = []
-    private(set) var trailingSpaces = 0
-    private(set) var layoutID: String?
+struct TypedWord: Equatable {
+    var keystrokes: [TypedKeystroke] = []
+    var layoutID: String?
+    var trailingSpaces = 0
+}
 
-    var isEmpty: Bool { keystrokes.isEmpty }
+struct KeyboardWordBuffer {
+    static let maxPreviousWords = 3
+
+    /// Earlier words separated from the current one only by spaces, oldest first. Lets an automatic switch
+    /// also fix short words before it (`z ntz` → `я тебя`). Empty whenever the current word is empty.
+    private(set) var previousWords: [TypedWord] = []
+    private(set) var current = TypedWord()
+
+    var keystrokes: [TypedKeystroke] { current.keystrokes }
+    var trailingSpaces: Int { current.trailingSpaces }
+    var layoutID: String? { current.layoutID }
+    var isEmpty: Bool { current.keystrokes.isEmpty }
 
     mutating func appendCharacter(_ keystroke: TypedKeystroke, layoutID: String) {
-        if trailingSpaces > 0 || (self.layoutID != nil && self.layoutID != layoutID) {
+        if current.trailingSpaces > 0 {
+            previousWords = Array((previousWords + [current]).suffix(Self.maxPreviousWords))
+            current = TypedWord()
+        } else if current.layoutID != nil && current.layoutID != layoutID {
             reset()
         }
-        if keystrokes.isEmpty {
-            self.layoutID = layoutID
+        if current.keystrokes.isEmpty {
+            current.layoutID = layoutID
         }
-        keystrokes.append(keystroke)
+        current.keystrokes.append(keystroke)
     }
 
     mutating func appendSpace() {
-        guard !keystrokes.isEmpty else { return }
-        trailingSpaces += 1
+        guard !current.keystrokes.isEmpty else { return }
+        current.trailingSpaces += 1
     }
 
     mutating func deleteBackward() {
-        if trailingSpaces > 0 {
-            trailingSpaces -= 1
-        } else if !keystrokes.isEmpty {
-            keystrokes.removeLast()
-            if keystrokes.isEmpty {
-                layoutID = nil
+        if current.trailingSpaces > 0 {
+            current.trailingSpaces -= 1
+        } else if !current.keystrokes.isEmpty {
+            current.keystrokes.removeLast()
+            if current.keystrokes.isEmpty {
+                current = previousWords.popLast() ?? TypedWord()
             }
         }
     }
 
-    mutating func markConverted(to layoutID: String) {
-        guard !keystrokes.isEmpty else { return }
-        self.layoutID = layoutID
+    mutating func markConverted(to layoutID: String, includingPrevious previousCount: Int = 0) {
+        guard !current.keystrokes.isEmpty else { return }
+        current.layoutID = layoutID
+        for index in previousWords.indices.suffix(previousCount) {
+            previousWords[index].layoutID = layoutID
+        }
     }
 
     mutating func reset() {
-        keystrokes.removeAll()
-        trailingSpaces = 0
-        layoutID = nil
+        previousWords.removeAll()
+        current = TypedWord()
     }
 }
 

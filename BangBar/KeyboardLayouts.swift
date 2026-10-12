@@ -5,6 +5,7 @@ struct KeyboardLayout {
     let source: TISInputSource
     let id: String
     let name: String
+    let language: String?
     let layoutData: Data
 }
 
@@ -78,6 +79,13 @@ enum KeyboardLayouts {
         }
     }
 
+    static func render(_ words: [TypedWord], with layout: KeyboardLayout, composingDeadKeys: Bool = false) -> String {
+        words.map { word in
+            translate(word.keystrokes, with: layout, composingDeadKeys: composingDeadKeys)
+                + String(repeating: " ", count: word.trailingSpaces)
+        }.joined()
+    }
+
     /// Picks the layout most of the text's letters were typed in, and the next enabled layout after it.
     static func conversionPair(for text: String, among layouts: [KeyboardLayout]) -> (source: KeyboardLayout, target: KeyboardLayout)? {
         guard layouts.count > 1 else { return nil }
@@ -127,7 +135,9 @@ enum KeyboardLayouts {
         }
         let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue() as Data
         let name = stringProperty(source, kTISPropertyLocalizedName) ?? id
-        return KeyboardLayout(source: source, id: id, name: name, layoutData: data)
+        let languages = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages)
+            .map { Unmanaged<CFArray>.fromOpaque($0).takeUnretainedValue() as? [String] ?? [] }
+        return KeyboardLayout(source: source, id: id, name: name, language: languages?.first, layoutData: data)
     }
 
     private static func stringProperty(_ source: TISInputSource, _ key: CFString) -> String? {

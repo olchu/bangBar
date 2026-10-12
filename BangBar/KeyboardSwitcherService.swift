@@ -3,10 +3,12 @@ import ApplicationServices
 import Carbon
 import OSLog
 
-final class KeyboardSwitcherService {
+final class KeyboardSwitcherService: NSObject {
     private static let shortcutModifierMask: CGEventFlags = [
         .maskShift, .maskControl, .maskAlternate, .maskCommand, .maskSecondaryFn
     ]
+    private static let commandModifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+    private static let autoSwitchBoundaryKeys: Set<Int> = [kVK_Space, kVK_Return, kVK_ANSI_KeypadEnter]
 
     private let logger = Logger(subsystem: "BangBar", category: "KeyboardSwitcher")
     private var eventTap: CFMachPort?
@@ -18,35 +20,64 @@ final class KeyboardSwitcherService {
     private var currentLayout: KeyboardLayout?
     private var swallowedKeyUpCode: UInt16?
     private var isConvertingSelection = false
+    private let autoSwitcher = KeyboardAutoSwitcher()
+    private var undoableAutoSwitch: AutoSwitchPlan?
+    var onAutoSwitch: ((_ original: String, _ replacement: String) -> Void)?
+    var onAutoSwitchUndo: (() -> Void)?
 
     func start() {
         let defaults = NotificationCenter.default
         let workspace = NSWorkspace.shared.notificationCenter
-        let distributed = DistributedNotificationCenter.default()
         observers = [
             (defaults, defaults.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.updateState() }
             }),
-            (workspace, workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.resetTypingState() }
-            }),
-            (distributed, distributed.addObserver(
-                forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.currentLayout = KeyboardLayouts.current() }
+            (workspace, workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                let bundleID = app?.bundleIdentifier
+                MainActor.assumeIsolated {
+                    self?.autoSwitcher.setFrontmostApp(bundleID)
+                    self?.resetTypingState()
+                }
             })
         ]
+        // AppKit suspends distributed notifications while the app is inactive, which for a menu bar app is
+        // nearly always; without immediate delivery the cached layout goes stale after a manual switch.
+        let distributed = DistributedNotificationCenter.default()
+        distributed.addObserver(
+            self,
+            selector: #selector(enabledInputSourcesChanged),
+            name: Notification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+        distributed.addObserver(
+            self,
+            selector: #selector(selectedInputSourceChanged),
+            name: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
         currentLayout = KeyboardLayouts.current()
+        autoSwitcher.refreshLayouts()
+        autoSwitcher.setFrontmostApp(NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
         updateState()
     }
 
     func stop() {
         observers.forEach { center, token in center.removeObserver(token) }
         observers.removeAll()
+        DistributedNotificationCenter.default().removeObserver(self)
         removeTap()
         stopPermissionPolling()
+    }
+
+    @objc private func enabledInputSourcesChanged() {
+        autoSwitcher.refreshLayouts()
+    }
+
+    @objc private func selectedInputSourceChanged() {
+        currentLayout = KeyboardLayouts.current()
     }
 
     private var isEnabled: Bool {
@@ -59,6 +90,7 @@ final class KeyboardSwitcherService {
             stopPermissionPolling()
             return
         }
+        autoSwitcher.warmUpIfNeeded()
         guard eventTap == nil else { return }
         if AXIsProcessTrusted() {
             stopPermissionPolling()
@@ -88,10 +120,10 @@ final class KeyboardSwitcherService {
     private func installTap() {
         let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
-        let callback: CGEventTapCallBack = { _, type, event, refcon in
+        let callback: CGEventTapCallBack = { proxy, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
             let service = Unmanaged<KeyboardSwitcherService>.fromOpaque(refcon).takeUnretainedValue()
-            return MainActor.assumeIsolated { service.handle(type: type, event: event) }
+            return MainActor.assumeIsolated { service.handle(type: type, event: event, proxy: proxy) }
         }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -125,7 +157,7 @@ final class KeyboardSwitcherService {
         resetTypingState()
     }
 
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func handle(type: CGEventType, event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {
         let passThrough = Unmanaged.passUnretained(event)
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
@@ -149,7 +181,7 @@ final class KeyboardSwitcherService {
             handleFlagsChanged(event)
             return passThrough
         case .keyDown:
-            return handleKeyDown(event)
+            return handleKeyDown(event, proxy: proxy)
         case .keyUp:
             let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
             if keyCode == swallowedKeyUpCode {
@@ -205,7 +237,7 @@ final class KeyboardSwitcherService {
         }
     }
 
-    private func handleKeyDown(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func handleKeyDown(_ event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {
         shiftTaps.interrupt()
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
@@ -220,12 +252,23 @@ final class KeyboardSwitcherService {
             return nil
         }
 
+        let undoable = undoableAutoSwitch
+        undoableAutoSwitch = nil
+        if flags.intersection(Self.commandModifierMask).isEmpty {
+            if Int(keyCode) == kVK_Delete, let undoable, undoAutoSwitch(undoable, proxy: proxy) {
+                return nil
+            }
+            if Self.autoSwitchBoundaryKeys.contains(Int(keyCode)), autoSwitch(before: event, proxy: proxy) {
+                return nil
+            }
+        }
+
         record(keyCode: keyCode, flags: flags)
         return Unmanaged.passUnretained(event)
     }
 
     private func record(keyCode: UInt16, flags: CGEventFlags) {
-        if !flags.intersection([.maskControl, .maskAlternate, .maskCommand]).isEmpty {
+        if !flags.intersection(Self.commandModifierMask).isEmpty {
             buffer.reset()
             return
         }
@@ -238,6 +281,11 @@ final class KeyboardSwitcherService {
             return
         default:
             break
+        }
+        // The word's layout decides how it is converted, so re-read it as each word starts
+        // instead of trusting notifications alone.
+        if buffer.isEmpty || buffer.trailingSpaces > 0 {
+            currentLayout = KeyboardLayouts.current()
         }
         let keystroke = TypedKeystroke(
             keyCode: keyCode,
@@ -256,6 +304,7 @@ final class KeyboardSwitcherService {
         buffer.reset()
         shiftTaps.interrupt()
         swallowedKeyUpCode = nil
+        undoableAutoSwitch = nil
     }
 
     // MARK: - Conversion
@@ -274,6 +323,11 @@ final class KeyboardSwitcherService {
         if buffer.isEmpty {
             convertSelection()
         } else {
+            // Reverting an automatic switch by hand counts as an undo.
+            if let undoable = undoableAutoSwitch {
+                autoSwitcher.rememberException(undoable.typedWord)
+                undoableAutoSwitch = nil
+            }
             convertLastWord()
         }
     }
@@ -307,5 +361,59 @@ final class KeyboardSwitcherService {
         KeyboardLayouts.select(target)
         currentLayout = target
         buffer.markConverted(to: target.id)
+    }
+
+    // MARK: - Automatic Conversion
+
+    // Runs inside the tap callback and posts through the proxy, so the corrected word and the boundary key
+    // reach the app before any key the user pressed after it.
+    private func autoSwitch(before boundary: CGEvent, proxy: CGEventTapProxy) -> Bool {
+        guard buffer.trailingSpaces == 0, !buffer.isEmpty, let plan = autoSwitcher.plan(for: buffer) else { return false }
+
+        let words = buffer.previousWords.suffix(plan.previousWordCount) + [buffer.current]
+        let onScreen = KeyboardLayouts.render(Array(words), with: plan.source, composingDeadKeys: true)
+        let replacement = KeyboardLayouts.render(Array(words), with: plan.target)
+        SyntheticKeyboard.deleteBackward(count: onScreen.count, via: proxy)
+        SyntheticKeyboard.type(replacement, via: proxy)
+        if let boundaryCopy = boundary.copy() {
+            SyntheticKeyboard.post(boundaryCopy, via: proxy)
+        }
+
+        KeyboardLayouts.select(plan.target)
+        currentLayout = plan.target
+        buffer.markConverted(to: plan.target.id, includingPrevious: plan.previousWordCount)
+        if Int(boundary.getIntegerValueField(.keyboardEventKeycode)) == kVK_Space {
+            buffer.appendSpace()
+            undoableAutoSwitch = plan
+        } else {
+            buffer.reset()
+        }
+        // Showing a window inside the tap callback would delay the user's next keystrokes.
+        DispatchQueue.main.async { [weak self] in
+            self?.onAutoSwitch?(KeyboardLayouts.render(Array(words), with: plan.source), replacement)
+        }
+        return true
+    }
+
+    /// Backspace right after an automatic switch restores the typed words (consuming the space, as Backspace
+    /// would) and remembers the switched word so it is never switched again.
+    private func undoAutoSwitch(_ plan: AutoSwitchPlan, proxy: CGEventTapProxy) -> Bool {
+        guard buffer.trailingSpaces == 1, buffer.layoutID == plan.target.id else { return false }
+
+        var words = Array(buffer.previousWords.suffix(plan.previousWordCount) + [buffer.current])
+        let onScreen = KeyboardLayouts.render(words, with: plan.target, composingDeadKeys: true)
+        words[words.count - 1].trailingSpaces = 0
+        SyntheticKeyboard.deleteBackward(count: onScreen.count, via: proxy)
+        SyntheticKeyboard.type(KeyboardLayouts.render(words, with: plan.source), via: proxy)
+
+        KeyboardLayouts.select(plan.source)
+        currentLayout = plan.source
+        buffer.deleteBackward()
+        buffer.markConverted(to: plan.source.id, includingPrevious: plan.previousWordCount)
+        autoSwitcher.rememberException(plan.typedWord)
+        DispatchQueue.main.async { [weak self] in
+            self?.onAutoSwitchUndo?()
+        }
+        return true
     }
 }

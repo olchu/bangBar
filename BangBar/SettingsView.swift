@@ -1541,7 +1541,7 @@ private struct PrivacySettingsSection: View {
     }
 }
 
-private func openPrivacySettings(anchor: String) {
+func openPrivacySettings(anchor: String) {
     let urlStrings = [
         "x-apple.systempreferences:com.apple.preference.security?\(anchor)",
         "x-apple.systempreferences:com.apple.preference.security?Privacy"
@@ -1559,7 +1559,7 @@ private func openPrivacySettings(anchor: String) {
     }
 }
 
-private enum AccessibilityAccess {
+enum AccessibilityAccess {
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
     static func requestOrOpen() {
@@ -1571,144 +1571,7 @@ private enum AccessibilityAccess {
     }
 }
 
-private struct KeyboardSwitcherSettingsSection: View {
-    let accentColor: Color
-
-    @AppStorage(BangBarSettings.Key.keyboardSwitcherEnabled) private var isEnabled = false
-    @AppStorage(BangBarSettings.Key.keyboardSwitcherTrigger)
-    private var triggerRaw = KeyboardSwitcherTrigger.doubleShift.rawValue
-    @AppStorage(BangBarSettings.Key.keyboardSwitcherShortcutKeyCode) private var shortcutKeyCode = -1
-    @AppStorage(BangBarSettings.Key.keyboardSwitcherShortcutModifiers) private var shortcutModifiers = 0
-    @AppStorage(BangBarSettings.Key.keyboardSwitcherShortcutLabel) private var shortcutLabel = "Not set"
-    @State private var isTrusted = AccessibilityAccess.isTrusted
-    @State private var layoutNames: [String] = []
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SettingsSectionLabel("LAYOUT SWITCHER")
-            SettingsCard {
-                VStack(spacing: 0) {
-                    SettingsToggleRow(
-                        title: "Convert wrong layout",
-                        subtitle: "Converts the last typed word, or the selected text, to the next keyboard layout and switches to it: ghbdtn → привет.",
-                        isOn: enabledBinding,
-                        accentColor: accentColor
-                    )
-                    if isEnabled {
-                        SettingsDivider()
-                        triggerRow
-                        if triggerRaw == KeyboardSwitcherTrigger.custom.rawValue {
-                            SettingsDivider()
-                            shortcutRow
-                        }
-                        SettingsDivider()
-                        layoutsRow
-                        if !isTrusted {
-                            SettingsDivider()
-                            PermissionRow(
-                                title: "Accessibility",
-                                status: "Required to read and retype text",
-                                systemImage: "keyboard",
-                                buttonTitle: "Request",
-                                action: { AccessibilityAccess.requestOrOpen() },
-                                secondaryButtonTitle: "Open",
-                                secondaryAction: { openPrivacySettings(anchor: "Privacy_Accessibility") }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        .onAppear {
-            isTrusted = AccessibilityAccess.isTrusted
-            layoutNames = KeyboardLayouts.enabled().map(\.name)
-        }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            isTrusted = AccessibilityAccess.isTrusted
-        }
-        .onReceive(DistributedNotificationCenter.default().publisher(
-            for: Notification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String)
-        )) { _ in
-            layoutNames = KeyboardLayouts.enabled().map(\.name)
-        }
-    }
-
-    private var enabledBinding: Binding<Bool> {
-        Binding(
-            get: { isEnabled },
-            set: { newValue in
-                isEnabled = newValue
-                if newValue && !AccessibilityAccess.isTrusted {
-                    AccessibilityAccess.requestOrOpen()
-                }
-            }
-        )
-    }
-
-    private var triggerRow: some View {
-        HStack(spacing: 16) {
-            rowLabel("Trigger", subtitle: "Double Shift: tap Shift twice quickly without typing in between.")
-            Spacer()
-            Picker("", selection: $triggerRaw) {
-                ForEach(KeyboardSwitcherTrigger.allCases) { trigger in
-                    Text(trigger.title).tag(trigger.rawValue)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(width: 160)
-            .tint(accentColor)
-        }
-        .padding(.vertical, 14)
-    }
-
-    private var shortcutRow: some View {
-        HStack(spacing: 16) {
-            rowLabel("Shortcut", subtitle: "Click, then press the shortcut. The focused app will not receive it.")
-            Spacer(minLength: 12)
-            ShortcutRecorderField(
-                keyCode: $shortcutKeyCode,
-                modifiers: $shortcutModifiers,
-                label: $shortcutLabel
-            )
-            .frame(width: 142, height: 30)
-        }
-        .padding(.vertical, 14)
-    }
-
-    private var layoutsRow: some View {
-        HStack(spacing: 16) {
-            rowLabel(
-                "Layouts",
-                subtitle: layoutNames.count < 2
-                    ? "Add a second keyboard layout in System Settings › Keyboard › Text Input."
-                    : "Repeat the trigger to cycle through layouts in this order."
-            )
-            Spacer()
-            Text(layoutNames.isEmpty ? "None" : layoutNames.joined(separator: " → "))
-                .font(SettingsTheme.descriptionFont)
-                .foregroundStyle(layoutNames.count < 2 ? accentColor : SettingsTheme.primaryText)
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(.vertical, 14)
-    }
-
-    private func rowLabel(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(SettingsTheme.rowFont)
-                .foregroundStyle(SettingsTheme.primaryText)
-            Text(subtitle)
-                .font(SettingsTheme.descriptionFont)
-                .foregroundStyle(SettingsTheme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct PermissionRow: View {
+struct PermissionRow: View {
     let title: String
     let status: String
     let systemImage: String
@@ -2328,7 +2191,7 @@ private struct SettingsStepperRow: View {
     }
 }
 
-private struct SettingsToggleRow: View {
+struct SettingsToggleRow: View {
     let title: String
     var subtitle: String? = nil
     @Binding var isOn: Bool
@@ -2562,7 +2425,7 @@ private struct DottedDivider: View {
     }
 }
 
-private struct SettingsOutlineButtonStyle: ButtonStyle {
+struct SettingsOutlineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold, design: .monospaced))

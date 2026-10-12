@@ -339,7 +339,7 @@ Album artwork should read visually as one continuous element between compact and
 13. Keep new implementation split into separate component/service files instead of growing `PanelContentView.swift`.
 14. ✅ Swipeable widget pages/surfaces are implemented — see "Planned: Widget Pages (Swipe Between Surfaces)" below.
 15. ✅ Keyboard Layout Switcher, Phase 1 (manual conversion by hotkey) — see "Keyboard Layout Switcher" below.
-16. ⬜ Keyboard Layout Switcher, Phase 2 (automatic conversion).
+16. ✅ Keyboard Layout Switcher, Phase 2 (automatic conversion).
 
 ### MoonWidget
 
@@ -885,11 +885,15 @@ struct NotionTask: Identifiable {
 
 ### Files
 
-- `KeyboardWordBuffer.swift` — pure logic with no AppKit/Carbon: the last-word keystroke buffer and the double-tap modifier detector. Covered by `Tests/KeyboardWordBufferTests.swift` (`scripts/test_keyboard_word_buffer.sh`).
+- `KeyboardWordBuffer.swift` — pure logic with no AppKit/Carbon: the last-word keystroke buffer and the double-tap modifier detector. Covered by `Tests/KeyboardWordBufferTests.swift` (`scripts/test_keyboard_switcher.sh` runs all keyboard tests).
 - `KeyboardLayouts.swift` — Text Input Sources wrapper: enabled keyboard layouts, current layout, selecting a layout, translating key codes to text with `UCKeyTranslate`, converting arbitrary text between layouts.
 - `KeyboardSwitcherService.swift` — `CGEventTap`, buffer bookkeeping, trigger detection, choosing word vs. selection mode, last-word correction.
 - `SelectedTextConverter.swift` — selection conversion through a pasteboard round-trip.
-- `SyntheticKeyboard.swift` — posting marked synthetic key events (Backspace, Unicode text, ⌘C/⌘V, ⇧←).
+- `SyntheticKeyboard.swift` — posting marked synthetic key events (Backspace, Unicode text, ⌘C/⌘V, ⇧←), either at session level or through the tap proxy.
+- `KeyboardAutoSwitchRules.swift` — pure decision rules for automatic conversion.
+- `KeyboardAutoSwitcher.swift` — spell-checker languages, remembered words, excluded apps; produces an `AutoSwitchPlan` for a finished word.
+- `KeyboardSwitcherSettingsView.swift` — Settings › Keyboard section.
+- `KeyboardSwitchNotice.swift` — the notch notice shown after an automatic switch.
 
 ### Phase 1 — Manual Conversion (Implemented)
 
@@ -908,7 +912,8 @@ struct NotionTask: Identifiable {
 - Stores `(keyCode, shift, capsLock)` for each printable key-down, plus the layout the word was typed in. Storing key codes keeps the word layout-independent: the same keys are re-translated through any layout.
 - Every printable key belongs to the word, including keys that are punctuation in one layout and letters in another (`,` ↔ `б`, `;` ↔ `ж`, `[` ↔ `х`, `` ` `` ↔ `ё`).
 - Space after a word is kept as trailing spaces; the next printable key starts a new word. Conversion retypes the trailing spaces after the converted word.
-- Backspace removes trailing spaces first, then the last keystroke.
+- Backspace removes trailing spaces first, then the last keystroke; deleting a whole word brings back the word before it.
+- Up to 3 earlier words separated from the current one only by spaces are kept as history (cleared by anything that resets the buffer). Automatic conversion uses it to fix short words before a switched word.
 - Reset on: Return, Tab, Escape, arrows, Home/End/Page keys, forward delete, function keys, any key with ⌘/⌃/⌥, any mouse click, frontmost app change, or a key typed in a different layout than the rest of the word.
 - Lives only in memory, holds at most the current word, is never logged or written to disk.
 
@@ -938,14 +943,45 @@ struct NotionTask: Identifiable {
 
 **Permission:** requires Accessibility (System Settings › Privacy & Security › Accessibility). Enabling the switcher without access shows the system prompt; while enabled and not yet trusted the service rechecks every `2 s` and installs the tap as soon as access is granted.
 
-### Phase 2 — Automatic Conversion (Planned)
+### Phase 2 — Automatic Conversion (Implemented)
 
-- On a word boundary (space or punctuation that is a boundary in both layouts), check the buffered word with `NSSpellChecker` in both languages: convert automatically only if the word is **not** valid in the layout it was typed in **and is** valid in the other one. Minimum word length 3.
-- Fallback for words missing from the dictionaries: bigram/trigram plausibility (e.g. `ghb` is implausible in English, `ъь` in Russian).
-- The boundary key is held by the tap until the correction is posted, then released.
-- Undo: Backspace immediately after an automatic correction restores the original text and adds the word to a user exception list.
-- Per-app exclusion list (by bundle ID), defaulting to terminals and IDEs.
-- Optional short notice in the compact panel near the notch (`ghbdtn → привет`).
+Off by default; enabled with "Switch automatically" in Settings › Keyboard (only shown while the switcher is on).
+
+**When:** on Space, Return, or keypad Enter (without ⌘/⌃/⌥) right after a word — the buffer is not empty and has no trailing spaces yet — and the frontmost app is not excluded.
+
+**Decision** (`KeyboardAutoSwitcher` + pure `KeyboardAutoSwitchRules`, covered by `Tests/KeyboardAutoSwitchRulesTests.swift`):
+- Each layout's spell-check language is the first of its `kTISPropertyInputSourceLanguages` that `NSSpellChecker` supports (`en`, `ru`). Layouts without a supported language never take part.
+- For every other enabled layout in cycle order, translate each keystroke in both layouts. Convert into the first layout where the typed word is **not** a word and the candidate **is**:
+  - Edge keys outside the candidate's letters are punctuation and are not spell-checked (`ghbdtn?` → `привет,`, `руддщб` → `hello,`). A typed letter may only become sentence punctuation (`,.;:!?'"()`) there — `ещё` must never be judged as `to` after its `ё` turns into `§`.
+  - The candidate core may contain only letters, `-`, and `'` (no digits).
+  - The typed word counts as a word only if it has no punctuation inside (the spell checker skips punctuation, so `dc§` for `всё` would pass as `dc`) and `NSSpellChecker` accepts it.
+  - Candidates of 3+ letters must pass `NSSpellChecker`. Two-letter candidates convert only into a short list of common words (`не`, `да`, `на`, … / `it`, `is`, `to`, …). Single letters never convert on their own.
+- **Words before a switched word:** when a word switches, the words right before it in the history (same original layout, not yet converted) switch with it while each becomes a common short word in the target language, including single letters (`я в с к у о и а` / `I a`): `z nt,z` → `я тебя`, `vs c nj,jq` → `мы с тобой`. The switched word is the evidence a dictionary cannot give for `z` alone. English `a` / `I` typed in Russian become `ф` / `Ш`, which are not Russian words, so English text is unaffected.
+- Unknown in both dictionaries (`kubernetes`, slang) → nothing happens.
+- Words in the user's remembered list are skipped.
+- Measured on this machine's U.S. International – PC / Russian – PC dictionaries: zero false positives on a mixed English/Russian/code-word sample; ~70–80% of wrong-layout words fixed (misses are slang, abbreviations, single letters).
+- Dictionaries are warmed up when the feature turns on, so the first check never stalls the tap.
+
+**Correction:** done synchronously inside the tap callback and posted with `CGEventTapPostEvent` through the tap proxy, so the deletes, the replacement, and a copy of the boundary key reach the app in order before any key the user pressed afterward. The original boundary event is swallowed. The target layout is selected and the buffer keeps the word (in the new layout) plus the space.
+
+**Undo:**
+- Backspace immediately after an automatic switch on Space restores the typed words (including short words switched with it), consumes the space (as Backspace would), switches back to the original layout, and adds the switched word to the remembered list.
+- Triggering a manual conversion right after an automatic switch also adds the word to the remembered list.
+- Any other key, click, or app switch ends the undo window. Return has no undo (the text may already be sent).
+
+**Settings** (stored as newline-separated strings):
+- `keyboardSwitcherAutoEnabled` — default `false`.
+- `keyboardSwitcherExceptions` — remembered words (lowercased typed form), shown in Settings with a Clear button.
+- `keyboardSwitcherExcludedApps` — bundle IDs with no automatic switching (the manual trigger still works). Defaults: Terminal, iTerm2, Ghostty, Warp, Xcode, VS Code. Apps are added via an open panel and removed per row.
+
+**Notch notice** (`KeyboardSwitchNotice.swift`, setting `keyboardSwitcherShowsNotice`, default on, "Show at the notch" in the Automatic card):
+- After every automatic switch, `original → replacement` (including short words switched with it; dimmed original, accent arrow, white replacement, 13 pt medium) grows down out of the notch for `1.8 s`, then collapses back. A new switch while it is visible updates the text and restarts the timer; an undo dismisses it immediately. Manual conversions show nothing.
+- Shape: a stem exactly the notch's width behind the physical notch, flaring through `8 pt` concave fillets into a `30 pt` tall body with `12 pt` corners. The body is the text width plus padding, at least notch width + 40 pt, at most 300 pt (longer text truncates in the middle). Because only the notch-wide stem overlaps the menu bar row, the compact panel's artwork and indicator stay visible; the body hangs below the compact panel.
+- Displays without a notch: a rounded body floating `6 pt` below the menu bar.
+- Reveal: spring (`response 0.32`, `damping 0.82`) of the body height from 0; hide: `0.22 s` ease-in, then the window is ordered out.
+- Its own borderless, non-activating, click-through `NSPanel` one level above the hover panel, on all Spaces and over full-screen apps, on `NSScreen.main`. It never touches the hover panel's lifecycle, and is skipped while the hover panel is expanded.
+
+**Not yet implemented:** n-gram plausibility for words missing from both dictionaries.
 
 ---
 
@@ -1030,6 +1066,7 @@ Implemented as a custom dark macOS settings window (`SettingsView`), opened from
 - Layout Switcher card: toggle "Convert wrong layout" (default off), trigger picker (`Double Shift` / `Custom shortcut`), shortcut recorder when the trigger is custom.
 - Accessibility row inside the card shows trust status with Request/Open actions while the switcher needs it.
 - Layouts row lists the enabled keyboard layouts in cycle order (`ABC → Russian – PC`) and warns when fewer than two are enabled.
+- Automatic card (shown while the switcher is on): "Switch automatically" toggle; when on, "Show at the notch", the remembered-words row (with Clear) and the excluded-apps list (icon, name, bundle ID, Remove; "Add App…").
 
 **Accent color** is read via `@AppStorage` in `ClockWidget` (day number), `ArtworkPlaceholder` (glow + icon), `PomodoroWidget`, `MoonWidget`, `HabitsWidget` (incomplete rows and progress), and `SettingsView`. The `Color(hex:)` / `hexString` helpers live in `BangBarSettings.swift`.
 

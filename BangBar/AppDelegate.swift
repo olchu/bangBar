@@ -16,6 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let calendarAlerts = CalendarAlertService()
     private let healthMonitor = AppHealthMonitor()
     private let keyboardSwitcher = KeyboardSwitcherService()
+    private let keyboardSwitchNotice = KeyboardSwitchNoticeController()
     private var compactExpansionGraceUntil: Date = .distantPast
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -27,6 +28,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         startMouseTracking()
         startWorkspaceTracking()
         calendarAlerts.start()
+        keyboardSwitcher.onAutoSwitch = { [weak self] original, replacement in
+            guard let self,
+                  UserDefaults.standard.bool(forKey: BangBarSettings.Key.keyboardSwitcherShowsNotice),
+                  hoverPanel?.isExpandedMode != true else { return }
+            keyboardSwitchNotice.show(original: original, replacement: replacement)
+        }
+        keyboardSwitcher.onAutoSwitchUndo = { [weak self] in
+            self?.keyboardSwitchNotice.dismiss()
+        }
         keyboardSwitcher.start()
         healthMonitor.start()
     }

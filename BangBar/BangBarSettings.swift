@@ -262,9 +262,21 @@ enum BangBarSettings {
         static let keyboardSwitcherShortcutKeyCode = "keyboardSwitcherShortcutKeyCode"
         static let keyboardSwitcherShortcutModifiers = "keyboardSwitcherShortcutModifiers"
         static let keyboardSwitcherShortcutLabel = "keyboardSwitcherShortcutLabel"
+        static let keyboardSwitcherAutoEnabled = "keyboardSwitcherAutoEnabled"
+        static let keyboardSwitcherShowsNotice = "keyboardSwitcherShowsNotice"
+        static let keyboardSwitcherExcludedApps = "keyboardSwitcherExcludedApps"
+        static let keyboardSwitcherExceptions = "keyboardSwitcherExceptions"
     }
 
     static let defaultAccentColorHex = "#FF383C"
+    static let defaultKeyboardSwitcherExcludedApps = [
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "com.mitchellh.ghostty",
+        "dev.warp.Warp-Stable",
+        "com.apple.dt.Xcode",
+        "com.microsoft.VSCode"
+    ].joined(separator: "\n")
     static let defaultWidgetOrderRaw = widgetOrderRaw(from: BangBarWidget.allCases)
     static let defaultCalendarAlertBlurRadius = 32
     static let calendarAlertBlurRadiusRange = 0...80
@@ -321,8 +333,30 @@ enum BangBarSettings {
             Key.keyboardSwitcherTrigger: KeyboardSwitcherTrigger.doubleShift.rawValue,
             Key.keyboardSwitcherShortcutKeyCode: -1,
             Key.keyboardSwitcherShortcutModifiers: 0,
-            Key.keyboardSwitcherShortcutLabel: "Not set"
+            Key.keyboardSwitcherShortcutLabel: "Not set",
+            Key.keyboardSwitcherAutoEnabled: false,
+            Key.keyboardSwitcherShowsNotice: true,
+            Key.keyboardSwitcherExcludedApps: defaultKeyboardSwitcherExcludedApps,
+            Key.keyboardSwitcherExceptions: ""
         ])
+    }
+
+    static var keyboardSwitcherExcludedApps: [String] {
+        get { lines(forKey: Key.keyboardSwitcherExcludedApps) }
+        set { UserDefaults.standard.set(newValue.joined(separator: "\n"), forKey: Key.keyboardSwitcherExcludedApps) }
+    }
+
+    static var keyboardSwitcherExceptions: Set<String> {
+        get { Set(lines(forKey: Key.keyboardSwitcherExceptions)) }
+        set { UserDefaults.standard.set(newValue.sorted().joined(separator: "\n"), forKey: Key.keyboardSwitcherExceptions) }
+    }
+
+    static func lines(_ rawValue: String) -> [String] {
+        rawValue.split(separator: "\n").map(String.init)
+    }
+
+    private static func lines(forKey key: String) -> [String] {
+        lines(UserDefaults.standard.string(forKey: key) ?? "")
     }
 
     static func widgetOrder(from rawValue: String) -> [BangBarWidget] {

@@ -34,6 +34,10 @@ class HoverPanel: NSPanel {
         state.isCompact
     }
 
+    var isExpandedMode: Bool {
+        isVisible && state.isExpanded && !state.isCompact
+    }
+
     var isAnimatingFrame: Bool {
         frameAnimationTimer != nil
     }
