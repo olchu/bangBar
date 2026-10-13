@@ -49,25 +49,24 @@ struct CountdownWidget: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Image(systemName: isDone ? "hourglass.bottomhalf.filled" : "hourglass")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(service.countdown == nil ? .white.opacity(0.45) : accentColor)
-                .frame(width: 14, height: 16)
+        HStack {
+            CountdownHeaderIcon(
+                systemName: isDone ? "hourglass.bottomhalf.filled" : "hourglass",
+                color: service.countdown == nil ? .white.opacity(0.45) : accentColor
+            )
 
             Spacer()
 
             Button(action: openEditor) {
-                Image(systemName: service.countdown == nil ? "plus" : "pencil")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .frame(width: 14, height: 14)
-                    .contentShape(Rectangle())
+                CountdownHeaderIcon(
+                    systemName: service.countdown == nil ? "plus" : "pencil",
+                    color: .white.opacity(0.5)
+                )
             }
             .buttonStyle(.plain)
             .help(service.countdown == nil ? "New countdown" : "Edit countdown")
         }
-        .frame(height: 16)
+        .frame(height: CountdownHeaderIcon.size)
     }
 
     private var emptyState: some View {
@@ -80,7 +79,7 @@ struct CountdownWidget: View {
                 .foregroundStyle(.white.opacity(0.32))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, 16)
+        .padding(.bottom, 8)
     }
 
     private var accessibilityText: String {
@@ -122,25 +121,31 @@ private struct CountdownDetails: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Spacer(minLength: 0)
-
+        VStack(spacing: 0) {
             Text(countdown.title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
                 .lineLimit(1)
                 .truncationMode(.tail)
 
+            Spacer(minLength: 0)
+
             CountdownValueText(remaining: remaining, accentColor: accentColor)
+
+            Spacer(minLength: 0)
 
             Text(targetLabel)
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.38))
+                .foregroundStyle(.white.opacity(0.6))
                 .lineLimit(1)
-                .padding(.top, 1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.white.opacity(0.06)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .padding(.bottom, 6)
+        .padding(.top, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var targetLabel: String {
@@ -157,7 +162,7 @@ private struct CountdownValueText: View {
 
     var body: some View {
         styledText
-            .font(.system(size: 26, weight: .bold, design: .rounded))
+            .font(.system(size: 30, weight: .bold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.6)
@@ -184,7 +189,22 @@ private struct CountdownValueText: View {
 
     private func unit(_ symbol: String) -> Text {
         Text(verbatim: symbol)
-            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .font(.system(size: 16, weight: .semibold, design: .rounded))
             .foregroundStyle(.white.opacity(0.5))
+    }
+}
+
+private struct CountdownHeaderIcon: View {
+    static let size: CGFloat = 16
+
+    let systemName: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(color)
+            .frame(width: Self.size, height: Self.size)
+            .contentShape(Rectangle())
     }
 }

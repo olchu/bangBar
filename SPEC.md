@@ -642,7 +642,7 @@ Today  Buy milk
 **Layout:** Fixed 150×110 widget (`PanelLayout.countdownWidgetWidth`), implemented in `CountdownWidget.swift`, with `CountdownService.swift` (persistence), `CountdownEditorView.swift` (create/edit window) and `CountdownFormatter.swift` (pure remaining-time formatting).
 
 **Empty state:**
-- Header row: dim `hourglass` icon on the left and a small `plus` button on the right, matching the Reminders header button.
+- Header row: dim `hourglass` icon on the left and a `plus` icon button on the right (icons as in the display below, with the hourglass dim white instead of accent).
 - Centered text: `No countdown` with `pick a date` below it.
 - The plus button, a click anywhere on the widget, or the context menu's `New Countdown…` opens the creation window.
 
@@ -662,17 +662,16 @@ Today  Buy milk
 
 **Display:**
 ```
-[⌛]                 [✎]
-
-Trip to Tokyo
-2y 3m 4d
-JAN 17, 2029 · 05:55
+⌛                    ✎
+       Trip to Tokyo
+         2y 3m 4d
+   ( JAN 17, 2029 · 05:55 )
 ```
-- Header: accent `hourglass` icon (`hourglass.bottomhalf.filled` once elapsed) and a small `pencil` edit button.
-- The title, remaining time and target date are bottom-aligned in the remaining space.
-- Title on one line, 12 pt semibold, truncated with `…`.
-- Remaining time: 26 pt bold rounded, `.monospacedDigit()`, scaled down to fit (minimum 0.6) for very long ranges. The first (most significant) number uses the shared accent color, later numbers are near-white, and unit letters are smaller and dim. `done` is shown entirely in the accent color.
-- Target date line: 9 pt monospaced, dim, uppercased, e.g. `JAN 17, 2029` or `JAN 17, 2029 · 05:55` when a time is set.
+- Header: `16 pt` tall row with two bare `11 pt` bold symbols, no background. Left: accent `hourglass` (`hourglass.bottomhalf.filled` once elapsed). Right: `pencil` edit button, white 50%.
+- Everything below the header is centered horizontally; no divider lines and no glow.
+- Title on one line, 13 pt semibold, near-white, truncated with `…`, pinned `2 pt` under the header. The date pill is pinned to the bottom and the remaining time is centered vertically between the title and the pill.
+- Remaining time: 30 pt bold rounded, `.monospacedDigit()`, scaled down to fit (minimum 0.6) for very long ranges. The first (most significant) number uses the shared accent color, later numbers are near-white, and unit letters are 16 pt semibold and dim. `done` is shown entirely in the accent color.
+- Target date pill: 9 pt monospaced, white 60%, uppercased (e.g. `JAN 17, 2029` or `JAN 17, 2029 · 05:55` when a time is set), in a capsule with white 6% fill and a `1 pt` white 10% border, `10 pt` × `3 pt` padding.
 - Remaining time is calculated from the panel clock (`PanelContentView`'s shared timer), which runs at least once per minute while the countdown is on the visible expanded page and is refreshed whenever the panel opens.
 - Compact format produced by `CountdownFormatter.remaining(now:target:includesTime:calendar:)`, using `Calendar.dateComponents` (so month ends follow Foundation clamping, e.g. Jan 31 → Feb 28 is `1m`):
   - at least one month left: years, months and days, e.g. `2y 3m 4d`;
