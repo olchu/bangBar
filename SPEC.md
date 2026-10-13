@@ -338,6 +338,7 @@ Album artwork should read visually as one continuous element between compact and
 14. ✅ Swipeable widget pages/surfaces are implemented — see "Planned: Widget Pages (Swipe Between Surfaces)" below.
 15. ✅ Keyboard Layout Switcher, Phase 1 (manual conversion by hotkey) — see "Keyboard Layout Switcher" below.
 16. ✅ Keyboard Layout Switcher, Phase 2 (automatic conversion).
+17. ⬜ Work through the Refactoring Backlog (P1 items first) — see "Refactoring Backlog" below.
 
 ### MoonWidget
 
@@ -1212,6 +1213,66 @@ Each widget separated by `Divider` at 35pt height.
 - `BangBarSettings.Key.pageSwipeInverted` (Settings → Widgets → General → "Invert page swipe direction") swaps which two-finger swipe direction advances to the next page, mirroring the existing Clipboard swipe-inversion toggle.
 
 ---
+
+## Refactoring Backlog
+
+Found by the whole-project `/simplify` review (October 2026). Safe, locally verifiable fixes were applied in commits `a4227c8`, `6f1b244`, `79aabd4`. Everything below was deliberately postponed because it touches panel lifecycle or UI behavior that can only be verified by running the app, or because the fix would change behavior. Take items one at a time; each lists the problem, the intended fix, and how to verify it.
+
+Priority: **P1** — real cost or fragility users can hit; **P2** — duplication that slows every change in the area; **P3** — cleanup.
+
+### Panel lifecycle (needs manual regression pass from "Hover Stability")
+
+1. **P1 — Timing hacks instead of a target frame.** `AppDelegate.compactExpansionGraceUntil` (0.85 s), `HoverPanel.slideOut`'s `openedAt > 0.5 s` guard, the `!isAnimatingFrame` early return, and `TooltipManager.suppressShowing(for:)` (0.7 s / 0.5 s) all paper over one cause: `evaluateHover` tests the mouse against `panel.frame` while it is still animating from compact size.
+   - Fix: store the destination frame in `animateFrame` / `slideIn` and expose it as `HoverPanel.restingFrame`; hover tests use it. Remove the grace timestamps; end tooltip suppression in the frame-animation completion.
+   - Verify: the manual regression list under "Hover Stability", plus compact → expanded with the mouse resting on the boundary.
+2. **P1 — Compact content decided in ~8 places.** "clipboard group collecting / Pomodoro running / music playing" and the choice of `PanelState.CompactContent` are re-derived in three Combine sinks, `slideOut`, `recoverAfterSystemTransition` and `exitCompactMode`; `compactWidth` special-cases the clipboard group (`+110`).
+   - Fix: one `desiredCompactContent: CompactContent?` from a single `Publishers.CombineLatest3(...).map(...).removeDuplicates()` sink, used everywhere; move the extra width onto `CompactContent` (e.g. `extraWidth`).
+   - Verify: start/stop music, Pomodoro and image collection in every combination while hidden, compact and expanded.
+3. **P2 — Page layout computed three times.** Which widgets sit on which page (and whether page 2 exists) is computed separately in `PanelContentView.activeWidgets(forPage:)` (`NSScreen.main`), `HoverPanel` (`self.screen`, swipe eligibility, `advancePage`) and `SettingsView.canEnableWidget` — on a second display or right after a settings change they can disagree.
+   - Fix: `HoverPanel` computes `pages: [[BangBarWidget]]` for its own screen on `UserDefaults.didChangeNotification` and publishes it on `PanelState`; the view renders `state.pages`, swipes use `state.pages.count`.
+   - Verify: two displays with different widths, toggle widgets with the panel open, swipe pages.
+4. **P2 — Widget-specific work in the root view.** `PanelContentView` calls `mirror.stop()` in 4 handlers (already done by `MirrorWidget`), `reminders.stop()` (already done by `RemindersWidget`), `dayPlans.reload()` on every open (bypasses `syncFromStorageIfChanged`), starts/refreshes calendar events from the clock tick, and hard-codes tick rates per widget (`.clock` → 1 s, `.moon` / `.countdown` → 60 s).
+   - Fix: delete the root-level calls; `ClockWidget` refreshes events from its own `onChange(of: date)`; add `BangBarWidget.tickInterval` and use the minimum over visible widgets.
+5. **P2 — Scroll workaround copy-pasted.** `HabitsWidget` and `DayPlansWidget` both enable their `ScrollView` after a 500 ms sleep and reset its identity after 120 ms; `PanelSwipeExclusionView` / `ScrollElasticityDisabler` (panel infrastructure) live in `HabitsWidget.swift` next to a second mechanism, `HoverHostingView.isInsideVerticalScrollView`.
+   - Fix: one `PanelScrollList` view/modifier; drive enabling from a `PanelState` "settled" flag set when slide-in finishes; move exclusion types next to `HoverHostingView`.
+6. **P3 — `PanelTopBar` uses `NSScreen.main`** instead of the panel's own screen. Pass the panel screen in (use `PanelLayout.notchRect(on:)`).
+
+### Efficiency (main thread is shared with the keyboard event tap)
+
+7. **P1 — Now Playing polling.** While Music runs, every 3 s — even with the panel hidden — the service compiles a new `NSAppleScript`, scans the whole library (`every track … whose name is … and artist is …`) and exports artwork to `/tmp/bangbar_artwork.png` (~29k disk writes/day).
+   - Fix: subscribe to `com.apple.Music.playerInfo` / `com.spotify.client.PlaybackStateChanged` distributed notifications and poll only as a fallback; split into a cheap state script (state, position, persistent ID) and run favorite lookup + artwork export only when the track changes; cache compiled scripts.
+8. **P1 — Root panel view re-renders on every service tick.** `PanelContentView` observes `nowPlaying`, `pomodoro` and `clipboardHistory` but reads only a few flags; with the live visualizer the whole root body runs 12.5×/s during playback.
+   - Fix: pass those services as plain `let`; move `liveAudioLevels` into its own `ObservableObject` observed only by the visualizer bars; put top-bar values in a child view that observes `clipboardHistory`; compute both pages' widget lists once per body.
+9. **P1 — Clipboard copies do heavy work on the main thread.** Image copies read full PNG/TIFF data and SHA256-hash it (tens of ms for a Retina screenshot); every insert re-encodes and rewrites the whole index.
+   - Fix: fingerprint and hash on `imageProcessingQueue`; coalesce index writes on a background serial queue (debounced, last write wins); store text payloads in files like images.
+10. **P2 — Synchronous startup and open-path work.** Clipboard history load checks up to 200 image files and rewrites both indexes even when nothing was pruned; `DayPlanService.shared` reads iCloud Drive synchronously (blocks if the file is evicted); `CalendarEventService.start()` runs EventKit queries on the main thread 1–2× per panel open; the health monitor writes a checkpoint file on every hover-open; services for disabled widgets are created anyway.
+    - Fix: save only if load pruned something; load in the background; call only `refreshIfNeeded` and fetch EventKit off the main thread; throttle checkpoints or write them in the background; create services lazily per enabled widget.
+11. **P3 — `AppDelegate.evaluateHover` on every system-wide mouse move** queries screens and defaults and, in compact mode, builds a `NotchPanelShape` path; inside the panel it runs twice per move. Return early when the pointer is well below the top edge and the panel is hidden.
+12. **P3 — Keyboard switcher leftovers.** Memoize `KeyboardLayouts` character maps per layout ID (selection conversion builds ~512 `UCKeyTranslate` calls per layout each time); a small LRU of `NSSpellChecker` results keyed by (word, language).
+
+### Duplication
+
+13. **P2 — Finish widget-visibility centralization.** Keys and defaults now live on `BangBarWidget`, but `PanelContentView` and `SettingsView` still declare 14 `@AppStorage` flags each plus a `switch` (`isWidgetVisible`, `toggleBinding(for:)`) to stay reactive. Replace with one observable store publishing `[BangBarWidget: Bool]` (or bindings built from `visibilityKey`).
+14. **P2 — Small modal windows.** `AddReminderWindowController` and `CountdownEditorWindowController` build the same dark window; "show or bring to front" is repeated in `RemindersWidget`, `CountdownWidget`, `DayPlansWindow`, `TranslatorWidget` and `ClipboardImagePreviewWindow`; the success overlay, `TITLE` label + focused field and close-after-0.75 s are duplicated in both editors. Fix: one `DarkModalWindowController<Content>` with `present()`, plus shared editor pieces.
+15. **P2 — Settings rows and controls.** The "title + description + trailing control" row is rebuilt by hand ~15 times (spacing already drifts: 5 vs 7, fixed height vs padding); the bordered background is repeated ~9 times; GitHub-username and City fields are identical; the Reminders and Calendar-alert menu labels drifted (height 28 vs 30, chevron colors); `MoonLocationSettingsCard` uses a system `Toggle` that looks different from every other switch. Fix: `SettingsRow<Trailing>`, `settingsBorderedBackground()`, `SettingsTextField`, `SettingsMenuLabel`; rebuild `SettingsToggleRow`, `clipboardPickerRow` and `PermissionRow` on them.
+16. **P2 — Translator logic twice.** `TranslatorWidget` and its window both implement `switchLanguages`, `requestTranslation`, `performTranslation`, language setup and copy-to-pasteboard. Fold into the existing `TranslatorWindowModel` (rename `TranslatorModel`) used by both.
+17. **P2 — EventKit authorization twice.** `CalendarEventService` and `ReminderService` declare the same `AuthorizationState` and status mapping; `SettingsView` requests calendar access inline in two more places. Share one `EventKitAuthorizationState(EKAuthorizationStatus)` and route Settings through the service.
+18. **P3 — Clipboard item views.** `ClipboardTextRow` and `ClipboardHistoryCard` duplicate `copyWithFeedback()`, `elapsedTime(at:)` and the Copy/Pin/Delete context menu. Extract `ClipboardItem.elapsedLabel(at:)`, `ClipboardItemContextMenu` and a small copy-feedback state.
+19. **P3 — Application Support folder resolved four ways** (`ClipboardHistoryService` and `AppHealthMonitor` fall back to temp, `DayPlanService` to `~/Library/Application Support`, `CompanionService` returns nil). One `BangBarPaths.applicationSupport(_:)`; decide the fallback once (behavior change for some services).
+20. **P3 — Clipboard ignore-shortcut monitors.** Three global monitors plus one local, and two handlers repeating the same guard and grace-period tail. One `[.keyDown, .keyUp]` monitor and a single `handleShortcut(_:)` → `setShortcutPressed(_:)`.
+21. **P3 — Accent color lookup** (`@AppStorage(accentColorHex)` + `Color(hex:)`) is repeated in ~28 views; one environment value or property wrapper.
+22. **P3 — Day Plans external-storage monitoring.** Each client keeps its own `isMonitoringExternalChanges` flag around `beginExternalStorageMonitoring()` / `end…`; a missed `end` leaks an 8 s timer. Return an `AnyCancellable` whose cancellation ends monitoring.
+
+### Simplification
+
+23. **P3 — `SettingsView` `@State widgetPages` mirrors `widgetPagesRaw`** with a load/persist/`onChange` cycle. Make it a computed property and write through `pageBinding` (keep `widgetOrder` as `@State` — drag reordering animates it).
+24. **P3 — Settings tab wrapper.** Each `mainContent` case repeats `singleColumnContent(title:) { … .frame(width: 884) }` with titles duplicating `SettingsTab.title`, plus ~15 copies of `VStack { SettingsSectionLabel; card }`. Use `selectedSettingsTab.title` and a `labeledSection(_:content:)` helper.
+25. **P3 — Calendar alert blur applied twice.** The service re-applies blur on settings changes and in `present()`, and the SwiftUI view does the same through `CalendarAlertWindowBlurUpdater` with a duplicated clamp. Keep one mechanism (check the live preview in Settings still updates).
+
+### Behavior changes to decide on
+
+26. **Skip concealed / transient pasteboard items in Clipboard History** (`org.nspasteboard.ConcealedType`, `TransientType`, `AutoGeneratedType` — the nspasteboard.org convention password managers use). Clipboard History currently records passwords copied from password managers.
+27. **`NSAppleScript` → `/usr/bin/osascript`.** `CLAUDE.md` requires `osascript` via `Process`, but `NowPlayingService.runScript` and the Automation check in `SettingsView` use `NSAppleScript`. Share one `AppleScriptRunner.run(_:)` and switch it (pairs well with item 7).
 
 ## Potential Widget Backlog
 
