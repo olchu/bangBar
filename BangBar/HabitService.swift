@@ -166,10 +166,6 @@ final class HabitService: ObservableObject {
         records[currentDay]?.completedHabitIDs.contains(habit.id) == true
     }
 
-    func toggleToday(_ habit: HabitDefinition, now: Date = Date()) {
-        toggle(habit, on: now, now: now)
-    }
-
     func dayState(for habit: HabitDefinition, on date: Date) -> HabitDayState {
         let day = Self.dayIdentifier(for: date, calendar: calendar)
         guard day >= habit.creationDay, day <= currentDay else { return .ineligible }
@@ -206,10 +202,6 @@ final class HabitService: ObservableObject {
         persist()
     }
 
-    func aggregateCompletionRate(days: Int, now: Date = Date()) -> Double {
-        aggregateCompletionSummary(days: days, now: now).completionRate
-    }
-
     func aggregateCompletionSummary(days: Int, now: Date = Date()) -> HabitCompletionSummary {
         guard days > 0 else {
             return HabitCompletionSummary(completedCount: 0, eligibleCount: 0)
@@ -233,20 +225,10 @@ final class HabitService: ObservableObject {
 
     func statistics(for habit: HabitDefinition, now: Date = Date()) -> HabitStatistics {
         HabitStatistics(
-            currentStreak: calculateCurrentStreak(for: habit, now: now),
+            currentStreak: currentStreak(for: habit, now: now),
             bestStreak: bestStreak(for: habit, now: now),
             thirtyDayRate: completionRate(for: habit, days: 30, now: now)
         )
-    }
-
-    func currentStreak(for habit: HabitDefinition, now: Date = Date()) -> Int {
-        calculateCurrentStreak(for: habit, now: now)
-    }
-
-    func recentDaySummaries(days: Int = 30, now: Date = Date()) -> [HabitDaySummary] {
-        datesEndingToday(count: days, now: now).reversed().map { date in
-            daySummary(for: date, now: now)
-        }
     }
 
     func daySummary(for date: Date, now: Date = Date()) -> HabitDaySummary {
@@ -304,7 +286,7 @@ final class HabitService: ObservableObject {
         return Double(completed) / Double(eligibleDays.count)
     }
 
-    private func calculateCurrentStreak(for habit: HabitDefinition, now: Date) -> Int {
+    func currentStreak(for habit: HabitDefinition, now: Date = Date()) -> Int {
         let today = calendar.startOfDay(for: now)
         let todayKey = Self.dayIdentifier(for: today, calendar: calendar)
         let todayComplete = records[todayKey]?.completedHabitIDs.contains(habit.id) == true

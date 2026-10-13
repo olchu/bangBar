@@ -259,27 +259,8 @@ struct MoonPhase {
         Self.fullMoonDateFormatter.string(from: nextNewMoonDate)
     }
 
-    var currentDateText: String {
-        Self.fullMoonDateFormatter.string(from: date)
-    }
-
-    var fullMoonCycleProgress: Double {
-        let previousFullMoon = Self.previousFullMoon(before: date)
-        let nextFullMoon = nextFullMoonDate
-        let cycleLength = nextFullMoon.timeIntervalSince(previousFullMoon)
-
-        guard cycleLength > 0 else { return 0 }
-
-        let progress = date.timeIntervalSince(previousFullMoon) / cycleLength
-        return min(max(progress, 0), 1)
-    }
-
     var illuminationFraction: Double {
         (1 - cos(elongation.degreesToRadians)) / 2
-    }
-
-    var isWaxing: Bool {
-        elongation < 180
     }
 
     private var phase: Phase {
@@ -355,30 +336,6 @@ struct MoonPhase {
         let refinedDate = refinedNewMoon(near: bestDate, window: sampleStep)
         guard refinedDate >= date else {
             return nextNewMoon(after: date.addingTimeInterval(sampleStep))
-        }
-
-        return refinedDate
-    }
-
-    private static func previousFullMoon(before date: Date) -> Date {
-        let sampleStep = 6.0 * 60 * 60
-        let sampleCount = Int((synodicPeriod * secondsPerDay) / sampleStep)
-        var bestDate = date
-        var bestIllumination = -Double.infinity
-
-        for sample in 0...sampleCount {
-            let candidate = date.addingTimeInterval(-Double(sample) * sampleStep)
-            let illumination = illuminationFraction(on: candidate)
-
-            if illumination > bestIllumination {
-                bestIllumination = illumination
-                bestDate = candidate
-            }
-        }
-
-        let refinedDate = refinedFullMoon(near: bestDate, window: sampleStep)
-        guard refinedDate <= date else {
-            return previousFullMoon(before: date.addingTimeInterval(-sampleStep))
         }
 
         return refinedDate

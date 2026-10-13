@@ -2084,12 +2084,8 @@ private extension BangBarWidget {
     }
 
     var settingsChipWidth: CGFloat {
-        let scaledWidth = realPanelWidth * 0.7 + 70
+        let scaledWidth = layoutWidth * 0.7 + 70
         return max(scaledWidth, minimumReadableChipWidth)
-    }
-
-    private var realPanelWidth: CGFloat {
-        layoutWidth
     }
 
     private var minimumReadableChipWidth: CGFloat {
@@ -2417,19 +2413,6 @@ struct SettingsDivider: View {
     }
 }
 
-private struct DottedDivider: View {
-    var body: some View {
-        VStack(spacing: 4) {
-            ForEach(0..<120, id: \.self) { _ in
-                Circle()
-                    .fill(SettingsTheme.secondaryText.opacity(0.5))
-                    .frame(width: 1.5, height: 1.5)
-            }
-        }
-        .frame(width: 1)
-    }
-}
-
 struct SettingsOutlineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -2734,11 +2717,9 @@ enum SettingsTheme {
     static let primaryText = Color.white.opacity(0.92)
     static let secondaryText = Color.white.opacity(0.52)
 
-    static let titleFont = Font.system(size: 18, weight: .medium, design: .monospaced)
     static let sectionTitleFont = Font.system(size: 20, weight: .medium, design: .monospaced)
     static let sidebarFont = Font.system(size: 17, weight: .semibold, design: .monospaced)
     static let labelFont = Font.system(size: 14, weight: .semibold, design: .monospaced)
-    static let chipFont = Font.system(size: 14, weight: .regular, design: .monospaced)
     static let rowFont = Font.system(size: 16, weight: .regular, design: .monospaced)
     static let captionFont = Font.system(size: 13, weight: .regular, design: .monospaced)
     static let descriptionFont = Font.system(size: 12, weight: .regular, design: .monospaced)

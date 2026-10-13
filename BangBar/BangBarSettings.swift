@@ -75,6 +75,32 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var visibilityKey: String {
+        switch self {
+        case .nowPlaying: BangBarSettings.Key.showNowPlayingWidget
+        case .clock: BangBarSettings.Key.showClockWidget
+        case .moon: BangBarSettings.Key.showMoonWidget
+        case .pomodoro: BangBarSettings.Key.showPomodoroWidget
+        case .countdown: BangBarSettings.Key.showCountdownWidget
+        case .reminders: BangBarSettings.Key.showRemindersWidget
+        case .mirror: BangBarSettings.Key.showMirrorWidget
+        case .system: BangBarSettings.Key.showSystemWidget
+        case .github: BangBarSettings.Key.showGitHubWidget
+        case .aiUsage: BangBarSettings.Key.showAIUsageWidget
+        case .companion: BangBarSettings.Key.showCompanionWidget
+        case .habits: BangBarSettings.Key.showHabitsWidget
+        case .translator: BangBarSettings.Key.showTranslatorWidget
+        case .dayPlans: BangBarSettings.Key.showDayPlansWidget
+        }
+    }
+
+    var isVisibleByDefault: Bool {
+        switch self {
+        case .nowPlaying, .clock, .moon, .pomodoro, .reminders, .mirror: true
+        case .countdown, .system, .github, .aiUsage, .companion, .habits, .translator, .dayPlans: false
+        }
+    }
+
     static var visibleCases: [BangBarWidget] {
         allCases.filter { $0 != .companion }
     }
@@ -293,20 +319,9 @@ enum BangBarSettings {
     static let calendarAlertBlurRadiusRange = 0...80
 
     static func registerDefaults() {
-        UserDefaults.standard.register(defaults: [
-            Key.showNowPlayingWidget: true,
+        var defaults: [String: Any] = [
             Key.preferredMusicPlayer: MusicPlayer.appleMusic.rawValue,
             Key.musicVisualizerMode: MusicVisualizerMode.animated.rawValue,
-            Key.showClockWidget: true,
-            Key.showMoonWidget: true,
-            Key.showMirrorWidget: true,
-            Key.showSystemWidget: false,
-            Key.showGitHubWidget: false,
-            Key.showAIUsageWidget: false,
-            Key.showCompanionWidget: false,
-            Key.showHabitsWidget: false,
-            Key.showTranslatorWidget: false,
-            Key.showDayPlansWidget: false,
             Key.translatorSourceIsRussian: true,
             Key.githubUsername: "",
             Key.moonUsesCurrentLocation: true,
@@ -316,9 +331,6 @@ enum BangBarSettings {
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,
-            Key.showPomodoroWidget: true,
-            Key.showCountdownWidget: false,
-            Key.showRemindersWidget: true,
             Key.calendarAlertsEnabled: false,
             Key.calendarAlertLeadMinutes: 0,
             Key.calendarAlertBackgroundOpacity: 62,
@@ -351,7 +363,15 @@ enum BangBarSettings {
             Key.keyboardSwitcherExcludedApps: defaultKeyboardSwitcherExcludedApps,
             Key.keyboardSwitcherExceptions: "",
             Key.keyboardSwitcherLearnedWords: ""
-        ])
+        ]
+        for widget in BangBarWidget.allCases {
+            defaults[widget.visibilityKey] = widget.isVisibleByDefault
+        }
+        UserDefaults.standard.register(defaults: defaults)
+    }
+
+    static func isWidgetVisible(_ widget: BangBarWidget) -> Bool {
+        BangBarWidget.visibleCases.contains(widget) && UserDefaults.standard.bool(forKey: widget.visibilityKey)
     }
 
     static var keyboardSwitcherExcludedApps: [String] {
@@ -436,10 +456,6 @@ enum BangBarSettings {
         return rawValue
     }
 
-    static var showNowPlayingWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showNowPlayingWidget) as? Bool ?? true
-    }
-
     static var preferredMusicPlayer: MusicPlayer {
         guard let rawValue = UserDefaults.standard.string(forKey: Key.preferredMusicPlayer) else {
             return .appleMusic
@@ -449,58 +465,6 @@ enum BangBarSettings {
 
     static var panelActivationThreshold: CGFloat {
         CGFloat(UserDefaults.standard.integer(forKey: Key.panelActivationThreshold))
-    }
-
-    static var showClockWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showClockWidget) as? Bool ?? true
-    }
-
-    static var showMoonWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showMoonWidget) as? Bool ?? true
-    }
-
-    static var showMirrorWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showMirrorWidget) as? Bool ?? true
-    }
-
-    static var showSystemWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showSystemWidget) as? Bool ?? false
-    }
-
-    static var showGitHubWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showGitHubWidget) as? Bool ?? false
-    }
-
-    static var showAIUsageWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showAIUsageWidget) as? Bool ?? false
-    }
-
-    static var showCompanionWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showCompanionWidget) as? Bool ?? false
-    }
-
-    static var showHabitsWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showHabitsWidget) as? Bool ?? false
-    }
-
-    static var showTranslatorWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showTranslatorWidget) as? Bool ?? false
-    }
-
-    static var showDayPlansWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showDayPlansWidget) as? Bool ?? false
-    }
-
-    static var showPomodoroWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showPomodoroWidget) as? Bool ?? true
-    }
-
-    static var showCountdownWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showCountdownWidget) as? Bool ?? false
-    }
-
-    static var showRemindersWidget: Bool {
-        UserDefaults.standard.object(forKey: Key.showRemindersWidget) as? Bool ?? true
     }
 
     static var clipboardStorageLimitMB: Int {

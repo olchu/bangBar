@@ -63,48 +63,14 @@ enum PanelLayout {
     static let pomodoroWidgetWidth: CGFloat = 110
     static let countdownWidgetWidth: CGFloat = 150
     static let remindersWidgetWidth: CGFloat = 130
-    static let calendarWidgetWidth: CGFloat = 140
     static let emptyWidgetWidth: CGFloat = 220
-
-    static var expandedWidgetWidths: [CGFloat] {
-        expandedWidgetWidths(
-            showNowPlaying: BangBarSettings.showNowPlayingWidget,
-            showClock: BangBarSettings.showClockWidget,
-            showMoon: BangBarSettings.showMoonWidget,
-            showPomodoro: BangBarSettings.showPomodoroWidget,
-            showReminders: BangBarSettings.showRemindersWidget,
-            showMirror: BangBarSettings.showMirrorWidget,
-            showSystem: BangBarSettings.showSystemWidget
-        )
-    }
-
-    static var expandedWidth: CGFloat {
-        expandedWidth(for: enabledWidgets)
-    }
 
     static var enabledWidgets: [BangBarWidget] {
         BangBarSettings.widgetOrder(
             from: UserDefaults.standard.string(forKey: BangBarSettings.Key.widgetOrder)
                 ?? BangBarSettings.defaultWidgetOrderRaw
         )
-        .filter { widget in
-            switch widget {
-            case .nowPlaying: BangBarSettings.showNowPlayingWidget
-            case .clock: BangBarSettings.showClockWidget
-            case .moon: BangBarSettings.showMoonWidget
-            case .pomodoro: BangBarSettings.showPomodoroWidget
-            case .countdown: BangBarSettings.showCountdownWidget
-            case .reminders: BangBarSettings.showRemindersWidget
-            case .mirror: BangBarSettings.showMirrorWidget
-            case .system: BangBarSettings.showSystemWidget
-            case .github: BangBarSettings.showGitHubWidget
-            case .aiUsage: BangBarSettings.showAIUsageWidget
-            case .companion: false
-            case .habits: BangBarSettings.showHabitsWidget
-            case .translator: BangBarSettings.showTranslatorWidget
-            case .dayPlans: BangBarSettings.showDayPlansWidget
-            }
-        }
+        .filter { BangBarSettings.isWidgetVisible($0) }
     }
 
     static func maximumExpandedWidth(on screen: NSScreen?) -> CGFloat {
@@ -154,58 +120,7 @@ enum PanelLayout {
         return result
     }
 
-    static func expandedWidgetWidths(
-        showNowPlaying: Bool,
-        showClock: Bool,
-        showMoon: Bool,
-        showPomodoro: Bool,
-        showReminders: Bool,
-        showMirror: Bool,
-        showSystem: Bool
-    ) -> [CGFloat] {
-        var widths: [CGFloat] = []
-
-        if showNowPlaying { widths.append(nowPlayingWidgetWidth) }
-        if showClock { widths.append(clockWidgetWidth) }
-        if showMoon { widths.append(moonWidgetWidth) }
-        if showPomodoro { widths.append(pomodoroWidgetWidth) }
-        if showReminders { widths.append(remindersWidgetWidth) }
-        if showMirror { widths.append(mirrorWidgetWidth) }
-        if showSystem { widths.append(systemWidgetWidth) }
-
-        guard !widths.isEmpty else { return [emptyWidgetWidth] }
-
-        return widths.enumerated().flatMap { index, width in
-            index == 0 ? [width] : [expandedDividerWidth, width]
-        }
-    }
-
-    static func expandedWidth(
-        showNowPlaying: Bool,
-        showClock: Bool,
-        showMoon: Bool,
-        showPomodoro: Bool,
-        showReminders: Bool,
-        showMirror: Bool,
-        showSystem: Bool
-    ) -> CGFloat {
-        let widths = expandedWidgetWidths(
-            showNowPlaying: showNowPlaying,
-            showClock: showClock,
-            showMoon: showMoon,
-            showPomodoro: showPomodoro,
-            showReminders: showReminders,
-            showMirror: showMirror,
-            showSystem: showSystem
-        )
-        let contentWidth = widths.reduce(0, +)
-        let spacingWidth = expandedWidgetSpacing * CGFloat(max(widths.count - 1, 0))
-        return expandedHorizontalPadding * 2 + contentWidth + spacingWidth
-    }
-
-    static func compactHorizontalPadding(for height: CGFloat) -> CGFloat {
-        min(max(height + 18, 50), 50)
-    }
+    static let compactHorizontalPadding: CGFloat = 50
 
     static func compactWidth(for notchWidth: CGFloat) -> CGFloat {
         min(max(notchWidth + compactNotchSidePadding * 2, compactMinimumWidth), compactMaximumWidth)

@@ -8,7 +8,7 @@ struct CompactClipboardGroupWidget: View {
 
     var body: some View {
         GeometryReader { geo in
-            let horizontalPadding = PanelLayout.compactHorizontalPadding(for: geo.size.height)
+            let horizontalPadding = PanelLayout.compactHorizontalPadding
             let previewSize = min(max(geo.size.height - 10, 22), 32)
 
             HStack(spacing: 9) {

@@ -122,9 +122,7 @@ Album artwork should read visually as one continuous element between compact and
   - `PanelTopBar.swift`: panel navigation, clipboard filters and image-group collection controls;
   - `NotchPanelShape.swift`: custom panel clipping shape.
 - `SystemWidget.swift` provides live CPU, memory, power/disk, thermal status, and local IPv4 information.
-- Legacy/standalone widgets live outside `PanelContentView`:
-  - `CalendarWidget.swift`;
-  - `SystemWidget.swift`.
+- `SystemWidget.swift` lives outside `PanelContentView`.
 - New widget UI should be added as a separate file instead of growing `PanelContentView.swift`.
 
 ### Layout Constants

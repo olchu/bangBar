@@ -238,7 +238,7 @@ struct CompactNowPlayingWidget: View {
         GeometryReader { geo in
             let artworkSize = min(max(geo.size.height - 10, 22), 32)
             let indicatorHeight = min(max(geo.size.height - 16, 14), 20)
-            let horizontalPadding = PanelLayout.compactHorizontalPadding(for: geo.size.height)
+            let horizontalPadding = PanelLayout.compactHorizontalPadding
             let indicatorWidth: CGFloat = 28
             let minimumArtworkGap: CGFloat = 34
             let hasEnoughCompactContentSpace = geo.size.width >= horizontalPadding * 2 + artworkSize + indicatorWidth + minimumArtworkGap
@@ -373,7 +373,7 @@ struct ArtworkHeroView: View {
     var body: some View {
         let p = min(max(progress, 0), 1)
         let compactSize = min(max(panelSize.height - 10, 22), 32)
-        let compactPadding = PanelLayout.compactHorizontalPadding(for: panelSize.height)
+        let compactPadding = PanelLayout.compactHorizontalPadding
         let expandedSize: CGFloat = PanelLayout.nowPlayingArtworkSize
 
         let startFrame = CGRect(

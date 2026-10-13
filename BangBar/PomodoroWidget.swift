@@ -132,7 +132,7 @@ struct CompactPomodoroWidget: View {
 
     var body: some View {
         GeometryReader { geo in
-            let horizontalPadding = PanelLayout.compactHorizontalPadding(for: geo.size.height)
+            let horizontalPadding = PanelLayout.compactHorizontalPadding
             let iconSize = min(max(geo.size.height - 12, 20), 30)
             let hasEnoughSpace = geo.size.width >= horizontalPadding * 2 + 96
 

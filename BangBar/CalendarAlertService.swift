@@ -780,16 +780,3 @@ private struct CalendarAlertPlainButtonStyle: ButtonStyle {
             .contentShape(Rectangle())
     }
 }
-
-private struct CalendarAlertSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 15, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.55 : 0.82))
-            .padding(.horizontal, 24)
-            .frame(height: 48)
-            .background(.white.opacity(0.08))
-            .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 1))
-            .clipShape(Capsule())
-    }
-}
