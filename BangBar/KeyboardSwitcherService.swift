@@ -88,6 +88,8 @@ final class KeyboardSwitcherService: NSObject {
     }
 
     private func updateState() {
+        reloadTriggerSettings()
+        autoSwitcher.reloadSettings()
         guard isEnabled else {
             removeTap()
             stopPermissionPolling()
@@ -199,18 +201,20 @@ final class KeyboardSwitcherService: NSObject {
 
     // MARK: - Triggers
 
-    private var trigger: KeyboardSwitcherTrigger {
-        KeyboardSwitcherTrigger(
-            rawValue: UserDefaults.standard.string(forKey: BangBarSettings.Key.keyboardSwitcherTrigger) ?? ""
-        ) ?? .doubleShift
-    }
+    // Cached by `reloadTriggerSettings()`: both are read for every key event the tap sees.
+    private var trigger = KeyboardSwitcherTrigger.doubleShift
+    private var customShortcut: (keyCode: Int, modifiers: CGEventFlags)?
 
-    private var customShortcut: (keyCode: Int, modifiers: CGEventFlags)? {
+    private func reloadTriggerSettings() {
         let defaults = UserDefaults.standard
+        trigger = KeyboardSwitcherTrigger(
+            rawValue: defaults.string(forKey: BangBarSettings.Key.keyboardSwitcherTrigger) ?? ""
+        ) ?? .doubleShift
         let keyCode = defaults.integer(forKey: BangBarSettings.Key.keyboardSwitcherShortcutKeyCode)
-        guard keyCode >= 0 else { return nil }
         let modifiers = UInt64(defaults.integer(forKey: BangBarSettings.Key.keyboardSwitcherShortcutModifiers))
-        return (keyCode, CGEventFlags(rawValue: modifiers).intersection(Self.shortcutModifierMask))
+        customShortcut = keyCode >= 0
+            ? (keyCode, CGEventFlags(rawValue: modifiers).intersection(Self.shortcutModifierMask))
+            : nil
     }
 
     private func handleFlagsChanged(_ event: CGEvent) {
@@ -288,7 +292,8 @@ final class KeyboardSwitcherService: NSObject {
         // The word's layout decides how it is converted, so re-read it as each word starts
         // instead of trusting notifications alone.
         if buffer.isEmpty || buffer.trailingSpaces > 0 {
-            currentLayout = KeyboardLayouts.current()
+            currentLayout = KeyboardLayouts.currentLayoutID().flatMap(autoSwitcher.layout(withID:))
+                ?? KeyboardLayouts.current()
         }
         let keystroke = TypedKeystroke(
             keyCode: keyCode,
@@ -350,7 +355,7 @@ final class KeyboardSwitcherService: NSObject {
 
     private func convertLastWord(learns: Bool) {
         guard let wordLayoutID = buffer.layoutID else { return }
-        let layouts = KeyboardLayouts.enabled()
+        let layouts = autoSwitcher.enabledLayouts
         guard layouts.count > 1,
               let fromIndex = layouts.firstIndex(where: { $0.id == wordLayoutID }) else { return }
         let source = layouts[fromIndex]

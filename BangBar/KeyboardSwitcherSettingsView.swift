@@ -32,7 +32,7 @@ struct KeyboardSwitcherSettingsSection: View {
             isTrusted = AccessibilityAccess.isTrusted
             layoutNames = KeyboardLayouts.enabled().map(\.name)
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             isTrusted = AccessibilityAccess.isTrusted
         }
         .onReceive(DistributedNotificationCenter.default().publisher(

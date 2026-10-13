@@ -382,10 +382,14 @@ struct ClockWidget: View {
     }
 
     private func timeString(from date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        Self.timeFormatter.string(from: date)
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
 
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     private var accentColor: Color { Color(hex: accentColorHex) }

@@ -138,10 +138,14 @@ private struct DayPlansWindowView: View {
         if selectedFilter == .completed { return "Completed" }
         if calendar.isDateInToday(selectedDate) { return "Today" }
 
+        return Self.dayTitleFormatter.string(from: selectedDate)
+    }
+
+    private static let dayTitleFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
-        return formatter.string(from: selectedDate)
-    }
+        return formatter
+    }()
 
     var body: some View {
         HStack(spacing: 0) {
@@ -644,10 +648,14 @@ private struct DayPlansWindowView: View {
     }
 
     private var monthTitle: String {
+        Self.monthTitleFormatter.string(from: displayedMonth)
+    }
+
+    private static let monthTitleFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: displayedMonth)
-    }
+        return formatter
+    }()
 
     private func focusAddField() {
         isAddTaskRowVisible = true

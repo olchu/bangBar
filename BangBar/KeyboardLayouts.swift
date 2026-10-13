@@ -21,6 +21,11 @@ enum KeyboardLayouts {
         return list.compactMap { layout(from: $0) }
     }
 
+    static func currentLayoutID() -> String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else { return nil }
+        return stringProperty(source, kTISPropertyInputSourceID)
+    }
+
     static func current() -> KeyboardLayout? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else { return nil }
         return layout(from: source)

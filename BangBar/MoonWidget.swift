@@ -269,11 +269,29 @@ struct MoonPhase {
     }
 
     private var nextFullMoonDate: Date {
-        Self.nextFullMoon(after: date)
+        Self.cachedEvent(&Self.nextFullMoonCache, after: date, compute: { Self.nextFullMoon(after: $0) })
     }
 
     private var nextNewMoonDate: Date {
-        Self.nextNewMoon(after: date)
+        Self.cachedEvent(&Self.nextNewMoonCache, after: date, compute: { Self.nextNewMoon(after: $0) })
+    }
+
+    private static var nextFullMoonCache: (from: Date, event: Date)?
+    private static var nextNewMoonCache: (from: Date, event: Date)?
+
+    /// Each search costs ~175 ephemeris evaluations and the widget asks several times per render.
+    /// The next event after `from` is still the next event for any date before it, so the cache never goes stale.
+    private static func cachedEvent(
+        _ cache: inout (from: Date, event: Date)?,
+        after date: Date,
+        compute: (Date) -> Date
+    ) -> Date {
+        if let cache, cache.from <= date, date < cache.event {
+            return cache.event
+        }
+        let event = compute(date)
+        cache = (date, event)
+        return event
     }
 
     private enum Phase: CaseIterable {

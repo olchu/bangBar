@@ -387,7 +387,12 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     private func observeSettings() {
+        // Any defaults write in the app lands here; only a new storage limit needs the history rewritten.
         settingsObserver = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .map { _ in BangBarSettings.clipboardStorageLimitMB }
+            .prepend(BangBarSettings.clipboardStorageLimitMB)
+            .removeDuplicates()
+            .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.enforceLimitsAndSave()
@@ -396,6 +401,14 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func capturePasteboardIfNeeded() {
         updateCollectionSession()
+
+        if Self.needsResyncAfterSuspension, Self.externalSuspensionCount == 0 {
+            Self.needsResyncAfterSuspension = false
+            pendingCaptureDeadline = nil
+            lastChangeCount = pasteboard.changeCount
+            lastStableFingerprint = currentPasteboardFingerprint()
+            return
+        }
 
         if let pendingCaptureDeadline,
            Date() >= pendingCaptureDeadline,
@@ -450,16 +463,25 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    private static var externalSuppressionUntil = Date.distantPast
+    private static var externalSuspensionCount = 0
+    private static var needsResyncAfterSuspension = false
 
-    /// Lets other features use the pasteboard as a scratch space (copy → transform → paste → restore)
-    /// without their intermediate contents landing in the history.
-    static func suppressCapture(for duration: TimeInterval) {
-        externalSuppressionUntil = max(externalSuppressionUntil, Date().addingTimeInterval(duration))
+    /// Lets other features use the pasteboard as scratch space (copy → transform → paste → restore).
+    /// Nothing written until the matching `resumeCapture()` reaches the history, however long it takes,
+    /// and whatever the pasteboard holds afterwards is adopted as already seen rather than captured.
+    static func suspendCapture() {
+        externalSuspensionCount += 1
+    }
+
+    static func resumeCapture() {
+        externalSuspensionCount = max(externalSuspensionCount - 1, 0)
+        if externalSuspensionCount == 0 {
+            needsResyncAfterSuspension = true
+        }
     }
 
     private var isCaptureSuppressed: Bool {
-        isShortcutSuppressionActive || Date() < Self.externalSuppressionUntil
+        isShortcutSuppressionActive || Self.externalSuspensionCount > 0
     }
 
     private var isShortcutSuppressionActive: Bool {
@@ -791,17 +813,24 @@ final class ClipboardHistoryService: ObservableObject {
         guard activeGroupID != nil,
               let collectionStartedAt,
               let lastGroupCaptureAt else {
-            collectionSecondsRemaining = 0
+            setCollectionSecondsRemaining(0)
             return
         }
 
         let inactivityRemaining = collectionInactivityTimeout - now.timeIntervalSince(lastGroupCaptureAt)
         let durationRemaining = collectionMaximumDuration - now.timeIntervalSince(collectionStartedAt)
-        collectionSecondsRemaining = max(0, Int(ceil(min(inactivityRemaining, durationRemaining))))
+        setCollectionSecondsRemaining(max(0, Int(ceil(min(inactivityRemaining, durationRemaining)))))
 
         if inactivityRemaining <= 0 || durationRemaining <= 0 || activeGroupItemCount >= collectionMaximumItems {
             stopCollecting()
         }
+    }
+
+    // Runs on every pasteboard poll; @Published notifies even for an unchanged value, which would re-render
+    // every observer of the service twice a second.
+    private func setCollectionSecondsRemaining(_ seconds: Int) {
+        guard collectionSecondsRemaining != seconds else { return }
+        collectionSecondsRemaining = seconds
     }
 
     private func removeEmptyGroups() {

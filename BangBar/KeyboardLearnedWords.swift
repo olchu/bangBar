@@ -9,10 +9,14 @@ struct KeyboardLearnedWord: Hashable {
 
 /// Words the user converted by hand, switched automatically from then on. Stored oldest first, one
 /// tab-separated `source target word` entry per line.
-struct KeyboardLearnedWords {
+struct KeyboardLearnedWords: Equatable {
     static let capacity = 500
 
-    private(set) var entries: [KeyboardLearnedWord] = []
+    private(set) var entries: [KeyboardLearnedWord] = [] {
+        didSet { lookup = Set(entries) }
+    }
+    /// Lookups happen inside the keyboard event tap on every Space, so they must not scan the list.
+    private var lookup: Set<KeyboardLearnedWord> = []
 
     init(rawValue: String = "") {
         entries = rawValue.split(separator: "\n").compactMap { line in
@@ -20,6 +24,7 @@ struct KeyboardLearnedWords {
             guard fields.count == 3, fields.allSatisfy({ !$0.isEmpty }) else { return nil }
             return KeyboardLearnedWord(sourceLayoutID: fields[0], targetLayoutID: fields[1], word: fields[2])
         }
+        lookup = Set(entries)
     }
 
     var rawValue: String {
@@ -29,7 +34,7 @@ struct KeyboardLearnedWords {
     var words: [String] { entries.map(\.word) }
 
     func contains(_ entry: KeyboardLearnedWord) -> Bool {
-        entries.contains(entry)
+        lookup.contains(entry)
     }
 
     /// Re-learning a word moves it to the end, so the least recently learned words drop out first.

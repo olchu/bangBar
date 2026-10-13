@@ -43,6 +43,26 @@ final class CalendarAlertService {
     private var snoozedEvent: CalendarAlertEvent?
     private var snoozedUntil: Date?
     private var observers: [NSObjectProtocol] = []
+    private var settings = AlertSettings.current
+
+    /// The settings alerts depend on. Any defaults write in the app posts a change notification, and
+    /// re-querying EventKit for unrelated keys would be wasted work.
+    private struct AlertSettings: Equatable {
+        var isEnabled: Bool
+        var leadMinutes: Int
+        var selectedCalendarIDs: String
+        var blurIntensity: Int
+
+        static var current: AlertSettings {
+            let defaults = UserDefaults.standard
+            return AlertSettings(
+                isEnabled: defaults.bool(forKey: BangBarSettings.Key.calendarAlertsEnabled),
+                leadMinutes: defaults.integer(forKey: BangBarSettings.Key.calendarAlertLeadMinutes),
+                selectedCalendarIDs: defaults.string(forKey: BangBarSettings.Key.selectedCalendarIds) ?? "",
+                blurIntensity: defaults.integer(forKey: BangBarSettings.Key.calendarAlertBlurIntensity)
+            )
+        }
+    }
 
     func start() {
         observers.append(
@@ -51,10 +71,7 @@ final class CalendarAlertService {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.updateTimer()
-                    self?.applyWindowBlur()
-                }
+                MainActor.assumeIsolated { self?.settingsDidChange() }
             }
         )
         observers.append(
@@ -76,6 +93,19 @@ final class CalendarAlertService {
             }
         )
         updateTimer()
+    }
+
+    private func settingsDidChange() {
+        let previous = settings
+        settings = .current
+        if settings.blurIntensity != previous.blurIntensity {
+            applyWindowBlur()
+        }
+        var timerSettings = settings
+        timerSettings.blurIntensity = previous.blurIntensity
+        if timerSettings != previous {
+            updateTimer()
+        }
     }
 
     private func updateTimer() {

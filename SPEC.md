@@ -933,11 +933,11 @@ struct NotionTask: Identifiable {
 
 **Selection conversion** (`SelectedTextConverter`):
 1. Check the focused element's `kAXSelectedTextRangeAttribute` (`0.25 s` messaging timeout). A zero-length selection aborts. Apps that do not expose it (many Electron apps and web views) fall through to the clipboard probe.
-2. Snapshot every pasteboard item and type, suppress Clipboard History capture (`ClipboardHistoryService.suppressCapture(for:)`), post ⌘C, and wait up to `0.5 s` for `changeCount` to change. No change means nothing was selected — abort without touching the pasteboard.
+2. Snapshot every pasteboard item and type, suspend Clipboard History capture for the whole operation (`ClipboardHistoryService.suspendCapture()` / `resumeCapture()`; on resume the pasteboard's current state is adopted as already seen, not captured), post ⌘C, and wait up to `0.5 s` for `changeCount` to change. No change means nothing was selected — abort without touching the pasteboard.
 3. Abort and restore if there is no plain text, or if Accessibility could not confirm a selection and the copied text ends with a line break — VS Code and JetBrains copy the whole current line when nothing is selected.
 4. Source layout = the enabled layout that can type the most letters of the text; target = the next enabled layout. Each character is mapped back to its key in the source layout (`(keyCode, shift)`, main keys preferred over keypad) and translated through the target. Characters the source layout cannot type (text already in the target layout, emoji, line breaks) are kept as is, so mixed text like `ghbdtn мир` becomes `привет мир`.
 5. Write the result with `org.nspasteboard.TransientType` (so third-party clipboard managers skip it), post ⌘V, then ⇧← × length to reselect it (only up to 1,000 characters), and select the target layout.
-6. After `0.4 s` (the app reads the pasteboard while handling ⌘V) restore the snapshot and keep capture suppressed for another `1.5 s`.
+6. After `0.4 s` (the app reads the pasteboard while handling ⌘V) restore the snapshot, then resume capture.
 
 **Layouts:** enabled, selectable keyboard layouts (`kTISTypeKeyboardLayout`) with Unicode layout data, in system order. Input methods (e.g. Japanese) are ignored; their underlying keyboard layout is used.
 

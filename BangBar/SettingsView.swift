@@ -1344,7 +1344,7 @@ private struct PrivacySettingsSection: View {
         .onAppear {
             refreshStatuses()
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             isAccessibilityTrusted = AccessibilityAccess.isTrusted
         }
     }

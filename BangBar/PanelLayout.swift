@@ -86,13 +86,11 @@ enum PanelLayout {
         return min(maximumExpandedWidth, screen.visibleFrame.width - expandedScreenEdgeInset * 2)
     }
 
-    static func widgetPage(for widget: BangBarWidget) -> Int {
-        let raw = UserDefaults.standard.string(forKey: BangBarSettings.Key.widgetPages) ?? "{}"
-        return BangBarSettings.widgetPages(from: raw)[widget.rawValue] ?? 0
-    }
-
     static func enabledWidgets(forPage page: Int) -> [BangBarWidget] {
-        enabledWidgets.filter { widgetPage(for: $0) == page }
+        let pages = BangBarSettings.widgetPages(
+            from: UserDefaults.standard.string(forKey: BangBarSettings.Key.widgetPages) ?? "{}"
+        )
+        return enabledWidgets.filter { (pages[$0.rawValue] ?? 0) == page }
     }
 
     static func fittedWidgets(forPage page: Int, on screen: NSScreen?) -> [BangBarWidget] {

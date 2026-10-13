@@ -17,7 +17,8 @@ enum SelectedTextConverter {
         let pasteboard = NSPasteboard.general
         let snapshot = PasteboardSnapshot(pasteboard)
         let initialChangeCount = pasteboard.changeCount
-        ClipboardHistoryService.suppressCapture(for: 3)
+        ClipboardHistoryService.suspendCapture()
+        defer { ClipboardHistoryService.resumeCapture() }
 
         SyntheticKeyboard.press(CGKeyCode(kVK_ANSI_C), flags: .maskCommand)
         guard await waitForChange(of: pasteboard, since: initialChangeCount) else { return nil }
@@ -44,7 +45,6 @@ enum SelectedTextConverter {
         // The app reads the pasteboard when it handles ⌘V; restoring earlier would paste the old contents.
         try? await Task.sleep(for: .milliseconds(400))
         snapshot.restore(to: pasteboard)
-        ClipboardHistoryService.suppressCapture(for: 1.5)
         return pair.target
     }
 

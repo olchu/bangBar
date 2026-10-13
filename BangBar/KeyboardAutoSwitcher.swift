@@ -13,21 +13,37 @@ struct AutoSwitchPlan {
 /// Decides whether a just-finished word was typed in the wrong layout, using the system spell checker and
 /// the words the user converted by hand.
 final class KeyboardAutoSwitcher {
-    private var enabledLayouts: [KeyboardLayout] = []
+    private(set) var enabledLayouts: [KeyboardLayout] = []
     private var frontmostBundleID: String?
     private var isSpellCheckerWarm = false
     private lazy var spellCheckerLanguages = Set(NSSpellChecker.shared.availableLanguages)
 
-    var isEnabled: Bool {
-        UserDefaults.standard.bool(forKey: BangBarSettings.Key.keyboardSwitcherAutoEnabled)
-    }
+    // Cached from UserDefaults by `reloadSettings()`: `plan(for:)` runs inside the event tap on every Space.
+    private(set) var isEnabled = false
+    private var excludedApps: Set<String> = []
+    private var isFrontmostAppExcluded = false
+    private var exceptions: Set<String> = []
+    private var learnedWords = KeyboardLearnedWords()
 
     func refreshLayouts() {
         enabledLayouts = KeyboardLayouts.enabled()
     }
 
+    func layout(withID id: String) -> KeyboardLayout? {
+        enabledLayouts.first { $0.id == id }
+    }
+
+    func reloadSettings() {
+        isEnabled = UserDefaults.standard.bool(forKey: BangBarSettings.Key.keyboardSwitcherAutoEnabled)
+        excludedApps = Set(BangBarSettings.keyboardSwitcherExcludedApps)
+        exceptions = BangBarSettings.keyboardSwitcherExceptions
+        learnedWords = BangBarSettings.keyboardSwitcherLearnedWords
+        isFrontmostAppExcluded = frontmostBundleID.map(excludedApps.contains) ?? false
+    }
+
     func setFrontmostApp(_ bundleID: String?) {
         frontmostBundleID = bundleID
+        isFrontmostAppExcluded = bundleID.map(excludedApps.contains) ?? false
     }
 
     /// The first check loads dictionaries; doing it inside the event tap could stall typing long enough
@@ -48,8 +64,7 @@ final class KeyboardAutoSwitcher {
 
         let typed = buffer.keystrokes.map { KeyboardLayouts.translate([$0], with: source) }
         let typedWord = typed.joined()
-        guard !BangBarSettings.keyboardSwitcherExceptions.contains(typedWord.lowercased()) else { return nil }
-        let learnedWords = BangBarSettings.keyboardSwitcherLearnedWords
+        guard !exceptions.contains(typedWord.lowercased()) else { return nil }
 
         for offset in 1..<enabledLayouts.count {
             let target = enabledLayouts[(sourceIndex + offset) % enabledLayouts.count]
@@ -117,13 +132,23 @@ final class KeyboardAutoSwitcher {
 
     /// An undone switch is never repeated: the typed word becomes an exception and stops being learned.
     func rememberException(for plan: AutoSwitchPlan) {
-        var exceptions = BangBarSettings.keyboardSwitcherExceptions
-        exceptions.insert(plan.typedWord.lowercased())
-        BangBarSettings.keyboardSwitcherExceptions = exceptions
+        var updatedExceptions = exceptions
+        updatedExceptions.insert(plan.typedWord.lowercased())
+        var updatedLearnedWords = learnedWords
+        updatedLearnedWords.remove(plan.learnedWord)
+        save(exceptions: updatedExceptions, learnedWords: updatedLearnedWords)
+    }
 
-        var learnedWords = BangBarSettings.keyboardSwitcherLearnedWords
-        learnedWords.remove(plan.learnedWord)
-        BangBarSettings.keyboardSwitcherLearnedWords = learnedWords
+    /// Writes only what changed: every defaults write makes the whole app re-read its settings.
+    private func save(exceptions updatedExceptions: Set<String>, learnedWords updatedLearnedWords: KeyboardLearnedWords) {
+        if updatedExceptions != exceptions {
+            exceptions = updatedExceptions
+            BangBarSettings.keyboardSwitcherExceptions = updatedExceptions
+        }
+        if updatedLearnedWords != learnedWords {
+            learnedWords = updatedLearnedWords
+            BangBarSettings.keyboardSwitcherLearnedWords = updatedLearnedWords
+        }
     }
 
     /// Learns a word converted by hand (`ufnqf,` → `гитхаб`) so it switches automatically next time.
@@ -133,13 +158,14 @@ final class KeyboardAutoSwitcher {
         guard let origin = enabledLayouts.first(where: { $0.id == originLayoutID }) else { return }
         let typed = keystrokes.map { KeyboardLayouts.translate([$0], with: origin) }
 
-        var learnedWords = BangBarSettings.keyboardSwitcherLearnedWords
+        var updatedLearnedWords = learnedWords
+        var updatedExceptions = exceptions
         for layout in enabledLayouts where layout.id != origin.id {
             if let entry = learnedWord(typed: typed, keystrokes: keystrokes, from: origin, to: layout) {
-                learnedWords.remove(entry)
+                updatedLearnedWords.remove(entry)
             }
         }
-        defer { BangBarSettings.keyboardSwitcherLearnedWords = learnedWords }
+        defer { save(exceptions: updatedExceptions, learnedWords: updatedLearnedWords) }
 
         guard targetLayoutID != originLayoutID,
               let target = enabledLayouts.first(where: { $0.id == targetLayoutID }) else { return }
@@ -150,15 +176,12 @@ final class KeyboardAutoSwitcher {
            KeyboardAutoSwitchRules.isWord(typedCore: cores.typed, isValid: { isWord($0, language: language) }) {
             return
         }
-        learnedWords.insert(KeyboardLearnedWord(
+        updatedLearnedWords.insert(KeyboardLearnedWord(
             sourceLayoutID: origin.id,
             targetLayoutID: target.id,
             word: cores.candidate.lowercased()
         ))
-
-        var exceptions = BangBarSettings.keyboardSwitcherExceptions
-        exceptions.remove(typed.joined().lowercased())
-        BangBarSettings.keyboardSwitcherExceptions = exceptions
+        updatedExceptions.remove(typed.joined().lowercased())
     }
 
     private func learnedWord(
@@ -170,11 +193,6 @@ final class KeyboardAutoSwitcher {
         let candidate = keystrokes.map { KeyboardLayouts.translate([$0], with: target) }
         guard let cores = KeyboardAutoSwitchRules.cores(typed: typed, candidate: candidate) else { return nil }
         return KeyboardLearnedWord(sourceLayoutID: origin.id, targetLayoutID: target.id, word: cores.candidate.lowercased())
-    }
-
-    private var isFrontmostAppExcluded: Bool {
-        guard let frontmostBundleID else { return false }
-        return BangBarSettings.keyboardSwitcherExcludedApps.contains(frontmostBundleID)
     }
 
     private func spellLanguage(for layout: KeyboardLayout) -> String? {

@@ -515,7 +515,10 @@ final class NowPlayingService: ObservableObject {
               let activePlayer else {
             audioLevelMonitor?.stop()
             audioLevelMonitor = nil
-            liveAudioLevels = Self.idleAudioLevels
+            // Runs on every playback poll; republishing the same levels would re-render every observer.
+            if liveAudioLevels != Self.idleAudioLevels {
+                liveAudioLevels = Self.idleAudioLevels
+            }
             return
         }
 

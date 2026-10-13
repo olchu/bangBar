@@ -409,12 +409,17 @@ enum BangBarSettings {
         widgets.map(\.rawValue).joined(separator: ",")
     }
 
+    private static var lastDecodedWidgetPages: (rawValue: String, pages: [String: Int])?
+
+    /// Called several times per panel render and on every scroll event; the raw value rarely changes.
     static func widgetPages(from rawValue: String) -> [String: Int] {
-        guard let data = rawValue.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String: Int].self, from: data) else {
-            return [:]
+        if let cached = lastDecodedWidgetPages, cached.rawValue == rawValue {
+            return cached.pages
         }
-        return decoded
+        let pages = rawValue.data(using: .utf8)
+            .flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) } ?? [:]
+        lastDecodedWidgetPages = (rawValue, pages)
+        return pages
     }
 
     static func widgetPagesRaw(from pages: [String: Int]) -> String {
