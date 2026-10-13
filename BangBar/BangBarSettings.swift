@@ -171,36 +171,27 @@ enum BangBarWidget: String, CaseIterable, Identifiable {
         }
     }
 
-    var iconAsset: String {
+    enum Icon {
+        case asset(String)
+        case symbol(String)
+    }
+
+    var icon: Icon {
         switch self {
-        case .nowPlaying:
-            return "widgetMusic"
-        case .clock:
-            return "widgetCalendar"
-        case .moon:
-            return "widgetMoon"
-        case .pomodoro:
-            return "widgetFocus"
-        case .countdown:
-            return "widgetCountdown"
-        case .reminders:
-            return "widgetReminders"
-        case .mirror:
-            return "widgetMirror"
-        case .system:
-            return "widgetSystem"
-        case .github:
-            return "widgetGitHub"
-        case .aiUsage:
-            return "widgetAIUsage"
-        case .companion:
-            return "widgetCompanion"
-        case .habits:
-            return "widgetHabits"
-        case .translator:
-            return "widgetTranslator"
-        case .dayPlans:
-            return "widgetDayPlans"
+        case .nowPlaying: .asset("widgetMusic")
+        case .clock: .asset("widgetCalendar")
+        case .moon: .asset("widgetMoon")
+        case .pomodoro: .asset("widgetFocus")
+        case .countdown: .asset("widgetCountdown")
+        case .reminders: .asset("widgetReminders")
+        case .mirror: .asset("widgetMirror")
+        case .system: .asset("widgetSystem")
+        case .github: .symbol("chevron.left.forwardslash.chevron.right")
+        case .aiUsage: .symbol("gauge.with.dots.needle.67percent")
+        case .companion: .asset("widgetCompanion")
+        case .habits: .asset("widgetHabits")
+        case .translator: .asset("widgetTranslator")
+        case .dayPlans: .symbol("list.bullet.clipboard")
         }
     }
 

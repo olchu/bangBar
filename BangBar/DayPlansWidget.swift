@@ -301,7 +301,7 @@ private struct DayPlanRow: View {
         .accessibilityValue(plan.isCompleted ? "Completed today" : "Not completed")
         .accessibilityHint("Toggles completion")
         .overlay(
-            DayPlanTooltipTrackingView(text: tooltipText, isPanelContentVisible: isPanelContentVisible)
+            PanelTooltipTrackingView(text: tooltipText, isPanelContentVisible: isPanelContentVisible)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         )
     }
@@ -315,109 +315,5 @@ private struct DayPlanRow: View {
             lines.append("Completed")
         }
         return lines.joined(separator: "\n")
-    }
-}
-
-private struct DayPlanTooltipTrackingView: NSViewRepresentable {
-    let text: String
-    let isPanelContentVisible: Bool
-
-    func makeNSView(context: Context) -> DayPlanTooltipTrackingNSView {
-        let view = DayPlanTooltipTrackingNSView(frame: .zero)
-        view.text = text
-        view.isPanelContentVisible = isPanelContentVisible
-        return view
-    }
-
-    func updateNSView(_ nsView: DayPlanTooltipTrackingNSView, context: Context) {
-        nsView.text = text
-        nsView.isPanelContentVisible = isPanelContentVisible
-    }
-}
-
-private final class DayPlanTooltipTrackingNSView: NSView {
-    var text = ""
-    var isPanelContentVisible = true {
-        didSet {
-            guard isPanelContentVisible != oldValue, !isPanelContentVisible else { return }
-            TooltipManager.shared.hide()
-        }
-    }
-
-    private var trackingArea: NSTrackingArea?
-    private var canShowDuringCurrentHover = true
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-
-        if let trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        guard isPanelContentVisible else { return }
-
-        guard TooltipManager.shared.canShow else {
-            canShowDuringCurrentHover = false
-            TooltipManager.shared.hide()
-            super.mouseEntered(with: event)
-            return
-        }
-
-        canShowDuringCurrentHover = true
-        showTooltip(for: event)
-        super.mouseEntered(with: event)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        canShowDuringCurrentHover = true
-        TooltipManager.shared.hide()
-        super.mouseExited(with: event)
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil {
-            TooltipManager.shared.hide()
-        }
-    }
-
-    override func viewDidHide() {
-        TooltipManager.shared.hide()
-        super.viewDidHide()
-    }
-
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil {
-            TooltipManager.shared.hide()
-        }
-        super.viewWillMove(toWindow: newWindow)
-    }
-
-    private func showTooltip(for event: NSEvent) {
-        guard canShowDuringCurrentHover,
-              isPanelContentVisible,
-              let window,
-              window.isVisible,
-              !isHiddenOrHasHiddenAncestor
-        else { return }
-
-        let cursorRect = NSRect(origin: event.locationInWindow, size: .zero)
-        let cursorPoint = window.convertToScreen(cursorRect).origin
-        TooltipManager.shared.show(text: text, near: cursorPoint, offset: CGSize(width: 14, height: 10))
     }
 }

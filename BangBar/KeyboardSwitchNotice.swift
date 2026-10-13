@@ -96,10 +96,9 @@ struct KeyboardSwitchNoticeGeometry {
     init() {}
 
     init(screen: NSScreen, original: String, replacement: String) {
-        stemWidth = PanelLayout.notchWidth(on: screen)
-        stemHeight = stemWidth > 0
-            ? screen.auxiliaryTopLeftArea?.height ?? NSStatusBar.system.thickness
-            : NSStatusBar.system.thickness + Self.menuBarGap
+        let notch = PanelLayout.notchRect(on: screen)
+        stemWidth = notch?.width ?? 0
+        stemHeight = notch?.height ?? NSStatusBar.system.thickness + Self.menuBarGap
 
         let attributes: [NSAttributedString.Key: Any] = [.font: Self.font]
         let textWidth = (original as NSString).size(withAttributes: attributes).width
@@ -110,12 +109,7 @@ struct KeyboardSwitchNoticeGeometry {
     }
 
     func windowFrame(on screen: NSScreen) -> NSRect {
-        NSRect(
-            x: screen.frame.midX - size.width / 2,
-            y: screen.frame.maxY - size.height,
-            width: size.width,
-            height: size.height
-        )
+        PanelLayout.topCenteredFrame(width: size.width, height: size.height, on: screen)
     }
 }
 

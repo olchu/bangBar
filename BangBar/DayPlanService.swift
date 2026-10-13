@@ -54,7 +54,7 @@ final class DayPlanService: ObservableObject {
     init(calendar: Calendar = .autoupdatingCurrent) {
         self.calendar = calendar
         self.storageURL = Self.resolveStorageURL()
-        currentDay = Self.dayIdentifier(for: Date(), calendar: calendar)
+        currentDay = DayIdentifier.string(for: Date(), calendar: calendar)
         reload()
         observeCalendarChanges()
     }
@@ -65,7 +65,7 @@ final class DayPlanService: ObservableObject {
 
     func refreshDay(now: Date = Date()) {
         calendar = .autoupdatingCurrent
-        let newDay = Self.dayIdentifier(for: now, calendar: calendar)
+        let newDay = DayIdentifier.string(for: now, calendar: calendar)
         guard currentDay != newDay else { return }
         currentDay = newDay
         rolloverIncompletePlans(to: newDay)
@@ -166,7 +166,7 @@ final class DayPlanService: ObservableObject {
         let plan = DayPlanItem(
             id: UUID(),
             title: normalizedTitle,
-            date: Self.dayIdentifier(for: date, calendar: calendar),
+            date: DayIdentifier.string(for: date, calendar: calendar),
             groupID: validGroupID(groupID)
         )
         items.append(plan)
@@ -182,7 +182,7 @@ final class DayPlanService: ObservableObject {
         }
 
         items[index].title = normalizedTitle
-        items[index].date = Self.dayIdentifier(for: date, calendar: calendar)
+        items[index].date = DayIdentifier.string(for: date, calendar: calendar)
         items[index].groupID = validGroupID(groupID)
         persist()
     }
@@ -252,16 +252,6 @@ final class DayPlanService: ObservableObject {
         persist()
     }
 
-    static func dayIdentifier(for date: Date, calendar: Calendar) -> String {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(
-            format: "%04d-%02d-%02d",
-            components.year ?? 0,
-            components.month ?? 0,
-            components.day ?? 0
-        )
-    }
-
     private static func normalizedTitle(_ title: String) -> String {
         String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
     }
@@ -326,18 +316,9 @@ final class DayPlanService: ObservableObject {
     }
 
     private func observeCalendarChanges() {
-        let center = NotificationCenter.default
-        [
-            Notification.Name.NSCalendarDayChanged,
-            Notification.Name.NSSystemTimeZoneDidChange,
-            Notification.Name.NSSystemClockDidChange
-        ]
-        .forEach { name in
-            center.publisher(for: name)
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.refreshDay() }
-                .store(in: &cancellables)
-        }
+        DayIdentifier.changes
+            .sink { [weak self] in self?.refreshDay() }
+            .store(in: &cancellables)
     }
 
 }

@@ -1434,14 +1434,14 @@ private struct PrivacySettingsSection: View {
     @MainActor
     private static func performAutomationProbe() async -> (message: String, shouldOpenSettings: Bool) {
         let targets = runningMediaPlayers()
-        let players = targets.isEmpty ? [("Music", "com.apple.Music")] : targets
+        let players = targets.isEmpty ? [MusicPlayer.appleMusic] : targets
 
         var lastMessage = "Permission was not granted"
         for player in players {
-            ensureApplicationIsRunning(bundleID: player.bundleID)
+            ensureApplicationIsRunning(bundleID: player.bundleIdentifier)
             try? await Task.sleep(for: .milliseconds(500))
 
-            let permissionStatus = automationPermissionStatus(for: player.bundleID)
+            let permissionStatus = automationPermissionStatus(for: player.bundleIdentifier)
             if permissionStatus == noErr {
                 return verifyAutomationScript(for: player)
             }
@@ -1458,20 +1458,11 @@ private struct PrivacySettingsSection: View {
     }
 
     @MainActor
-    private static func runningMediaPlayers() -> [(name: String, bundleID: String)] {
-        var players: [(name: String, bundleID: String)] = []
+    private static func runningMediaPlayers() -> [MusicPlayer] {
         let runningBundleIDs = Set(
             NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
         )
-
-        if runningBundleIDs.contains("com.apple.Music") {
-            players.append(("Music", "com.apple.Music"))
-        }
-        if runningBundleIDs.contains("com.spotify.client") {
-            players.append(("Spotify", "com.spotify.client"))
-        }
-
-        return players
+        return [MusicPlayer.appleMusic, .spotify].filter { runningBundleIDs.contains($0.bundleIdentifier) }
     }
 
     @MainActor
@@ -1510,10 +1501,10 @@ private struct PrivacySettingsSection: View {
     }
 
     private static func verifyAutomationScript(
-        for player: (name: String, bundleID: String)
+        for player: MusicPlayer
     ) -> (message: String, shouldOpenSettings: Bool) {
         let script = NSAppleScript(source: """
-        tell application "\(player.name)"
+        tell application "\(player.applicationName)"
             get player state
         end tell
         """)
@@ -1527,7 +1518,7 @@ private struct PrivacySettingsSection: View {
             return ("Permission needed: \(message) (\(number))", true)
         }
 
-        return ("Allowed for \(player.name)", false)
+        return ("Allowed for \(player.applicationName)", false)
     }
 
     private static func appleEventPermissionMessage(_ status: OSStatus) -> String {
@@ -1541,36 +1532,6 @@ private struct PrivacySettingsSection: View {
         default:
             return "Apple Events error \(status)"
         }
-    }
-}
-
-func openPrivacySettings(anchor: String) {
-    let urlStrings = [
-        "x-apple.systempreferences:com.apple.preference.security?\(anchor)",
-        "x-apple.systempreferences:com.apple.preference.security?Privacy"
-    ]
-
-    for urlString in urlStrings {
-        guard let url = URL(string: urlString) else { continue }
-        if NSWorkspace.shared.open(url) {
-            return
-        }
-    }
-
-    if let settingsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
-        NSWorkspace.shared.open(settingsURL)
-    }
-}
-
-enum AccessibilityAccess {
-    static var isTrusted: Bool { AXIsProcessTrusted() }
-
-    static func requestOrOpen() {
-        guard !isTrusted else {
-            openPrivacySettings(anchor: "Privacy_Accessibility")
-            return
-        }
-        AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
     }
 }
 
@@ -2021,17 +1982,12 @@ private struct WidgetIcon: View {
 
     var body: some View {
         Group {
-            if widget == .github {
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
+            switch widget.icon {
+            case .symbol(let name):
+                Image(systemName: name)
                     .font(.system(size: size * 0.72, weight: .semibold))
-            } else if widget == .aiUsage {
-                Image(systemName: "gauge.with.dots.needle.67percent")
-                    .font(.system(size: size * 0.72, weight: .semibold))
-            } else if widget == .dayPlans {
-                Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: size * 0.72, weight: .semibold))
-            } else {
-                Image(widget.iconAsset)
+            case .asset(let name):
+                Image(name)
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()

@@ -59,7 +59,7 @@ final class ReminderService: ObservableObject {
 
     func requestAccessFromUserAction() {
         if case .denied = authorizationState {
-            openPrivacySettings()
+            openPrivacySettings(anchor: "Privacy_Reminders")
             return
         }
 
@@ -72,7 +72,7 @@ final class ReminderService: ObservableObject {
         case .denied, .restricted:
             authorizationState = .denied
             items = []
-            openPrivacySettings()
+            openPrivacySettings(anchor: "Privacy_Reminders")
         @unknown default:
             authorizationState = .failed("Unknown status")
             items = []
@@ -204,17 +204,6 @@ final class ReminderService: ObservableObject {
                     self.items = []
                 }
             }
-        }
-    }
-
-    private func openPrivacySettings() {
-        let urlStrings = [
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders",
-            "x-apple.systempreferences:com.apple.preference.security?Privacy"
-        ]
-        for urlString in urlStrings {
-            guard let url = URL(string: urlString) else { continue }
-            if NSWorkspace.shared.open(url) { return }
         }
     }
 }

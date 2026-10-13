@@ -89,7 +89,7 @@ struct GitHubWidget: View {
                                     RoundedRectangle(cornerRadius: 1.5)
                                         .fill(color(for: day.level))
                                         .frame(width: 7, height: 7)
-                                        .overlay(GitHubContributionTooltipView(text: day.tooltip))
+                                        .overlay(PanelTooltipTrackingView(text: day.tooltip))
                                 } else {
                                     Color.clear
                                         .frame(width: 7, height: 7)
@@ -141,56 +141,6 @@ struct GitHubWidget: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct GitHubContributionTooltipView: NSViewRepresentable {
-    let text: String
-
-    func makeNSView(context: Context) -> GitHubContributionTooltipNSView {
-        let view = GitHubContributionTooltipNSView(frame: .zero)
-        view.text = text
-        return view
-    }
-
-    func updateNSView(_ nsView: GitHubContributionTooltipNSView, context: Context) {
-        nsView.text = text
-    }
-}
-
-private final class GitHubContributionTooltipNSView: NSView {
-    var text = ""
-    private var trackingArea: NSTrackingArea?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-        trackingArea = area
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func mouseEntered(with event: NSEvent) {
-        guard TooltipManager.shared.canShow, let window, window.isVisible else { return }
-        let cursorRect = NSRect(origin: event.locationInWindow, size: .zero)
-        let cursorPoint = window.convertToScreen(cursorRect).origin
-        TooltipManager.shared.show(text: text, near: cursorPoint)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        TooltipManager.shared.hide()
-    }
-
-    override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil { TooltipManager.shared.hide() }
-        super.viewWillMove(toWindow: newWindow)
     }
 }
 

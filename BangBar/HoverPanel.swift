@@ -74,12 +74,10 @@ class HoverPanel: NSPanel {
 
     convenience init() {
         let screen = NSScreen.main!
-        let expandedWidth = PanelLayout.expandedWidth(forPage: 0, on: screen)
-        let initialRect = NSRect(
-            x: screen.frame.midX - expandedWidth / 2,
-            y: screen.frame.maxY - PanelLayout.expandedHeight(on: screen),
-            width: expandedWidth,
-            height: PanelLayout.expandedHeight(on: screen)
+        let initialRect = PanelLayout.topCenteredFrame(
+            width: PanelLayout.expandedWidth(forPage: 0, on: screen),
+            height: PanelLayout.expandedHeight(on: screen),
+            on: screen
         )
         self.init(
             contentRect: initialRect,
@@ -441,14 +439,10 @@ class HoverPanel: NSPanel {
     }
 
     private func expandedFrame(on screen: NSScreen, page: Int = 0) -> NSRect {
-        let width = PanelLayout.expandedWidth(forPage: page, on: screen)
-        let height = PanelLayout.expandedHeight(on: screen)
-
-        return NSRect(
-            x: screen.frame.midX - width / 2,
-            y: screen.frame.maxY - height,
-            width: width,
-            height: height
+        PanelLayout.topCenteredFrame(
+            width: PanelLayout.expandedWidth(forPage: page, on: screen),
+            height: PanelLayout.expandedHeight(on: screen),
+            on: screen
         )
     }
 
@@ -459,55 +453,26 @@ class HoverPanel: NSPanel {
     }
 
     private func compactFrame(on screen: NSScreen) -> NSRect {
-        let width = compactWidth(on: screen)
-        let height = compactHeight(on: screen)
-        return NSRect(
-            x: screen.frame.midX - width / 2,
-            y: screen.frame.maxY - height,
-            width: width,
-            height: height
-        )
+        PanelLayout.topCenteredFrame(width: compactWidth(on: screen), height: compactHeight(on: screen), on: screen)
     }
 
     private func concealedCompactFrame(on screen: NSScreen) -> NSRect {
-        let width = concealedCompactWidth(on: screen)
-        let height = compactHeight(on: screen)
-        return NSRect(
-            x: screen.frame.midX - width / 2,
-            y: screen.frame.maxY - height,
-            width: width,
-            height: height
-        )
+        PanelLayout.topCenteredFrame(width: concealedCompactWidth(on: screen), height: compactHeight(on: screen), on: screen)
     }
 
     private func compactHeight(on screen: NSScreen) -> CGFloat {
-        if let topAreaHeight = screen.auxiliaryTopLeftArea?.height {
-            return topAreaHeight
-        }
-
-        return NSStatusBar.system.thickness
+        PanelLayout.notchRect(on: screen)?.height ?? NSStatusBar.system.thickness
     }
 
     private func compactWidth(on screen: NSScreen) -> CGFloat {
-        let baseWidth: CGFloat
-        if let leftArea = screen.auxiliaryTopLeftArea,
-           let rightArea = screen.auxiliaryTopRightArea {
-            let notchWidth = rightArea.minX - leftArea.maxX
-            baseWidth = PanelLayout.compactWidth(for: notchWidth)
-        } else {
-            baseWidth = PanelLayout.compactMinimumWidth
-        }
+        let baseWidth = PanelLayout.notchRect(on: screen).map { PanelLayout.compactWidth(for: $0.width) }
+            ?? PanelLayout.compactMinimumWidth
         return clipboardHistory.isCollectingImages ? baseWidth + 110 : baseWidth
     }
 
     private func concealedCompactWidth(on screen: NSScreen) -> CGFloat {
-        guard let leftArea = screen.auxiliaryTopLeftArea,
-              let rightArea = screen.auxiliaryTopRightArea else {
-            return 1
-        }
-
-        let notchWidth = rightArea.minX - leftArea.maxX
-        return max(notchWidth - 8, 1)
+        guard let notch = PanelLayout.notchRect(on: screen) else { return 1 }
+        return max(notch.width - 8, 1)
     }
 
     private func enterCompactMode() {

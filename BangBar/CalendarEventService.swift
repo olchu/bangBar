@@ -73,7 +73,7 @@ final class CalendarEventService: ObservableObject {
 
     func requestAccessFromUserAction() {
         if authorizationDenied {
-            openCalendarPrivacySettings()
+            openPrivacySettings(anchor: "Privacy_Calendars")
             return
         }
 
@@ -86,7 +86,7 @@ final class CalendarEventService: ObservableObject {
         case .denied, .restricted:
             authorizationState = .denied
             upcomingEvents = []
-            openCalendarPrivacySettings()
+            openPrivacySettings(anchor: "Privacy_Calendars")
         @unknown default:
             authorizationState = .failed("Unknown calendar authorization status")
             upcomingEvents = []
@@ -111,24 +111,6 @@ final class CalendarEventService: ObservableObject {
                     self.upcomingEvents = []
                 }
             }
-        }
-    }
-
-    private func openCalendarPrivacySettings() {
-        let urlStrings = [
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars",
-            "x-apple.systempreferences:com.apple.preference.security?Privacy"
-        ]
-
-        for urlString in urlStrings {
-            guard let url = URL(string: urlString) else { continue }
-            if NSWorkspace.shared.open(url) {
-                return
-            }
-        }
-
-        if let settingsURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systempreferences") {
-            NSWorkspace.shared.open(settingsURL)
         }
     }
 

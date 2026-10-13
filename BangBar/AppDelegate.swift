@@ -175,17 +175,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let menuBarHeight = NSStatusBar.system.thickness
 
         let triggerZone: NSRect
-        if let leftArea = screen.auxiliaryTopLeftArea,
-           let rightArea = screen.auxiliaryTopRightArea {
-            let notchX = leftArea.maxX
-            let notchWidth = rightArea.minX - leftArea.maxX
-            let notchHeight = leftArea.height
-            triggerZone = NSRect(
-                x: notchX,
-                y: screenFrame.maxY - notchHeight,
-                width: notchWidth,
-                height: notchHeight
-            )
+        if let notch = PanelLayout.notchRect(on: screen) {
+            triggerZone = notch
         } else {
             let panelWidth = hoverPanel?.frame.width ?? 560
             triggerZone = NSRect(

@@ -11,22 +11,30 @@ enum PanelLayout {
         nowPlayingWidgetHeight + expandedVisibleEdgePadding
     }
     static func topSafeInset(on screen: NSScreen) -> CGFloat {
-        guard screen.auxiliaryTopLeftArea != nil,
-              screen.auxiliaryTopRightArea != nil else {
-            return topBarHeight
-        }
+        guard let notch = notchRect(on: screen) else { return topBarHeight }
+        return max(topBarHeight, notch.height + notchContentClearance)
+    }
 
-        let notchHeight = screen.auxiliaryTopLeftArea?.height ?? topBarHeight
-        return max(topBarHeight, notchHeight + notchContentClearance)
+    /// The camera housing in screen coordinates; nil on displays without a notch.
+    static func notchRect(on screen: NSScreen?) -> NSRect? {
+        guard let screen,
+              let leftArea = screen.auxiliaryTopLeftArea,
+              let rightArea = screen.auxiliaryTopRightArea else { return nil }
+        return NSRect(
+            x: leftArea.maxX,
+            y: screen.frame.maxY - leftArea.height,
+            width: max(rightArea.minX - leftArea.maxX, 0),
+            height: leftArea.height
+        )
     }
 
     static func notchWidth(on screen: NSScreen?) -> CGFloat {
-        guard let leftArea = screen?.auxiliaryTopLeftArea,
-              let rightArea = screen?.auxiliaryTopRightArea else {
-            return 0
-        }
+        notchRect(on: screen)?.width ?? 0
+    }
 
-        return max(rightArea.minX - leftArea.maxX, 0)
+    /// A frame of the given size centered on the screen and pinned to its top edge, like every panel state.
+    static func topCenteredFrame(width: CGFloat, height: CGFloat, on screen: NSScreen) -> NSRect {
+        NSRect(x: screen.frame.midX - width / 2, y: screen.frame.maxY - height, width: width, height: height)
     }
 
     static func expandedHeight(on screen: NSScreen) -> CGFloat {

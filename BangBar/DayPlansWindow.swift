@@ -112,7 +112,7 @@ private struct DayPlansWindowView: View {
     private var accentColor: Color { Color(hex: accentColorHex) }
     private var calendar: Calendar { .autoupdatingCurrent }
     private var selectedDayID: String {
-        DayPlanService.dayIdentifier(for: selectedDate, calendar: calendar)
+        DayIdentifier.string(for: selectedDate, calendar: calendar)
     }
     private var todaysItems: [DayPlanItem] { service.todaysItems }
     private var selectedDayItems: [DayPlanItem] {
@@ -696,7 +696,7 @@ private struct DayPlansWindowView: View {
             let components = calendar.dateComponents([.day], from: date)
             days.append(
                 CalendarDay(
-                    id: DayPlanService.dayIdentifier(for: date, calendar: calendar),
+                    id: DayIdentifier.string(for: date, calendar: calendar),
                     date: date,
                     label: "\(components.day ?? 0)",
                     isCurrentMonth: calendar.isDate(date, equalTo: displayedMonth, toGranularity: .month),
@@ -721,14 +721,6 @@ private struct DayPlanTaskGroupSection: Identifiable {
     let title: String
     let colorHex: String?
     let tasks: [DayPlanItem]
-}
-
-private func dateFromDayIdentifier(_ dayIdentifier: String) -> Date {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd"
-    formatter.calendar = .autoupdatingCurrent
-    formatter.timeZone = .autoupdatingCurrent
-    return formatter.date(from: dayIdentifier) ?? Date()
 }
 
 private struct DayPlansWindowTaskRow: View {
@@ -758,7 +750,7 @@ private struct DayPlansWindowTaskRow: View {
 
     private var hasChanges: Bool {
         normalizedTitle != task.title
-            || DayPlanService.dayIdentifier(for: date, calendar: .autoupdatingCurrent) != task.date
+            || DayIdentifier.string(for: date, calendar: .autoupdatingCurrent) != task.date
             || groupID != task.groupID
     }
 
@@ -783,7 +775,7 @@ private struct DayPlansWindowTaskRow: View {
         self.onUpdate = onUpdate
         self.onDelete = onDelete
         _title = State(initialValue: task.title)
-        _date = State(initialValue: dateFromDayIdentifier(task.date))
+        _date = State(initialValue: DayIdentifier.date(from: task.date) ?? Date())
         _groupID = State(initialValue: task.groupID)
     }
 
@@ -911,7 +903,7 @@ private struct DayPlansWindowTaskRow: View {
                 .background(SettingsTheme.background)
         }
         .onChange(of: task.date) { _, newValue in
-            let newDate = dateFromDayIdentifier(newValue)
+            let newDate = DayIdentifier.date(from: newValue) ?? Date()
             if !Calendar.autoupdatingCurrent.isDate(date, inSameDayAs: newDate) {
                 date = newDate
             }

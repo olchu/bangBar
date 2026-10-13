@@ -74,7 +74,7 @@ final class HabitService: ObservableObject {
     init(defaults: UserDefaults = .standard, calendar: Calendar = .autoupdatingCurrent) {
         self.defaults = defaults
         self.calendar = calendar
-        currentDay = Self.dayIdentifier(for: Date(), calendar: calendar)
+        currentDay = DayIdentifier.string(for: Date(), calendar: calendar)
         load()
         refreshDay()
         observeCalendarChanges()
@@ -93,7 +93,7 @@ final class HabitService: ObservableObject {
 
     func refreshDay(now: Date = Date()) {
         calendar = .autoupdatingCurrent
-        let newDay = Self.dayIdentifier(for: now, calendar: calendar)
+        let newDay = DayIdentifier.string(for: now, calendar: calendar)
         if currentDay != newDay {
             currentDay = newDay
             objectWillChange.send()
@@ -111,7 +111,7 @@ final class HabitService: ObservableObject {
             id: UUID(),
             title: normalizedTitle,
             sortOrder: habits.count,
-            creationDay: Self.dayIdentifier(for: now, calendar: calendar)
+            creationDay: DayIdentifier.string(for: now, calendar: calendar)
         )
         var updatedHabits = habits
         updatedHabits.append(habit)
@@ -167,14 +167,14 @@ final class HabitService: ObservableObject {
     }
 
     func dayState(for habit: HabitDefinition, on date: Date) -> HabitDayState {
-        let day = Self.dayIdentifier(for: date, calendar: calendar)
+        let day = DayIdentifier.string(for: date, calendar: calendar)
         guard day >= habit.creationDay, day <= currentDay else { return .ineligible }
         return records[day]?.completedHabitIDs.contains(habit.id) == true ? .complete : .incomplete
     }
 
     func toggle(_ habit: HabitDefinition, on date: Date, now: Date = Date()) {
         refreshDay(now: now)
-        let day = Self.dayIdentifier(for: date, calendar: calendar)
+        let day = DayIdentifier.string(for: date, calendar: calendar)
         guard day <= currentDay,
               let habitIndex = habits.firstIndex(where: { $0.id == habit.id }) else {
             return
@@ -210,7 +210,7 @@ final class HabitService: ObservableObject {
         var eligible = 0
 
         for date in datesEndingToday(count: days, now: now) {
-            let day = Self.dayIdentifier(for: date, calendar: calendar)
+            let day = DayIdentifier.string(for: date, calendar: calendar)
             let eligibleHabits = habits.filter { $0.creationDay <= day }
             eligible += eligibleHabits.count
             completed += eligibleHabits.reduce(into: 0) { count, habit in
@@ -232,7 +232,7 @@ final class HabitService: ObservableObject {
     }
 
     func daySummary(for date: Date, now: Date = Date()) -> HabitDaySummary {
-        let day = Self.dayIdentifier(for: date, calendar: calendar)
+        let day = DayIdentifier.string(for: date, calendar: calendar)
         let today = calendar.startOfDay(for: now)
         guard calendar.startOfDay(for: date) <= today else {
             return HabitDaySummary(
@@ -257,28 +257,18 @@ final class HabitService: ObservableObject {
         )
     }
 
-    static func dayIdentifier(for date: Date, calendar: Calendar) -> String {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(
-            format: "%04d-%02d-%02d",
-            components.year ?? 0,
-            components.month ?? 0,
-            components.day ?? 0
-        )
-    }
-
     private static func normalizedTitle(_ title: String) -> String {
         String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
     }
 
     private func completionRate(for habit: HabitDefinition, days: Int, now: Date) -> Double {
         let eligibleDays = datesEndingToday(count: days, now: now).filter {
-            Self.dayIdentifier(for: $0, calendar: calendar) >= habit.creationDay
+            DayIdentifier.string(for: $0, calendar: calendar) >= habit.creationDay
         }
         guard !eligibleDays.isEmpty else { return 0 }
 
         let completed = eligibleDays.reduce(into: 0) { count, date in
-            let day = Self.dayIdentifier(for: date, calendar: calendar)
+            let day = DayIdentifier.string(for: date, calendar: calendar)
             if records[day]?.completedHabitIDs.contains(habit.id) == true {
                 count += 1
             }
@@ -288,13 +278,13 @@ final class HabitService: ObservableObject {
 
     func currentStreak(for habit: HabitDefinition, now: Date = Date()) -> Int {
         let today = calendar.startOfDay(for: now)
-        let todayKey = Self.dayIdentifier(for: today, calendar: calendar)
+        let todayKey = DayIdentifier.string(for: today, calendar: calendar)
         let todayComplete = records[todayKey]?.completedHabitIDs.contains(habit.id) == true
         var cursor = todayComplete ? today : calendar.date(byAdding: .day, value: -1, to: today) ?? today
         var streak = 0
 
         while true {
-            let day = Self.dayIdentifier(for: cursor, calendar: calendar)
+            let day = DayIdentifier.string(for: cursor, calendar: calendar)
             guard day >= habit.creationDay,
                   records[day]?.completedHabitIDs.contains(habit.id) == true else {
                 return streak
@@ -313,7 +303,7 @@ final class HabitService: ObservableObject {
         var current = 0
 
         for date in dates {
-            let day = Self.dayIdentifier(for: date, calendar: calendar)
+            let day = DayIdentifier.string(for: date, calendar: calendar)
             guard day >= habit.creationDay else { continue }
 
             if records[day]?.completedHabitIDs.contains(habit.id) == true {
@@ -348,7 +338,7 @@ final class HabitService: ObservableObject {
         ) else {
             return
         }
-        let cutoff = Self.dayIdentifier(for: cutoffDate, calendar: calendar)
+        let cutoff = DayIdentifier.string(for: cutoffDate, calendar: calendar)
         let originalCount = records.count
         records = records.filter { $0.key >= cutoff }
         if records.count != originalCount {
@@ -381,17 +371,8 @@ final class HabitService: ObservableObject {
     }
 
     private func observeCalendarChanges() {
-        let center = NotificationCenter.default
-        [
-            Notification.Name.NSCalendarDayChanged,
-            Notification.Name.NSSystemTimeZoneDidChange,
-            Notification.Name.NSSystemClockDidChange
-        ]
-        .forEach { name in
-            center.publisher(for: name)
-                .receive(on: RunLoop.main)
-                .sink { [weak self] _ in self?.refreshDay() }
-                .store(in: &cancellables)
-        }
+        DayIdentifier.changes
+            .sink { [weak self] in self?.refreshDay() }
+            .store(in: &cancellables)
     }
 }
