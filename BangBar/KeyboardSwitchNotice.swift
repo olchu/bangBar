@@ -2,7 +2,8 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Briefly shows `ghbdtn → привет` growing down out of the notch after an automatic layout switch.
+/// Briefly shows `ghbdtn → привет` next to the text caret after an automatic layout switch, or growing down
+/// out of the notch when the app does not expose its caret through Accessibility.
 /// A separate click-through window, so it never takes part in the hover panel's lifecycle.
 final class KeyboardSwitchNoticeController {
     private static let visibleDuration: TimeInterval = 1.8
@@ -12,10 +13,26 @@ final class KeyboardSwitchNoticeController {
     private var window: NSPanel?
     private var hideWorkItem: DispatchWorkItem?
     private var orderOutWorkItem: DispatchWorkItem?
+    /// Bumped by every show and dismiss so a caret lookup that finishes late cannot reopen a dismissed notice.
+    private var generation = 0
 
     func show(original: String, replacement: String) {
-        guard let screen = NSScreen.main else { return }
-        let geometry = KeyboardSwitchNoticeGeometry(screen: screen, original: original, replacement: replacement)
+        generation += 1
+        let request = generation
+        // Accessibility blocks on the focused app, which is busy handling the synthetic keystrokes right now.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let caret = FocusedTextElement.caret()
+            DispatchQueue.main.async {
+                guard let self, self.generation == request else { return }
+                self.present(original: original, replacement: replacement, caret: caret)
+            }
+        }
+    }
+
+    private func present(original: String, replacement: String, caret: TextCaret?) {
+        guard let geometry = KeyboardSwitchNoticeGeometry(caret: caret, original: original, replacement: replacement)
+                ?? NSScreen.main.map({ KeyboardSwitchNoticeGeometry(screen: $0, original: original, replacement: replacement) })
+        else { return }
         let window = window ?? makeWindow()
         self.window = window
 
@@ -23,7 +40,7 @@ final class KeyboardSwitchNoticeController {
         model.original = original
         model.replacement = replacement
         model.geometry = geometry
-        window.setFrame(geometry.windowFrame(on: screen), display: true)
+        window.setFrame(geometry.windowFrame, display: true)
         window.orderFrontRegardless()
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
             model.isRevealed = true
@@ -36,6 +53,7 @@ final class KeyboardSwitchNoticeController {
     }
 
     func dismiss() {
+        generation += 1
         hideWorkItem?.cancel()
         guard model.isRevealed else { return }
         withAnimation(.easeIn(duration: Self.hideAnimationDuration)) {
@@ -82,12 +100,20 @@ struct KeyboardSwitchNoticeGeometry {
     static let maximumBodyWidth: CGFloat = 300
     /// Without a notch the notice floats this far below the menu bar instead of growing out of it.
     static let menuBarGap: CGFloat = 6
+    static let fieldGap: CGFloat = 6
+    /// When only the caret's line is known, the gap also has to clear the field's own padding around the text.
+    static let lineGap: CGFloat = 14
+    /// Fields up to this tall (inputs, chat boxes) are cleared entirely; in taller editors only the caret's line is.
+    static let maximumClearedFieldHeight: CGFloat = 120
     static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
 
     /// The stem sits behind the physical notch; zero on displays without one.
     var stemWidth: CGFloat = 0
     var stemHeight: CGFloat = 0
     var bodyWidth: CGFloat = 0
+    /// Next to the caret the body grows away from the text line, which is upward when it sits above the line.
+    var growsUpward = false
+    var windowFrame = NSRect.zero
 
     var size: CGSize {
         CGSize(width: max(bodyWidth, stemWidth + Self.fillet * 2), height: stemHeight + Self.bodyHeight)
@@ -100,16 +126,43 @@ struct KeyboardSwitchNoticeGeometry {
         stemWidth = notch?.width ?? 0
         stemHeight = notch?.height ?? NSStatusBar.system.thickness + Self.menuBarGap
 
-        let attributes: [NSAttributedString.Key: Any] = [.font: Self.font]
-        let textWidth = (original as NSString).size(withAttributes: attributes).width
-            + (replacement as NSString).size(withAttributes: attributes).width
-        let contentWidth = textWidth + Self.arrowWidth + Self.contentSpacing * 2 + Self.horizontalPadding * 2
+        let contentWidth = Self.contentWidth(original: original, replacement: replacement)
         let minimumWidth = stemWidth > 0 ? stemWidth + (Self.fillet + Self.cornerRadius) * 2 : 0
-        bodyWidth = min(max(contentWidth.rounded(.up), minimumWidth), max(Self.maximumBodyWidth, minimumWidth))
+        bodyWidth = min(max(contentWidth, minimumWidth), max(Self.maximumBodyWidth, minimumWidth))
+        windowFrame = PanelLayout.topCenteredFrame(width: size.width, height: size.height, on: screen)
     }
 
-    func windowFrame(on screen: NSScreen) -> NSRect {
-        PanelLayout.topCenteredFrame(width: size.width, height: size.height, on: screen)
+    /// Above the caret's field (or just its line in a tall editor) with the replacement ending over the caret,
+    /// or below it when there is no room above. nil when the caret is missing or off every screen.
+    init?(caret: TextCaret?, original: String, replacement: String) {
+        guard let caret, let primary = NSScreen.screens.first else { return nil }
+        let toAppKit = { (rect: CGRect) in
+            NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
+        }
+        let line = toAppKit(caret.line)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: line.minX, y: line.midY)) })
+        else { return nil }
+        let field = caret.field.map(toAppKit).flatMap { field in
+            field.height <= Self.maximumClearedFieldHeight
+                && field.minY <= line.minY + 1 && field.maxY >= line.maxY - 1 ? field : nil
+        }
+        let cleared = field ?? line
+        let gap = field == nil ? Self.lineGap : Self.fieldGap
+
+        bodyWidth = min(Self.contentWidth(original: original, replacement: replacement), Self.maximumBodyWidth)
+        let visible = screen.visibleFrame
+        let aboveY = cleared.maxY + gap
+        growsUpward = aboveY + Self.bodyHeight <= visible.maxY
+        let y = growsUpward ? aboveY : cleared.minY - gap - Self.bodyHeight
+        let x = min(max(line.minX + Self.horizontalPadding - bodyWidth, visible.minX), visible.maxX - bodyWidth)
+        windowFrame = NSRect(x: x, y: y, width: bodyWidth, height: Self.bodyHeight)
+    }
+
+    private static func contentWidth(original: String, replacement: String) -> CGFloat {
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let textWidth = (original as NSString).size(withAttributes: attributes).width
+            + (replacement as NSString).size(withAttributes: attributes).width
+        return (textWidth + arrowWidth + contentSpacing * 2 + horizontalPadding * 2).rounded(.up)
     }
 }
 
@@ -119,9 +172,14 @@ private struct KeyboardSwitchNoticeView: View {
 
     var body: some View {
         let geometry = model.geometry
+        let shape = KeyboardSwitchNoticeShape(geometry: geometry, progress: model.isRevealed ? 1 : 0)
         ZStack(alignment: .top) {
-            KeyboardSwitchNoticeShape(geometry: geometry, progress: model.isRevealed ? 1 : 0)
-                .fill(Color.black)
+            shape.fill(Color.black)
+            // Away from the notch the black body needs an edge to stand out against dark windows.
+            if geometry.stemWidth == 0 {
+                shape.stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    .opacity(model.isRevealed ? 1 : 0)
+            }
 
             HStack(spacing: KeyboardSwitchNoticeGeometry.contentSpacing) {
                 Text(model.original)
@@ -165,7 +223,8 @@ private struct KeyboardSwitchNoticeShape: Shape {
         let radius = min(KeyboardSwitchNoticeGeometry.cornerRadius, bodyHeight / 2)
 
         guard geometry.stemWidth > 0 else {
-            let body = CGRect(x: bodyLeft, y: top, width: geometry.bodyWidth, height: bodyHeight)
+            let bodyTop = geometry.growsUpward ? rect.maxY - bodyHeight : top
+            let body = CGRect(x: bodyLeft, y: bodyTop, width: geometry.bodyWidth, height: bodyHeight)
             return Path(roundedRect: body, cornerRadius: radius)
         }
 

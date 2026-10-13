@@ -159,6 +159,7 @@ private struct KeyboardAutoSwitchCard: View {
     @AppStorage(BangBarSettings.Key.keyboardSwitcherShowsNotice) private var showsNotice = true
     @AppStorage(BangBarSettings.Key.keyboardSwitcherExceptions) private var exceptionsRaw = ""
     @AppStorage(BangBarSettings.Key.keyboardSwitcherLearnedWords) private var learnedWordsRaw = ""
+    @AppStorage(BangBarSettings.Key.keyboardSwitcherUndoCounts) private var undoCountsRaw = ""
     @AppStorage(BangBarSettings.Key.keyboardSwitcherExcludedApps)
     private var excludedAppsRaw = BangBarSettings.defaultKeyboardSwitcherExcludedApps
 
@@ -167,15 +168,15 @@ private struct KeyboardAutoSwitchCard: View {
             VStack(spacing: 0) {
                 SettingsToggleRow(
                     title: "Switch automatically",
-                    subtitle: "Fixes a word typed in the wrong layout when you press Space or Return. Press Backspace right after to undo — the word is then ignored.",
+                    subtitle: "Fixes a word typed in the wrong layout when you press Space or Return. Press Backspace right after to undo — after \(KeyboardAutoSwitcher.undosBeforeException) undos the word is ignored.",
                     isOn: $isAutoEnabled,
                     accentColor: accentColor
                 )
                 if isAutoEnabled {
                     SettingsDivider()
                     SettingsToggleRow(
-                        title: "Show at the notch",
-                        subtitle: "Briefly shows what was changed, e.g. ghbdtn → привет.",
+                        title: "Show what was changed",
+                        subtitle: "Briefly shows e.g. ghbdtn → привет next to the text cursor, or at the notch in apps that don't expose the cursor.",
                         isOn: $showsNotice,
                         accentColor: accentColor
                     )
@@ -189,9 +190,12 @@ private struct KeyboardAutoSwitchCard: View {
                     SettingsDivider()
                     wordListRow(
                         title: "Ignored words",
-                        emptyText: "Words you undo appear here and are never switched again.",
+                        emptyText: "Words you undo \(KeyboardAutoSwitcher.undosBeforeException) times appear here and are never switched again.",
                         words: BangBarSettings.lines(exceptionsRaw),
-                        onClear: { exceptionsRaw = "" }
+                        onClear: {
+                            exceptionsRaw = ""
+                            undoCountsRaw = ""
+                        }
                     )
                     SettingsDivider()
                     excludedAppsHeader

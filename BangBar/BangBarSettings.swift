@@ -294,6 +294,7 @@ enum BangBarSettings {
         static let keyboardSwitcherExcludedApps = "keyboardSwitcherExcludedApps"
         static let keyboardSwitcherExceptions = "keyboardSwitcherExceptions"
         static let keyboardSwitcherLearnedWords = "keyboardSwitcherLearnedWords"
+        static let keyboardSwitcherUndoCounts = "keyboardSwitcherUndoCounts"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -353,7 +354,8 @@ enum BangBarSettings {
             Key.keyboardSwitcherShowsNotice: true,
             Key.keyboardSwitcherExcludedApps: defaultKeyboardSwitcherExcludedApps,
             Key.keyboardSwitcherExceptions: "",
-            Key.keyboardSwitcherLearnedWords: ""
+            Key.keyboardSwitcherLearnedWords: "",
+            Key.keyboardSwitcherUndoCounts: ""
         ]
         for widget in BangBarWidget.allCases {
             defaults[widget.visibilityKey] = widget.isVisibleByDefault
@@ -373,6 +375,22 @@ enum BangBarSettings {
     static var keyboardSwitcherExceptions: Set<String> {
         get { Set(lines(forKey: Key.keyboardSwitcherExceptions)) }
         set { UserDefaults.standard.set(newValue.sorted().joined(separator: "\n"), forKey: Key.keyboardSwitcherExceptions) }
+    }
+
+    /// How many times each typed word's automatic switch was undone, as `word<TAB>count` lines.
+    static var keyboardSwitcherUndoCounts: [String: Int] {
+        get {
+            let entries = lines(forKey: Key.keyboardSwitcherUndoCounts).compactMap { line -> (String, Int)? in
+                let parts = line.split(separator: "\t")
+                guard parts.count == 2, let count = Int(parts[1]) else { return nil }
+                return (String(parts[0]), count)
+            }
+            return Dictionary(entries, uniquingKeysWith: max)
+        }
+        set {
+            let raw = newValue.sorted { $0.key < $1.key }.map { "\($0.key)\t\($0.value)" }.joined(separator: "\n")
+            UserDefaults.standard.set(raw, forKey: Key.keyboardSwitcherUndoCounts)
+        }
     }
 
     static var keyboardSwitcherLearnedWords: KeyboardLearnedWords {

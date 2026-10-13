@@ -334,7 +334,7 @@ final class KeyboardSwitcherService: NSObject {
         } else {
             // Reverting an automatic switch by hand counts as an undo, not as something to learn.
             if let undoable = undoableAutoSwitch {
-                autoSwitcher.rememberException(for: undoable)
+                autoSwitcher.rememberUndo(for: undoable)
                 undoableAutoSwitch = nil
                 convertLastWord(learns: false)
             } else {
@@ -430,7 +430,7 @@ final class KeyboardSwitcherService: NSObject {
         currentLayout = plan.source
         buffer.deleteBackward()
         buffer.markConverted(to: plan.source.id, includingPrevious: plan.previousWordCount)
-        autoSwitcher.rememberException(for: plan)
+        autoSwitcher.rememberUndo(for: plan)
         DispatchQueue.main.async { [weak self] in
             self?.onAutoSwitchUndo?()
         }

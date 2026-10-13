@@ -899,7 +899,8 @@ struct NotionTask: Identifiable {
 - `KeyboardAutoSwitcher.swift` — spell-checker languages, ignored and learned words, excluded apps; produces an `AutoSwitchPlan` for a finished word and learns manual conversions.
 - `KeyboardLearnedWords.swift` — pure storage for learned words.
 - `KeyboardSwitcherSettingsView.swift` — Settings › Keyboard section.
-- `KeyboardSwitchNotice.swift` — the notch notice shown after an automatic switch.
+- `KeyboardSwitchNotice.swift` — the notice shown at the text caret (or the notch) after an automatic switch.
+- `FocusedTextElement.swift` — Accessibility lookups on the focused text field: selected range, caret line and field frame.
 
 ### Phase 1 — Manual Conversion (Implemented)
 
@@ -972,7 +973,7 @@ Off by default; enabled with "Switch automatically" in Settings › Keyboard (on
 **Correction:** done synchronously inside the tap callback and posted with `CGEventTapPostEvent` through the tap proxy, so the deletes, the replacement, and a copy of the boundary key reach the app in order before any key the user pressed afterward. The original boundary event is swallowed. The target layout is selected and the buffer keeps the word (in the new layout) plus the space.
 
 **Undo:**
-- Backspace immediately after an automatic switch on Space restores the typed words (including short words switched with it), consumes the space (as Backspace would), switches back to the original layout, adds the switched word to the ignored list, and forgets it if it was learned.
+- Backspace immediately after an automatic switch on Space restores the typed words (including short words switched with it), consumes the space (as Backspace would), switches back to the original layout, and counts the undo for the typed word (`keyboardSwitcherUndoCounts`). On the 5th undo of the same word (`KeyboardAutoSwitcher.undosBeforeException`) it is added to the ignored list, its count is dropped, and it is forgotten if it was learned; before that the word keeps switching.
 - Triggering a manual conversion right after an automatic switch counts as the same undo (and is not learned).
 - Any other key, click, or app switch ends the undo window. Return has no undo (the text may already be sent).
 
@@ -980,18 +981,20 @@ Off by default; enabled with "Switch automatically" in Settings › Keyboard (on
 - Converting the last word with the trigger records `(source layout, target layout, converted word core)`, e.g. `us → ru, гитхаб`. From then on automatic switching converts that word from that layout whenever its candidate core matches, regardless of case or edge punctuation (`Гитхаб`, `гитхаб,`). Learned words work only while automatic switching is on.
 - The lesson is relative to the word as first typed: pressing the trigger repeatedly (cycling layouts) re-learns the final result and forgets the intermediate ones; converting back to the layout it was typed in forgets it.
 - Never learned: words whose typed core is a real word in the typed layout (so a stray conversion of `hello` cannot break English), results shorter than 2 letters, manual reverts of an automatic switch, and selection conversions.
-- Learning a word removes it from the ignored list; undoing a learned switch forgets it and ignores it.
+- Learning a word removes it from the ignored list and resets its undo count; the 5th undo of a learned switch forgets it and ignores it.
 - At most 500 entries; re-learning moves an entry to the end and the oldest drop out first.
 
 **Settings** (stored as newline-separated strings):
 - `keyboardSwitcherAutoEnabled` — default `false`.
-- `keyboardSwitcherExceptions` — ignored words (lowercased typed form), shown in Settings as "Ignored words" with a Clear button.
+- `keyboardSwitcherExceptions` — ignored words (lowercased typed form), shown in Settings as "Ignored words" with a Clear button (which also resets the undo counts).
+- `keyboardSwitcherUndoCounts` — undos per typed word (lowercased) not yet ignored, one `word<TAB>count` per line.
 - `keyboardSwitcherLearnedWords` — learned words, one tab-separated `source target word` per line, shown as "Learned words" with a Clear button.
 - `keyboardSwitcherExcludedApps` — bundle IDs with no automatic switching (the manual trigger still works). Defaults: Terminal, iTerm2, Ghostty, Warp, Xcode, VS Code. Apps are added via an open panel and removed per row.
 
-**Notch notice** (`KeyboardSwitchNotice.swift`, setting `keyboardSwitcherShowsNotice`, default on, "Show at the notch" in the Automatic card):
-- After every automatic switch, `original → replacement` (including short words switched with it; dimmed original, accent arrow, white replacement, 13 pt medium) grows down out of the notch for `1.8 s`, then collapses back. A new switch while it is visible updates the text and restarts the timer; an undo dismisses it immediately. Manual conversions show nothing.
-- Shape: a stem exactly the notch's width behind the physical notch, flaring through `8 pt` concave fillets into a `30 pt` tall body with `12 pt` corners. The body is the text width plus padding, at least notch width + 40 pt, at most 300 pt (longer text truncates in the middle). Because only the notch-wide stem overlaps the menu bar row, the compact panel's artwork and indicator stay visible; the body hangs below the compact panel.
+**Switch notice** (`KeyboardSwitchNotice.swift`, setting `keyboardSwitcherShowsNotice`, default on, "Show what was changed" in the Automatic card):
+- After every automatic switch, `original → replacement` (including short words switched with it; dimmed original, accent arrow, white replacement, 13 pt medium) is shown for `1.8 s`, then collapses. A new switch while it is visible updates the text and restarts the timer; an undo dismisses it immediately. Manual conversions show nothing.
+- Placement: next to the text caret when the focused app exposes it through Accessibility (`kAXSelectedTextRangeAttribute` + `kAXBoundsForRangeParameterizedAttribute`, falling back to the bounds of the character before the caret; field frame from `kAXPosition`/`kAXSize`; looked up off the main thread with a `0.25 s` messaging timeout). The body sits above the focused field (`6 pt` gap) when the field is at most `120 pt` tall (inputs, chat boxes — so it never covers the field), otherwise above the caret line (`14 pt` gap, which also clears the field's own padding); it grows upward. When there is no room above within the screen's visible frame it sits the same distance below and grows downward. Its right edge is `14 pt` past the caret so the replacement ends over the replaced word, clamped to the visible frame. It is a plain rounded body (no stem) with a `1 pt` white 14% stroke. Otherwise (no caret, e.g. many Electron apps and web views) it grows out of the notch as below.
+- Notch shape: a stem exactly the notch's width behind the physical notch, flaring through `8 pt` concave fillets into a `30 pt` tall body with `12 pt` corners. The body is the text width plus padding, at least notch width + 40 pt, at most 300 pt (longer text truncates in the middle). Because only the notch-wide stem overlaps the menu bar row, the compact panel's artwork and indicator stay visible; the body hangs below the compact panel.
 - Displays without a notch: a rounded body floating `6 pt` below the menu bar.
 - Reveal: spring (`response 0.32`, `damping 0.82`) of the body height from 0; hide: `0.22 s` ease-in, then the window is ordered out.
 - Its own borderless, non-activating, click-through `NSPanel` one level above the hover panel, on all Spaces and over full-screen apps, on `NSScreen.main`. It never touches the hover panel's lifecycle, and is skipped while the hover panel is expanded.

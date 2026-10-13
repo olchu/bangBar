@@ -13,6 +13,8 @@ struct AutoSwitchPlan {
 /// Decides whether a just-finished word was typed in the wrong layout, using the system spell checker and
 /// the words the user converted by hand.
 final class KeyboardAutoSwitcher {
+    static let undosBeforeException = 5
+
     private(set) var enabledLayouts: [KeyboardLayout] = []
     private var frontmostBundleID: String?
     private var isSpellCheckerWarm = false
@@ -23,6 +25,7 @@ final class KeyboardAutoSwitcher {
     private var excludedApps: Set<String> = []
     private var isFrontmostAppExcluded = false
     private var exceptions: Set<String> = []
+    private var undoCounts: [String: Int] = [:]
     private var learnedWords = KeyboardLearnedWords()
 
     func refreshLayouts() {
@@ -37,6 +40,7 @@ final class KeyboardAutoSwitcher {
         isEnabled = UserDefaults.standard.bool(forKey: BangBarSettings.Key.keyboardSwitcherAutoEnabled)
         excludedApps = Set(BangBarSettings.keyboardSwitcherExcludedApps)
         exceptions = BangBarSettings.keyboardSwitcherExceptions
+        undoCounts = BangBarSettings.keyboardSwitcherUndoCounts
         learnedWords = BangBarSettings.keyboardSwitcherLearnedWords
         isFrontmostAppExcluded = frontmostBundleID.map(excludedApps.contains) ?? false
     }
@@ -130,20 +134,37 @@ final class KeyboardAutoSwitcher {
         return count
     }
 
-    /// An undone switch is never repeated: the typed word becomes an exception and stops being learned.
-    func rememberException(for plan: AutoSwitchPlan) {
+    /// A single undo can be a slip, so only the `undosBeforeException`-th undo of the same typed word
+    /// stops switching it: the word becomes an exception and stops being learned.
+    func rememberUndo(for plan: AutoSwitchPlan) {
+        let word = plan.typedWord.lowercased()
+        var updatedUndoCounts = undoCounts
+        let count = (updatedUndoCounts[word] ?? 0) + 1
         var updatedExceptions = exceptions
-        updatedExceptions.insert(plan.typedWord.lowercased())
         var updatedLearnedWords = learnedWords
-        updatedLearnedWords.remove(plan.learnedWord)
-        save(exceptions: updatedExceptions, learnedWords: updatedLearnedWords)
+        if count >= Self.undosBeforeException {
+            updatedUndoCounts[word] = nil
+            updatedExceptions.insert(word)
+            updatedLearnedWords.remove(plan.learnedWord)
+        } else {
+            updatedUndoCounts[word] = count
+        }
+        save(exceptions: updatedExceptions, undoCounts: updatedUndoCounts, learnedWords: updatedLearnedWords)
     }
 
     /// Writes only what changed: every defaults write makes the whole app re-read its settings.
-    private func save(exceptions updatedExceptions: Set<String>, learnedWords updatedLearnedWords: KeyboardLearnedWords) {
+    private func save(
+        exceptions updatedExceptions: Set<String>,
+        undoCounts updatedUndoCounts: [String: Int]? = nil,
+        learnedWords updatedLearnedWords: KeyboardLearnedWords
+    ) {
         if updatedExceptions != exceptions {
             exceptions = updatedExceptions
             BangBarSettings.keyboardSwitcherExceptions = updatedExceptions
+        }
+        if let updatedUndoCounts, updatedUndoCounts != undoCounts {
+            undoCounts = updatedUndoCounts
+            BangBarSettings.keyboardSwitcherUndoCounts = updatedUndoCounts
         }
         if updatedLearnedWords != learnedWords {
             learnedWords = updatedLearnedWords
@@ -160,12 +181,13 @@ final class KeyboardAutoSwitcher {
 
         var updatedLearnedWords = learnedWords
         var updatedExceptions = exceptions
+        var updatedUndoCounts = undoCounts
         for layout in enabledLayouts where layout.id != origin.id {
             if let entry = learnedWord(typed: typed, keystrokes: keystrokes, from: origin, to: layout) {
                 updatedLearnedWords.remove(entry)
             }
         }
-        defer { save(exceptions: updatedExceptions, learnedWords: updatedLearnedWords) }
+        defer { save(exceptions: updatedExceptions, undoCounts: updatedUndoCounts, learnedWords: updatedLearnedWords) }
 
         guard targetLayoutID != originLayoutID,
               let target = enabledLayouts.first(where: { $0.id == targetLayoutID }) else { return }
@@ -182,6 +204,7 @@ final class KeyboardAutoSwitcher {
             word: cores.candidate.lowercased()
         ))
         updatedExceptions.remove(typed.joined().lowercased())
+        updatedUndoCounts[typed.joined().lowercased()] = nil
     }
 
     private func learnedWord(

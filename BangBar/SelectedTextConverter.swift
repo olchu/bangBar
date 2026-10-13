@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import Carbon
 
 enum SelectedTextConverter {
@@ -9,7 +8,7 @@ enum SelectedTextConverter {
     /// Copies the selection, pastes it converted to the next layout, reselects it, and restores the pasteboard.
     /// Returns the layout the text was converted to, or nil when nothing was converted.
     static func convertSelection() async -> KeyboardLayout? {
-        let selectionLength = focusedSelectionLength()
+        let selectionLength = FocusedTextElement.selectedRange()?.length
         guard selectionLength != 0 else { return nil }
         let layouts = KeyboardLayouts.enabled()
         guard layouts.count > 1 else { return nil }
@@ -46,21 +45,6 @@ enum SelectedTextConverter {
         try? await Task.sleep(for: .milliseconds(400))
         snapshot.restore(to: pasteboard)
         return pair.target
-    }
-
-    /// nil when the focused app does not expose its selection through Accessibility (many Electron apps and web views).
-    private static func focusedSelectionLength() -> Int? {
-        let systemWide = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(systemWide, 0.25)
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(focused as! AXUIElement, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        var range = CFRange()
-        guard AXValueGetValue(value as! AXValue, .cfRange, &range) else { return nil }
-        return range.length
     }
 
     private static func waitForChange(of pasteboard: NSPasteboard, since changeCount: Int) async -> Bool {
