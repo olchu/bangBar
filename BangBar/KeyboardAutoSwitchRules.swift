@@ -21,22 +21,77 @@ enum KeyboardAutoSwitchRules {
 
     /// `typed` and `candidate` hold one string per keystroke: what each key produced in the layout the word
     /// was typed in, and what it would produce in the candidate layout.
-    /// Converts only when the typed word is not a word but its candidate is, so unknown words stay untouched.
+    /// Converts only when the typed word is not a word but its candidate is, or when neither dictionary knows
+    /// it and `isUnknownWordConvertible(typedCore, candidateCore)` finds other evidence.
     static func shouldConvert(
         typed: [String],
         candidate: [String],
         candidateShortWords: Set<String> = [],
         isTypedValid: (String) -> Bool,
-        isCandidateValid: (String) -> Bool
+        isCandidateValid: (String) -> Bool,
+        isUnknownWordConvertible: (String, String) -> Bool = { _, _ in false }
     ) -> Bool {
         guard let cores = cores(typed: typed, candidate: candidate),
               !isWord(typedCore: cores.typed, isValid: isTypedValid) else { return false }
 
         let letterCount = cores.candidate.count(where: \.isLetter)
         if letterCount >= minimumLetters {
-            return isCandidateValid(cores.candidate)
+            return isCandidateValid(cores.candidate) || isUnknownWordConvertible(cores.typed, cores.candidate)
         }
         return letterCount == 2 && candidateShortWords.contains(cores.candidate.lowercased())
+    }
+
+    static let minimumUnknownLetters = 4
+    static let minimumTypoLetters = 5
+    static let minimumImpossibleSpots = 2
+
+    /// Evidence for words neither dictionary knows (`pfrjvbnm` → `закомить`). The candidate must not contain
+    /// letter combinations its language never uses, and then either the typed word has at least two that its
+    /// own language never uses, or the candidate is one typo away from a dictionary word while the typed word
+    /// is not close to any. A single impossible spot is not enough: code prefixes like `cgevent` have one.
+    /// Only lowercase and capitalised words qualify: `CGEvent` is an identifier and `USCGC` an acronym.
+    /// `typedDistance` / `candidateDistance` give the edit distance to the nearest dictionary word.
+    static func isUnknownWordConvertible(
+        typedCore: String,
+        candidateCore: String,
+        typedPatterns: KeyboardLetterPatterns?,
+        candidatePatterns: KeyboardLetterPatterns?,
+        typedDistance: (String) -> Int,
+        candidateDistance: (String) -> Int
+    ) -> Bool {
+        guard let candidatePatterns,
+              candidateCore.count >= minimumUnknownLetters,
+              candidateCore.allSatisfy(\.isLetter),
+              hasSentenceCasing(candidateCore),
+              candidatePatterns.impossibleSpotCount(in: candidateCore) == 0 else { return false }
+
+        if let typedPatterns, typedPatterns.impossibleSpotCount(in: typedCore) >= minimumImpossibleSpots {
+            return true
+        }
+        return candidateCore.count >= minimumTypoLetters
+            && candidateDistance(candidateCore) <= 1
+            && typedDistance(typedCore) > 1
+    }
+
+    /// Case-insensitive Levenshtein distance.
+    static func editDistance(_ first: String, _ second: String) -> Int {
+        let first = Array(first.lowercased()), second = Array(second.lowercased())
+        guard !first.isEmpty, !second.isEmpty else { return max(first.count, second.count) }
+        var previous = Array(0...second.count)
+        for i in 1...first.count {
+            var current = [i] + Array(repeating: 0, count: second.count)
+            for j in 1...second.count {
+                let substitution = previous[j - 1] + (first[i - 1] == second[j - 1] ? 0 : 1)
+                current[j] = min(previous[j] + 1, current[j - 1] + 1, substitution)
+            }
+            previous = current
+        }
+        return previous[second.count]
+    }
+
+    private static func hasSentenceCasing(_ word: String) -> Bool {
+        let rest = word.dropFirst()
+        return rest == rest.lowercased()
     }
 
     /// The word itself without edge punctuation, in both layouts: `ghbdtn?` / `привет,` → `ghbdtn` / `привет`.

@@ -19,6 +19,7 @@ final class KeyboardAutoSwitcher {
     private var frontmostBundleID: String?
     private var isSpellCheckerWarm = false
     private lazy var spellCheckerLanguages = Set(NSSpellChecker.shared.availableLanguages)
+    private var letterPatterns: [String: KeyboardLetterPatterns] = [:]
 
     // Cached from UserDefaults by `reloadSettings()`: `plan(for:)` runs inside the event tap on every Space.
     private(set) var isEnabled = false
@@ -30,6 +31,9 @@ final class KeyboardAutoSwitcher {
 
     func refreshLayouts() {
         enabledLayouts = KeyboardLayouts.enabled()
+        if isSpellCheckerWarm {
+            loadLetterPatterns()
+        }
     }
 
     func layout(withID id: String) -> KeyboardLayout? {
@@ -57,6 +61,14 @@ final class KeyboardAutoSwitcher {
         isSpellCheckerWarm = true
         for language in Set(enabledLayouts.compactMap(spellLanguage(for:))) {
             _ = isWord("warmup", language: language)
+            _ = nearestWordDistance("warmupp", language: language)
+        }
+        loadLetterPatterns()
+    }
+
+    private func loadLetterPatterns() {
+        for language in Set(enabledLayouts.compactMap(spellLanguage(for:))) where letterPatterns[language] == nil {
+            letterPatterns[language] = KeyboardLetterPatterns.bundled(language: language)
         }
     }
 
@@ -112,7 +124,17 @@ final class KeyboardAutoSwitcher {
             candidate: candidate,
             candidateShortWords: KeyboardAutoSwitchRules.shortWords[targetLanguage] ?? [],
             isTypedValid: { isWord($0, language: sourceLanguage) },
-            isCandidateValid: { isWord($0, language: targetLanguage) }
+            isCandidateValid: { isWord($0, language: targetLanguage) },
+            isUnknownWordConvertible: { typedCore, candidateCore in
+                KeyboardAutoSwitchRules.isUnknownWordConvertible(
+                    typedCore: typedCore,
+                    candidateCore: candidateCore,
+                    typedPatterns: letterPatterns[sourceLanguage],
+                    candidatePatterns: letterPatterns[targetLanguage],
+                    typedDistance: { nearestWordDistance($0, language: sourceLanguage) },
+                    candidateDistance: { nearestWordDistance($0, language: targetLanguage) }
+                )
+            }
         )
     }
 
@@ -221,6 +243,18 @@ final class KeyboardAutoSwitcher {
     private func spellLanguage(for layout: KeyboardLayout) -> String? {
         guard let language = layout.language else { return nil }
         return spellCheckerLanguages.contains(language) ? language : nil
+    }
+
+    /// Spell-checker guesses take 5–20 ms, so this only runs for words neither dictionary knows.
+    private func nearestWordDistance(_ word: String, language: String) -> Int {
+        let range = NSRange(location: 0, length: (word as NSString).length)
+        let guesses = NSSpellChecker.shared.guesses(
+            forWordRange: range,
+            in: word,
+            language: language,
+            inSpellDocumentWithTag: 0
+        ) ?? []
+        return guesses.map { KeyboardAutoSwitchRules.editDistance(word, $0) }.min() ?? .max
     }
 
     private func isWord(_ word: String, language: String) -> Bool {
