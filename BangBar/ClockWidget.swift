@@ -80,8 +80,6 @@ struct ClockWidget: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.trailing, 4)
 
-                //Spacer(minLength: 4)
-
                 inlineDate
             }
             .frame(height: headerHeight, alignment: .top)
@@ -105,10 +103,10 @@ struct ClockWidget: View {
                 if let event = calendarEvents.nextEvent,
                    case .authorized = calendarEvents.authorizationState {
                     VStack(alignment: .leading, spacing: 4) {
-                        eventDetails(for: event)
+                        eventRow(for: event, isPrimary: true)
 
                         if calendarEvents.upcomingEvents.count > 1 {
-                            compactEventRow(for: calendarEvents.upcomingEvents[1])
+                            eventRow(for: calendarEvents.upcomingEvents[1], isPrimary: false)
                         }
                     }
                 } else if case .authorized = calendarEvents.authorizationState {
@@ -117,12 +115,12 @@ struct ClockWidget: View {
                     HStack(alignment: .center, spacing: 5) {
                         Image(systemName: "calendar")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(eventTint)
+                            .foregroundStyle(.white.opacity(0.48))
                             .frame(width: 12)
 
-                        Text(eventSummary)
+                        Text(accessPrompt)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(eventTint)
+                            .foregroundStyle(.white.opacity(0.48))
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -278,17 +276,20 @@ struct ClockWidget: View {
         }
     }
 
-    private func eventDetails(for event: UpcomingCalendarEvent) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+    private func eventRow(for event: UpcomingCalendarEvent, isPrimary: Bool) -> some View {
+        let calendarTint = tint(for: event)
+        let textTint = calendarTint.opacity(isPrimary ? 0.9 : 0.5)
+        let fontSize: CGFloat = isPrimary ? 11 : 10
+        return VStack(alignment: .leading, spacing: isPrimary ? 3 : 2) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(timeString(from: event.startDate))
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(eventTint)
+                    .font(.system(size: fontSize, weight: .bold, design: .rounded))
+                    .foregroundStyle(textTint)
                     .monospacedDigit()
 
                 Text(event.title.isEmpty ? "Untitled" : event.title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(eventTint)
+                    .font(.system(size: fontSize, weight: .semibold))
+                    .foregroundStyle(textTint)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -296,55 +297,16 @@ struct ClockWidget: View {
             }
 
             Text(relativeEventStatus(for: event))
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.white.opacity(0.42))
+                .font(.system(size: fontSize - 2, weight: .medium))
+                .foregroundStyle(.white.opacity(isPrimary ? 0.42 : 0.28))
                 .lineLimit(1)
         }
         .padding(.leading, 8)
         .overlay(alignment: .leading) {
             Capsule()
-                .fill(tint(for: event).opacity(0.85))
+                .fill(calendarTint.opacity(isPrimary ? 0.85 : 0.75))
                 .frame(width: 2)
         }
-    }
-
-    private func compactEventRow(for event: UpcomingCalendarEvent) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(timeString(from: event.startDate))
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(tint(for: event).opacity(0.5))
-                    .monospacedDigit()
-
-                Text(event.title.isEmpty ? "Untitled" : event.title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(tint(for: event).opacity(0.5))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Spacer(minLength: 0)
-            }
-
-            Text(relativeEventStatus(for: event))
-                .font(.system(size: 8, weight: .medium))
-                .foregroundStyle(.white.opacity(0.28))
-                .lineLimit(1)
-        }
-        .padding(.leading, 8)
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(tint(for: event).opacity(0.75))
-                .frame(width: 2)
-        }
-    }
-
-    private var eventTint: Color {
-        guard let event = calendarEvents.nextEvent,
-              case .authorized = calendarEvents.authorizationState else {
-            return .white.opacity(0.48)
-        }
-
-        return Color(nsColor: event.calendarColor).opacity(0.9)
     }
 
     private func tint(for event: UpcomingCalendarEvent) -> Color {
@@ -416,23 +378,14 @@ struct ClockWidget: View {
         .offset(y: 1)
     }
 
-    private var eventSummary: String {
+    private var accessPrompt: String {
         switch calendarEvents.authorizationState {
-        case .unknown, .requesting:
+        case .unknown, .requesting, .authorized:
             return "Allow calendar access"
         case .denied:
             return "Open Calendar settings"
         case .failed:
             return "Calendar access failed"
-        case .authorized:
-            break
         }
-
-        guard let event = calendarEvents.nextEvent else {
-            return "No more today"
-        }
-
-        let title = event.title.isEmpty ? "Untitled" : event.title
-        return "\(timeString(from: event.startDate))  \(title)"
     }
 }

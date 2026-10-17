@@ -12,19 +12,18 @@ final class PomodoroService: ObservableObject {
     @Published var isRunning = false
     @Published var secondsRemaining = 25 * 60
     @Published var completedPomodoros = 0
-    @Published var didJustComplete = false
 
     private static let completedKey = "pomodoroCompletedCount"
 
-    var workDuration: Int {
+    private var workDuration: Int {
         max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroWorkMinutes), 1) * 60
     }
 
-    var shortBreakDuration: Int {
+    private var shortBreakDuration: Int {
         max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroShortBreakMinutes), 1) * 60
     }
 
-    var longBreakDuration: Int {
+    private var longBreakDuration: Int {
         max(UserDefaults.standard.integer(forKey: BangBarSettings.Key.pomodoroLongBreakMinutes), 1) * 60
     }
 
@@ -68,6 +67,10 @@ final class PomodoroService: ObservableObject {
         }
     }
 
+    var progress: Double {
+        1.0 - Double(secondsRemaining) / Double(duration(for: sessionType))
+    }
+
     var timeString: String {
         String(format: "%02d:%02d", secondsRemaining / 60, secondsRemaining % 60)
     }
@@ -88,7 +91,6 @@ final class PomodoroService: ObservableObject {
         pause()
         sessionType = .work
         secondsRemaining = workDuration
-        didJustComplete = false
     }
 
     func resetIncludingCycles() {
@@ -125,21 +127,15 @@ final class PomodoroService: ObservableObject {
         ticker = nil
         isRunning = false
 
-        didJustComplete = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-            self?.didJustComplete = false
-        }
-
         if sessionType == .work {
             completedPomodoros += 1
             UserDefaults.standard.set(completedPomodoros, forKey: Self.completedKey)
             let isLong = completedPomodoros % pomodorosBeforeLongBreak == 0
             sessionType = isLong ? .longBreak : .shortBreak
-            secondsRemaining = isLong ? longBreakDuration : shortBreakDuration
         } else {
             sessionType = .work
-            secondsRemaining = workDuration
         }
+        secondsRemaining = duration(for: sessionType)
 
         resume()
     }

@@ -68,12 +68,11 @@ final class HabitService: ObservableObject {
     private static let retentionDays = 365
 
     private let defaults: UserDefaults
-    private var calendar: Calendar
+    private let calendar = Calendar.autoupdatingCurrent
     private var cancellables: Set<AnyCancellable> = []
 
-    init(defaults: UserDefaults = .standard, calendar: Calendar = .autoupdatingCurrent) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.calendar = calendar
         currentDay = DayIdentifier.string(for: Date(), calendar: calendar)
         load()
         refreshDay()
@@ -92,11 +91,9 @@ final class HabitService: ObservableObject {
     }
 
     func refreshDay(now: Date = Date()) {
-        calendar = .autoupdatingCurrent
         let newDay = DayIdentifier.string(for: now, calendar: calendar)
         if currentDay != newDay {
             currentDay = newDay
-            objectWillChange.send()
         }
         pruneRecords(now: now)
     }
@@ -257,7 +254,7 @@ final class HabitService: ObservableObject {
         )
     }
 
-    private static func normalizedTitle(_ title: String) -> String {
+    static func normalizedTitle(_ title: String) -> String {
         String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
     }
 
@@ -316,7 +313,8 @@ final class HabitService: ObservableObject {
         return best
     }
 
-    private func datesEndingToday(count: Int, now: Date) -> [Date] {
+    /// Newest first.
+    func datesEndingToday(count: Int, now: Date = Date()) -> [Date] {
         guard count > 0 else { return [] }
         let today = calendar.startOfDay(for: now)
         return (0..<count).compactMap {

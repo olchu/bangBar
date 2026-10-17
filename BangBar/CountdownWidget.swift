@@ -11,11 +11,12 @@ struct CountdownWidget: View {
     private var accentColor: Color { Color(hex: accentColorHex) }
 
     var body: some View {
+        let remaining = service.countdown?.remaining(at: date)
         VStack(alignment: .leading, spacing: 0) {
-            header
+            header(isDone: remaining == .done)
 
-            if let countdown = service.countdown {
-                CountdownDetails(countdown: countdown, now: date, accentColor: accentColor)
+            if let countdown = service.countdown, let remaining {
+                CountdownDetails(countdown: countdown, remaining: remaining, accentColor: accentColor)
             } else {
                 emptyState
             }
@@ -34,21 +35,11 @@ struct CountdownWidget: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityLabel(accessibilityText(remaining: remaining))
         .accessibilityAddTraits(.isButton)
     }
 
-    private var isDone: Bool {
-        guard let countdown = service.countdown else { return false }
-        return CountdownFormatter.isElapsed(
-            now: date,
-            target: countdown.targetDate,
-            includesTime: countdown.includesTime,
-            calendar: .autoupdatingCurrent
-        )
-    }
-
-    private var header: some View {
+    private func header(isDone: Bool) -> some View {
         HStack {
             CountdownHeaderIcon(
                 systemName: isDone ? "hourglass.bottomhalf.filled" : "hourglass",
@@ -82,14 +73,8 @@ struct CountdownWidget: View {
         .padding(.bottom, 8)
     }
 
-    private var accessibilityText: String {
-        guard let countdown = service.countdown else { return "No countdown. Pick a date." }
-        let remaining = CountdownFormatter.remaining(
-            now: date,
-            target: countdown.targetDate,
-            includesTime: countdown.includesTime,
-            calendar: .autoupdatingCurrent
-        )
+    private func accessibilityText(remaining: CountdownRemaining?) -> String {
+        guard let countdown = service.countdown, let remaining else { return "No countdown. Pick a date." }
         return "\(countdown.title), \(remaining.text)"
     }
 
@@ -108,17 +93,8 @@ struct CountdownWidget: View {
 
 private struct CountdownDetails: View {
     let countdown: Countdown
-    let now: Date
+    let remaining: CountdownRemaining
     let accentColor: Color
-
-    private var remaining: CountdownRemaining {
-        CountdownFormatter.remaining(
-            now: now,
-            target: countdown.targetDate,
-            includesTime: countdown.includesTime,
-            calendar: .autoupdatingCurrent
-        )
-    }
 
     var body: some View {
         VStack(spacing: 0) {

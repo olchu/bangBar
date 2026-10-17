@@ -3,7 +3,6 @@ import Foundation
 import SwiftUI
 
 struct MoonWidget: View {
-    private static let infoOverlayVerticalOutset: CGFloat = 0
     private static let moonDiskSize: CGFloat = 78
 
     let date: Date
@@ -95,7 +94,7 @@ struct MoonWidget: View {
         }
         .frame(
             width: PanelLayout.moonWidgetWidth,
-            height: PanelLayout.nowPlayingWidgetHeight + Self.infoOverlayVerticalOutset * 2
+            height: PanelLayout.nowPlayingWidgetHeight
         )
         .allowsHitTesting(false)
     }
@@ -104,26 +103,17 @@ struct MoonWidget: View {
         label: String,
         value: String,
         alignment: HorizontalAlignment,
-        showsDot: Bool = false,
         usesAccentColor: Bool = true
     ) -> some View {
         VStack(alignment: alignment, spacing: 2) {
-            HStack(spacing: 4) {
-                if showsDot {
-                    Circle()
-                        .fill(accentColor)
-                        .frame(width: 4, height: 4)
-                }
-
-                Text(value)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(
-                        usesAccentColor ? accentColor.opacity(0.95) : .white.opacity(0.95)
-                    )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.55)
-            }
-            .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
+            Text(value)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(
+                    usesAccentColor ? accentColor.opacity(0.95) : .white.opacity(0.95)
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
 
             Text(label)
                 .font(.system(size: 5.5, weight: .semibold, design: .rounded))
@@ -269,11 +259,11 @@ struct MoonPhase {
     }
 
     private var nextFullMoonDate: Date {
-        Self.cachedEvent(&Self.nextFullMoonCache, after: date, compute: { Self.nextFullMoon(after: $0) })
+        Self.cachedEvent(&Self.nextFullMoonCache, after: date, compute: { Self.nextIlluminationExtremum(after: $0, maximizing: true) })
     }
 
     private var nextNewMoonDate: Date {
-        Self.cachedEvent(&Self.nextNewMoonCache, after: date, compute: { Self.nextNewMoon(after: $0) })
+        Self.cachedEvent(&Self.nextNewMoonCache, after: date, compute: { Self.nextIlluminationExtremum(after: $0, maximizing: false) })
     }
 
     private static var nextFullMoonCache: (from: Date, event: Date)?
@@ -311,90 +301,45 @@ struct MoonPhase {
         return formatter
     }()
 
-    private static func nextFullMoon(after date: Date) -> Date {
+    /// The next full moon (`maximizing`) or new moon: the illumination peak or trough after `date`.
+    private static func nextIlluminationExtremum(after date: Date, maximizing: Bool) -> Date {
+        let score = { (date: Date) in maximizing ? illuminationFraction(on: date) : -illuminationFraction(on: date) }
         let sampleStep = 6.0 * 60 * 60
         let sampleCount = Int((synodicPeriod * secondsPerDay) / sampleStep)
         var bestDate = date
-        var bestIllumination = -Double.infinity
+        var bestScore = -Double.infinity
 
         for sample in 0...sampleCount {
             let candidate = date.addingTimeInterval(Double(sample) * sampleStep)
-            let illumination = illuminationFraction(on: candidate)
+            let candidateScore = score(candidate)
 
-            if illumination > bestIllumination {
-                bestIllumination = illumination
+            if candidateScore > bestScore {
+                bestScore = candidateScore
                 bestDate = candidate
             }
         }
 
-        let refinedDate = refinedFullMoon(near: bestDate, window: sampleStep)
-        guard refinedDate >= date else {
-            return nextFullMoon(after: date.addingTimeInterval(sampleStep))
-        }
-
-        return refinedDate
-    }
-
-    private static func nextNewMoon(after date: Date) -> Date {
-        let sampleStep = 6.0 * 60 * 60
-        let sampleCount = Int((synodicPeriod * secondsPerDay) / sampleStep)
-        var bestDate = date
-        var bestIllumination = Double.infinity
-
-        for sample in 0...sampleCount {
-            let candidate = date.addingTimeInterval(Double(sample) * sampleStep)
-            let illumination = illuminationFraction(on: candidate)
-
-            if illumination < bestIllumination {
-                bestIllumination = illumination
-                bestDate = candidate
-            }
-        }
-
-        let refinedDate = refinedNewMoon(near: bestDate, window: sampleStep)
-        guard refinedDate >= date else {
-            return nextNewMoon(after: date.addingTimeInterval(sampleStep))
-        }
-
-        return refinedDate
-    }
-
-    private static func refinedFullMoon(near date: Date, window: TimeInterval) -> Date {
-        var lower = date.addingTimeInterval(-window)
-        var upper = date.addingTimeInterval(window)
-
+        // Ternary search for the exact extremum within one sample step of the best sample.
+        var lower = bestDate.addingTimeInterval(-sampleStep)
+        var upper = bestDate.addingTimeInterval(sampleStep)
         for _ in 0..<28 {
             let span = upper.timeIntervalSince(lower)
             let first = lower.addingTimeInterval(span / 3)
             let second = upper.addingTimeInterval(-span / 3)
 
-            if illuminationFraction(on: first) < illuminationFraction(on: second) {
+            if score(first) < score(second) {
                 lower = first
             } else {
                 upper = second
             }
         }
 
-        return lower.addingTimeInterval(upper.timeIntervalSince(lower) / 2)
-    }
-
-    private static func refinedNewMoon(near date: Date, window: TimeInterval) -> Date {
-        var lower = date.addingTimeInterval(-window)
-        var upper = date.addingTimeInterval(window)
-
-        for _ in 0..<28 {
-            let span = upper.timeIntervalSince(lower)
-            let first = lower.addingTimeInterval(span / 3)
-            let second = upper.addingTimeInterval(-span / 3)
-
-            if illuminationFraction(on: first) > illuminationFraction(on: second) {
-                lower = first
-            } else {
-                upper = second
-            }
+        let refinedDate = lower.addingTimeInterval(upper.timeIntervalSince(lower) / 2)
+        guard refinedDate >= date else {
+            return nextIlluminationExtremum(after: date.addingTimeInterval(sampleStep), maximizing: maximizing)
         }
 
-        return lower.addingTimeInterval(upper.timeIntervalSince(lower) / 2)
+        return refinedDate
     }
 
     private static func illuminationFraction(on date: Date) -> Double {

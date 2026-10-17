@@ -9,8 +9,8 @@ struct TextCaret {
 }
 
 /// The focused text field as Accessibility sees it; nil wherever the app does not expose it
-/// (many Electron apps and web views).
-enum FocusedTextElement {
+/// (many Electron apps and web views). Every call blocks on IPC with the focused app, so call it off the main thread.
+nonisolated enum FocusedTextElement {
     private static let messagingTimeout: Float = 0.25
     /// Some apps report the whole document or a zero rect for the caret; a taller "line" is not a caret.
     private static let maximumCaretHeight: CGFloat = 200
@@ -19,7 +19,6 @@ enum FocusedTextElement {
         focusedElement().flatMap(selectedRange(of:))
     }
 
-    /// Blocks on IPC with the focused app, so call it off the main thread.
     static func caret() -> TextCaret? {
         guard let element = focusedElement(), let line = caretLine(in: element) else { return nil }
         return TextCaret(line: line, field: frame(of: element))
@@ -37,16 +36,8 @@ enum FocusedTextElement {
     }
 
     private static func frame(of element: AXUIElement) -> CGRect? {
-        var positionValue: CFTypeRef?
-        var sizeValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
-              let positionValue, CFGetTypeID(positionValue) == AXValueGetTypeID(),
-              let sizeValue, CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
-        var position = CGPoint.zero
-        var size = CGSize.zero
-        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
-              AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else { return nil }
+        guard let position = value(of: kAXPositionAttribute, in: element, as: .cgPoint, initial: CGPoint.zero),
+              let size = value(of: kAXSizeAttribute, in: element, as: .cgSize, initial: CGSize.zero) else { return nil }
         return CGRect(origin: position, size: size)
     }
 
@@ -62,24 +53,29 @@ enum FocusedTextElement {
     }
 
     private static func selectedRange(of element: AXUIElement) -> CFRange? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        var range = CFRange()
-        guard AXValueGetValue(value as! AXValue, .cfRange, &range) else { return nil }
-        return range
+        value(of: kAXSelectedTextRangeAttribute, in: element, as: .cfRange, initial: CFRange())
     }
 
     private static func bounds(of range: CFRange, in element: AXUIElement) -> CGRect? {
         var range = range
         guard let parameter = AXValueCreate(.cfRange, &range) else { return nil }
-        var value: CFTypeRef?
+        var raw: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(
-            element, kAXBoundsForRangeParameterizedAttribute as CFString, parameter, &value
-        ) == .success, let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        var rect = CGRect.zero
-        guard AXValueGetValue(value as! AXValue, .cgRect, &rect),
+            element, kAXBoundsForRangeParameterizedAttribute as CFString, parameter, &raw
+        ) == .success, let rect = unwrap(raw, as: .cgRect, initial: CGRect.zero),
               rect.height > 0, rect.height <= maximumCaretHeight else { return nil }
         return rect
+    }
+
+    private static func value<T: BitwiseCopyable>(of attribute: String, in element: AXUIElement, as type: AXValueType, initial: T) -> T? {
+        var raw: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &raw) == .success else { return nil }
+        return unwrap(raw, as: type, initial: initial)
+    }
+
+    private static func unwrap<T: BitwiseCopyable>(_ raw: CFTypeRef?, as type: AXValueType, initial: T) -> T? {
+        guard let raw, CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        var result = initial
+        return AXValueGetValue(raw as! AXValue, type, &result) ? result : nil
     }
 }

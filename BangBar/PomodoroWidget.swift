@@ -9,19 +9,6 @@ struct PomodoroWidget: View {
     private let tickCount = 72
     private let outerRadius: CGFloat = 51
 
-    private var totalDuration: Int {
-        switch service.sessionType {
-        case .work:       return service.workDuration
-        case .shortBreak: return service.shortBreakDuration
-        case .longBreak:  return service.longBreakDuration
-        }
-    }
-
-    private var progress: Double {
-        guard totalDuration > 0 else { return 0 }
-        return 1.0 - Double(service.secondsRemaining) / Double(totalDuration)
-    }
-
     private var pomodoroInCycle: Int {
         let rounds = service.pomodorosBeforeLongBreak
         if service.sessionType == .work {
@@ -35,7 +22,7 @@ struct PomodoroWidget: View {
         ZStack {
             ForEach(0..<tickCount, id: \.self) { i in
                 let angle = Double(i) / Double(tickCount) * 360.0 - 90.0
-                let isActive = Double(i) / Double(tickCount) < progress
+                let isActive = Double(i) / Double(tickCount) < service.progress
 
                 RoundedRectangle(cornerRadius: 1)
                     .fill(isActive ? accentColor : accentColor.opacity(0.18))
@@ -117,19 +104,6 @@ struct CompactPomodoroWidget: View {
     private var accentColor: Color { Color(hex: accentColorHex) }
     private let tickCount = 28
 
-    private var totalDuration: Int {
-        switch service.sessionType {
-        case .work:       return service.workDuration
-        case .shortBreak: return service.shortBreakDuration
-        case .longBreak:  return service.longBreakDuration
-        }
-    }
-
-    private var progress: Double {
-        guard totalDuration > 0 else { return 0 }
-        return 1.0 - Double(service.secondsRemaining) / Double(totalDuration)
-    }
-
     var body: some View {
         GeometryReader { geo in
             let horizontalPadding = PanelLayout.compactHorizontalPadding
@@ -144,7 +118,7 @@ struct CompactPomodoroWidget: View {
                         .monospacedDigit()
                         .lineLimit(1)
 
-                    Text(compactSessionLabel)
+                    Text(service.sessionLabel)
                         .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundStyle(accentColor)
                         .lineLimit(1)
@@ -155,28 +129,17 @@ struct CompactPomodoroWidget: View {
                 Spacer(minLength: 56)
 
                 CompactPomodoroProgressRing(
-                    progress: progress,
+                    progress: service.progress,
                     accentColor: accentColor,
                     tickCount: tickCount
                 )
                 .frame(width: iconSize, height: iconSize)
                 .shadow(color: accentColor.opacity(0.22), radius: 5)
                 .opacity(hasEnoughSpace ? 1.0 : 0.0)
-                .accessibilityLabel(compactSessionLabel)
+                .accessibilityLabel(service.sessionLabel)
             }
             .padding(.horizontal, horizontalPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var compactSessionLabel: String {
-        switch service.sessionType {
-        case .work:
-            return "Work"
-        case .shortBreak:
-            return "Break"
-        case .longBreak:
-            return "Rest"
         }
     }
 }

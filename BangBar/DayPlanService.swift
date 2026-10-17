@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 
 struct DayPlanItem: Codable, Hashable, Identifiable {
     let id: UUID
@@ -45,14 +46,13 @@ final class DayPlanService: ObservableObject {
     private static let storageVersion = 2
 
     private let storageURL: URL
-    private var calendar: Calendar
+    private let calendar = Calendar.autoupdatingCurrent
     private var cancellables: Set<AnyCancellable> = []
     private var externalStorageCancellable: AnyCancellable?
     private var externalStorageMonitoringClients = 0
     private var lastKnownStorageModificationDate: Date?
 
-    init(calendar: Calendar = .autoupdatingCurrent) {
-        self.calendar = calendar
+    init() {
         self.storageURL = Self.resolveStorageURL()
         currentDay = DayIdentifier.string(for: Date(), calendar: calendar)
         reload()
@@ -64,7 +64,6 @@ final class DayPlanService: ObservableObject {
     }
 
     func refreshDay(now: Date = Date()) {
-        calendar = .autoupdatingCurrent
         let newDay = DayIdentifier.string(for: now, calendar: calendar)
         guard currentDay != newDay else { return }
         currentDay = newDay
@@ -237,7 +236,7 @@ final class DayPlanService: ObservableObject {
 
     func movePlans(_ orderedPlans: [DayPlanItem], from source: IndexSet, to destination: Int) {
         var reorderedPlans = orderedPlans
-        reorderedPlans.moveElements(from: source, to: destination)
+        reorderedPlans.move(fromOffsets: source, toOffset: destination)
         let reorderedIDs = reorderedPlans.map(\.id)
         let affectedIDs = Set(orderedPlans.map(\.id))
         let movedItems = reorderedIDs.compactMap { id in
@@ -252,7 +251,7 @@ final class DayPlanService: ObservableObject {
         persist()
     }
 
-    private static func normalizedTitle(_ title: String) -> String {
+    static func normalizedTitle(_ title: String) -> String {
         String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
     }
 
@@ -321,17 +320,4 @@ final class DayPlanService: ObservableObject {
             .store(in: &cancellables)
     }
 
-}
-
-private extension Array {
-    mutating func moveElements(from source: IndexSet, to destination: Int) {
-        let movingElements = source.map { self[$0] }
-        for index in source.sorted(by: >) {
-            remove(at: index)
-        }
-
-        let movedBeforeDestination = source.filter { $0 < destination }.count
-        let insertionIndex = Swift.max(0, Swift.min(destination - movedBeforeDestination, count))
-        insert(contentsOf: movingElements, at: insertionIndex)
-    }
 }

@@ -219,7 +219,7 @@ final class GitHubContributionsService: ObservableObject {
 
         if loadedUsername.caseInsensitiveCompare(username) == .orderedSame,
            let loadedAt,
-           Date().timeIntervalSince(loadedAt) < 30 * 60 {
+           .seconds(Date().timeIntervalSince(loadedAt)) < Self.refreshInterval {
             return
         }
 
@@ -235,17 +235,14 @@ final class GitHubContributionsService: ObservableObject {
         }
 
         do {
-            var contributions: [String: ContributionValue] = [:]
-            for url in urls {
-                var request = URLRequest(url: url)
-                request.setValue("BangBar", forHTTPHeaderField: "User-Agent")
-                request.setValue("text/html", forHTTPHeaderField: "Accept")
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse,
-                      (200..<300).contains(httpResponse.statusCode),
-                      let html = String(data: data, encoding: .utf8) else {
-                    throw URLError(.badServerResponse)
+            let pages = try await withThrowingTaskGroup(of: String.self) { group in
+                for url in urls {
+                    group.addTask { try await Self.fetchPage(url) }
                 }
+                return try await group.reduce(into: []) { $0.append($1) }
+            }
+            var contributions: [String: ContributionValue] = [:]
+            for html in pages {
                 contributions.merge(Self.parseContributions(from: html)) { _, latest in latest }
             }
 
@@ -267,32 +264,30 @@ final class GitHubContributionsService: ObservableObject {
         return calendar
     }()
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
+    private static let monthFormatter = makeFormatter("MMM")
+    fileprivate static let tooltipDateFormatter = makeFormatter("MMMM d")
 
-    private static let monthFormatter: DateFormatter = {
+    private static func makeFormatter(_ dateFormat: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM"
+        formatter.dateFormat = dateFormat
         return formatter
-    }()
+    }
 
-    fileprivate static let tooltipDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMMM d"
-        return formatter
-    }()
+    private nonisolated static func fetchPage(_ url: URL) async throws -> String {
+        var request = URLRequest(url: url)
+        request.setValue("BangBar", forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode),
+              let html = String(data: data, encoding: .utf8) else {
+            throw URLError(.badServerResponse)
+        }
+        return html
+    }
 
     private static func visibleDateRange() -> ClosedRange<Date> {
         let today = calendar.startOfDay(for: Date())
@@ -328,9 +323,17 @@ final class GitHubContributionsService: ObservableObject {
         let count: Int
     }
 
+    private static let tagRegex = try! NSRegularExpression(pattern: #"<[^>]+data-date="\d{4}-\d{2}-\d{2}"[^>]*>"#)
+    private static let tooltipRegex = try! NSRegularExpression(pattern: #"<tool-tip[^>]+for="([^"]+)"[^>]*>([^<]+)</tool-tip>"#)
+    private static let dateAttributeRegex = attributeRegex("data-date")
+    private static let idAttributeRegex = attributeRegex("id")
+    private static let levelAttributeRegex = attributeRegex("data-level")
+
+    private static func attributeRegex(_ name: String) -> NSRegularExpression {
+        try! NSRegularExpression(pattern: "\(NSRegularExpression.escapedPattern(for: name))=\"([^\"]+)\"")
+    }
+
     private static func parseContributions(from html: String) -> [String: ContributionValue] {
-        let tagPattern = #"<[^>]+data-date="\d{4}-\d{2}-\d{2}"[^>]*>"#
-        guard let tagRegex = try? NSRegularExpression(pattern: tagPattern) else { return [:] }
         let range = NSRange(html.startIndex..., in: html)
         var dateByElementID: [String: String] = [:]
         var levelByDate: [String: Int] = [:]
@@ -338,25 +341,22 @@ final class GitHubContributionsService: ObservableObject {
         for match in tagRegex.matches(in: html, range: range) {
             guard let tagRange = Range(match.range, in: html) else { continue }
             let tag = String(html[tagRange])
-            guard let date = attribute("data-date", in: tag),
-                  let elementID = attribute("id", in: tag),
-                  let rawLevel = attribute("data-level", in: tag),
+            guard let date = attribute(dateAttributeRegex, in: tag),
+                  let elementID = attribute(idAttributeRegex, in: tag),
+                  let rawLevel = attribute(levelAttributeRegex, in: tag),
                   let level = Int(rawLevel) else { continue }
             dateByElementID[elementID] = date
             levelByDate[date] = level
         }
 
         var countByDate: [String: Int] = [:]
-        let tooltipPattern = #"<tool-tip[^>]+for="([^"]+)"[^>]*>([^<]+)</tool-tip>"#
-        if let tooltipRegex = try? NSRegularExpression(pattern: tooltipPattern) {
-            for match in tooltipRegex.matches(in: html, range: range) {
-                guard match.numberOfRanges > 2,
-                      let idRange = Range(match.range(at: 1), in: html),
-                      let textRange = Range(match.range(at: 2), in: html),
-                      let date = dateByElementID[String(html[idRange])] else { continue }
-                let text = String(html[textRange])
-                countByDate[date] = Int(text.prefix { $0.isNumber }) ?? 0
-            }
+        for match in tooltipRegex.matches(in: html, range: range) {
+            guard match.numberOfRanges > 2,
+                  let idRange = Range(match.range(at: 1), in: html),
+                  let textRange = Range(match.range(at: 2), in: html),
+                  let date = dateByElementID[String(html[idRange])] else { continue }
+            let text = String(html[textRange])
+            countByDate[date] = Int(text.prefix { $0.isNumber }) ?? 0
         }
 
         var result: [String: ContributionValue] = [:]
@@ -366,10 +366,8 @@ final class GitHubContributionsService: ObservableObject {
         return result
     }
 
-    private static func attribute(_ name: String, in tag: String) -> String? {
-        let pattern = "\(NSRegularExpression.escapedPattern(for: name))=\"([^\"]+)\""
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)),
+    private static func attribute(_ regex: NSRegularExpression, in tag: String) -> String? {
+        guard let match = regex.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)),
               match.numberOfRanges > 1,
               let valueRange = Range(match.range(at: 1), in: tag) else { return nil }
         return String(tag[valueRange])
@@ -385,7 +383,7 @@ final class GitHubContributionsService: ObservableObject {
         while weekStart <= range.upperBound {
             let days = (0..<7).compactMap { offset -> Day? in
                 guard let date = calendar.date(byAdding: .day, value: offset, to: weekStart) else { return nil }
-                let dateString = dateFormatter.string(from: date)
+                let dateString = DayIdentifier.string(for: date, calendar: calendar)
                 let contribution = contributions[dateString]
                 return Day(
                     date: date,

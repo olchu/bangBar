@@ -127,16 +127,14 @@ final class ClipboardHistoryService: ObservableObject {
     )
     private var timer: Timer?
     private var settingsObserver: AnyCancellable?
+    private var shortcutSettingObserver: AnyCancellable?
     private var lastChangeCount: Int
     private var collectionStartedAt: Date?
     private var lastGroupCaptureAt: Date?
     private var pendingCaptureDeadline: Date?
     private var lastStableFingerprint: String?
     private var imageCaptureGeneration = 0
-    private var shortcutKeyDownMonitor: Any?
-    private var shortcutKeyUpMonitor: Any?
-    private var shortcutFlagsMonitor: Any?
-    private var shortcutLocalMonitor: Any?
+    private var shortcutMonitors: [Any] = []
     private var shortcutIsPressed = false
     private var shortcutSuppressedUntil = Date.distantPast
 
@@ -188,16 +186,12 @@ final class ClipboardHistoryService: ObservableObject {
         load()
         lastStableFingerprint = currentPasteboardFingerprint()
         startMonitoring()
-        startShortcutMonitoring()
         observeSettings()
     }
 
     deinit {
         timer?.invalidate()
-        if let shortcutKeyDownMonitor { NSEvent.removeMonitor(shortcutKeyDownMonitor) }
-        if let shortcutKeyUpMonitor { NSEvent.removeMonitor(shortcutKeyUpMonitor) }
-        if let shortcutFlagsMonitor { NSEvent.removeMonitor(shortcutFlagsMonitor) }
-        if let shortcutLocalMonitor { NSEvent.removeMonitor(shortcutLocalMonitor) }
+        shortcutMonitors.forEach(NSEvent.removeMonitor)
     }
 
     func image(for item: ClipboardHistoryItem) -> NSImage? {
@@ -377,9 +371,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func startMonitoring() {
         let timer = Timer(timeInterval: 0.6, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.capturePasteboardIfNeeded()
-            }
+            MainActor.assumeIsolated { self?.capturePasteboardIfNeeded() }
         }
         timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
@@ -396,6 +388,15 @@ final class ClipboardHistoryService: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.enforceLimitsAndSave()
+            }
+        // The shortcut is off by default; without it there is no reason to see every keystroke in the system.
+        shortcutSettingObserver = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .map { _ in UserDefaults.standard.bool(forKey: BangBarSettings.Key.clipboardIgnoreShortcutEnabled) }
+            .prepend(UserDefaults.standard.bool(forKey: BangBarSettings.Key.clipboardIgnoreShortcutEnabled))
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isEnabled in
+                self?.setShortcutMonitoring(isEnabled)
             }
     }
 
@@ -489,55 +490,39 @@ final class ClipboardHistoryService: ObservableObject {
             && (shortcutIsPressed || Date() < shortcutSuppressedUntil)
     }
 
-    private func startShortcutMonitoring() {
-        shortcutKeyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            Task { @MainActor [weak self] in self?.handleShortcutEvent(event, isDown: true) }
+    private func setShortcutMonitoring(_ isEnabled: Bool) {
+        shortcutMonitors.forEach(NSEvent.removeMonitor)
+        shortcutMonitors = []
+        shortcutIsPressed = false
+        guard isEnabled else { return }
+
+        // Both kinds of monitor call back on the main thread.
+        let types: NSEvent.EventTypeMask = [.keyDown, .keyUp, .flagsChanged]
+        let global = NSEvent.addGlobalMonitorForEvents(matching: types) { [weak self] event in
+            MainActor.assumeIsolated { self?.handleShortcutEvent(event) }
         }
-        shortcutKeyUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyUp) { [weak self] event in
-            Task { @MainActor [weak self] in self?.handleShortcutEvent(event, isDown: false) }
-        }
-        shortcutFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            Task { @MainActor [weak self] in self?.handleModifierShortcutEvent(event) }
-        }
-        shortcutLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
-            Task { @MainActor [weak self] in
-                if event.type == .flagsChanged {
-                    self?.handleModifierShortcutEvent(event)
-                } else {
-                    self?.handleShortcutEvent(event, isDown: event.type == .keyDown)
-                }
-            }
+        let local = NSEvent.addLocalMonitorForEvents(matching: types) { [weak self] event in
+            MainActor.assumeIsolated { self?.handleShortcutEvent(event) }
             return event
         }
+        shortcutMonitors = [global, local].compactMap { $0 }
     }
 
-    private func handleModifierShortcutEvent(_ event: NSEvent) {
+    private func handleShortcutEvent(_ event: NSEvent) {
         let defaults = UserDefaults.standard
+        let keyCode = defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutKeyCode)
         let expectedModifiers = UInt(defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutModifiers))
-        guard defaults.bool(forKey: BangBarSettings.Key.clipboardIgnoreShortcutEnabled),
-              expectedModifiers == NSEvent.ModifierFlags.function.rawValue,
-              Int(event.keyCode) == defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutKeyCode) else {
-            return
-        }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard keyCode >= 0, Int(event.keyCode) == keyCode else { return }
 
-        let isDown = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.function)
-        shortcutIsPressed = isDown
-        if !isDown {
-            let graceMS = max(defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutGraceMS), 0)
-            shortcutSuppressedUntil = Date().addingTimeInterval(Double(graceMS) / 1000)
+        let isDown: Bool
+        if event.type == .flagsChanged {
+            guard expectedModifiers == NSEvent.ModifierFlags.function.rawValue else { return }
+            isDown = modifiers.contains(.function)
+        } else {
+            guard modifiers.rawValue == expectedModifiers else { return }
+            isDown = event.type == .keyDown
         }
-    }
-
-    private func handleShortcutEvent(_ event: NSEvent, isDown: Bool) {
-        let defaults = UserDefaults.standard
-        guard defaults.bool(forKey: BangBarSettings.Key.clipboardIgnoreShortcutEnabled),
-              defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutKeyCode) >= 0,
-              Int(event.keyCode) == defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutKeyCode) else {
-            return
-        }
-        let expected = UInt(defaults.integer(forKey: BangBarSettings.Key.clipboardIgnoreShortcutModifiers))
-        let actual = event.modifierFlags.intersection(.deviceIndependentFlagsMask).rawValue
-        guard actual == expected else { return }
 
         shortcutIsPressed = isDown
         if !isDown {

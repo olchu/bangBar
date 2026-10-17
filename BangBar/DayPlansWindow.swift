@@ -753,7 +753,7 @@ private struct DayPlansWindowTaskRow: View {
     @State private var isDatePickerPresented = false
 
     private var normalizedTitle: String {
-        String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+        DayPlanService.normalizedTitle(title)
     }
 
     private var hasChanges: Bool {

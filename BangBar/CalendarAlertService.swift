@@ -92,6 +92,7 @@ final class CalendarAlertService {
                 MainActor.assumeIsolated { self?.showPreview() }
             }
         )
+        settings = .current
         updateTimer()
     }
 
@@ -112,7 +113,7 @@ final class CalendarAlertService {
         timer?.invalidate()
         timer = nil
 
-        guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.calendarAlertsEnabled) else {
+        guard settings.isEnabled else {
             dismissAlert()
             return
         }
@@ -125,7 +126,7 @@ final class CalendarAlertService {
     }
 
     private func checkEvents(now: Date = Date()) {
-        guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.calendarAlertsEnabled),
+        guard settings.isEnabled,
               EKEventStore.authorizationStatus(for: .event) == .fullAccess else {
             return
         }
@@ -137,19 +138,11 @@ final class CalendarAlertService {
             return
         }
 
-        let leadMinutes = UserDefaults.standard.integer(
-            forKey: BangBarSettings.Key.calendarAlertLeadMinutes
-        )
-        let triggerOffset = TimeInterval(leadMinutes * 60)
+        let triggerOffset = TimeInterval(settings.leadMinutes * 60)
         let lateArrivalGrace = max(TimeInterval(10 * 60), triggerOffset + 2 * 60)
         let searchStart = now.addingTimeInterval(-lateArrivalGrace)
         let searchEnd = now.addingTimeInterval(triggerOffset + 45)
-        let selectedIDs = BangBarSettings.selectedCalendarIds(
-            from: UserDefaults.standard.string(forKey: BangBarSettings.Key.selectedCalendarIds) ?? ""
-        )
-        let calendars = selectedIDs.map { ids in
-            eventStore.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
-        }
+        let calendars = eventStore.selectedEventCalendars(fromRaw: settings.selectedCalendarIDs)
 
         guard calendars?.isEmpty != true else { return }
 
@@ -225,9 +218,7 @@ final class CalendarAlertService {
             )
         }
 
-        return candidates.sorted { lhs, rhs in
-            meetingURLPriority(lhs) > meetingURLPriority(rhs)
-        }.first
+        return candidates.first { meetingURLPriority($0) > 0 } ?? candidates.first
     }
 
     private func meetingURLPriority(_ url: URL) -> Int {

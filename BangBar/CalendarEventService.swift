@@ -115,16 +115,11 @@ final class CalendarEventService: ObservableObject {
     }
 
     private func refresh() {
-        authorizationState = .authorized
-
         let now = Date()
         let endOfDay = Calendar.current.startOfDay(for: now).addingTimeInterval(24 * 60 * 60)
-        let selectedCalendarIds = BangBarSettings.selectedCalendarIds(
-            from: UserDefaults.standard.string(forKey: BangBarSettings.Key.selectedCalendarIds) ?? ""
+        let calendars = eventStore.selectedEventCalendars(
+            fromRaw: UserDefaults.standard.string(forKey: BangBarSettings.Key.selectedCalendarIds) ?? ""
         )
-        let calendars = selectedCalendarIds.map { ids in
-            eventStore.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
-        }
 
         if calendars?.isEmpty == true {
             upcomingEvents = []
@@ -153,5 +148,14 @@ final class CalendarEventService: ObservableObject {
                     calendarColor: NSColor(cgColor: event.calendar.cgColor) ?? .white
                 )
             }
+    }
+}
+
+extension EKEventStore {
+    /// The event calendars picked in Settings: nil means all of them, empty means none.
+    func selectedEventCalendars(fromRaw rawValue: String) -> [EKCalendar]? {
+        BangBarSettings.selectedCalendarIds(from: rawValue).map { ids in
+            calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
+        }
     }
 }

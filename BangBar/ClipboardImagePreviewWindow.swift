@@ -32,7 +32,7 @@ final class ClipboardImagePreviewWindowController: NSWindowController {
         window.contentView = NSHostingView(rootView: ClipboardImagePreviewView(image: image))
 
         // `NSWindow.center()` places windows in the upper third; the preview should sit exactly in the middle.
-        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        let screen = NSScreen.containing(NSEvent.mouseLocation)
         if let visibleFrame = screen?.visibleFrame {
             let size = fittedSize(for: image.size, in: visibleFrame.size)
             let origin = NSPoint(

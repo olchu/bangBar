@@ -116,7 +116,7 @@ struct HabitSettingsContent: View {
     }
 
     private func trackerSection(statistics: [UUID: HabitStatistics]) -> some View {
-        let dates = trackerDates(count: TrackerLayout.dayCount(for: contentWidth))
+        let dates = Array(service.datesEndingToday(count: TrackerLayout.dayCount(for: contentWidth)).reversed())
 
         return VStack(alignment: .leading, spacing: 8) {
             SettingsSectionLabel("TRACKER")
@@ -186,14 +186,6 @@ struct HabitSettingsContent: View {
                 )
                 .padding(.vertical, 16)
             }
-        }
-    }
-
-    private func trackerDates(count: Int) -> [Date] {
-        let calendar = Calendar.autoupdatingCurrent
-        let today = calendar.startOfDay(for: Date())
-        return (0..<count).reversed().compactMap {
-            calendar.date(byAdding: .day, value: -$0, to: today)
         }
     }
 
@@ -423,11 +415,11 @@ private struct HabitTrackerRow: View {
     }
 
     private func commitRename() {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
+        let normalized = HabitService.normalizedTitle(title)
+        if normalized.isEmpty {
             title = habit.title
-        } else if trimmed != habit.title {
-            title = String(trimmed.prefix(80))
+        } else if normalized != habit.title {
+            title = normalized
             service.renameHabit(habit, title: title)
         }
     }

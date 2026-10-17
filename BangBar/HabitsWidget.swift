@@ -104,7 +104,7 @@ struct HabitsWidget: View {
     }
 
     private var habitRows: some View {
-        let dates = recentDates
+        let dates = Array(service.datesEndingToday(count: 7).reversed())
         return VStack(spacing: 1) {
             ForEach(service.habits) { habit in
                 HabitWidgetRow(
@@ -165,14 +165,6 @@ struct HabitsWidget: View {
                 .foregroundStyle(.white.opacity(0.52))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-    }
-
-    private var recentDates: [Date] {
-        let calendar = Calendar.autoupdatingCurrent
-        let today = calendar.startOfDay(for: Date())
-        return (0..<7).reversed().compactMap {
-            calendar.date(byAdding: .day, value: -$0, to: today)
-        }
     }
 
     private func toggle(_ habit: HabitDefinition, on date: Date) {

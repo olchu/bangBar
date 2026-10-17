@@ -323,15 +323,7 @@ final class SystemMetricsService: NSObject, ObservableObject {
     var cpuLabel: String { "\(cpuUsage)%" }
     var memoryLabel: String { "\(memoryUsage)%" }
 
-    var needsAttention: Bool {
-        cpuUsage >= 90
-            || memoryUsage >= 90
-            || diskFreeGB < 10
-            || (batteryLevel ?? 100) <= 15
-            || ipAddress == nil
-            || thermalState == .serious
-            || thermalState == .critical
-    }
+    var needsAttention: Bool { statusLabel != "GOOD" }
 
     var statusLabel: String {
         switch thermalState {

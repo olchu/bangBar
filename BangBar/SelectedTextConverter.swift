@@ -7,11 +7,10 @@ enum SelectedTextConverter {
 
     /// Copies the selection, pastes it converted to the next layout, reselects it, and restores the pasteboard.
     /// Returns the layout the text was converted to, or nil when nothing was converted.
-    static func convertSelection() async -> KeyboardLayout? {
-        let selectionLength = FocusedTextElement.selectedRange()?.length
-        guard selectionLength != 0 else { return nil }
-        let layouts = KeyboardLayouts.enabled()
+    static func convertSelection(among layouts: [KeyboardLayout]) async -> KeyboardLayout? {
         guard layouts.count > 1 else { return nil }
+        let selectionLength = await Task.detached { FocusedTextElement.selectedRange()?.length }.value
+        guard selectionLength != 0 else { return nil }
 
         let pasteboard = NSPasteboard.general
         let snapshot = PasteboardSnapshot(pasteboard)

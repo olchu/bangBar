@@ -236,7 +236,7 @@ struct CompactNowPlayingWidget: View {
 
     var body: some View {
         GeometryReader { geo in
-            let artworkSize = min(max(geo.size.height - 10, 22), 32)
+            let artworkSize = PanelLayout.compactArtworkSize(forHeight: geo.size.height)
             let indicatorHeight = min(max(geo.size.height - 16, 14), 20)
             let horizontalPadding = PanelLayout.compactHorizontalPadding
             let indicatorWidth: CGFloat = 28
@@ -249,7 +249,7 @@ struct CompactNowPlayingWidget: View {
                 HStack {
                     artworkView
                         .frame(width: artworkSize, height: artworkSize)
-                        .clipShape(RoundedRectangle(cornerRadius: min(7, artworkSize / 4)))
+                        .clipShape(RoundedRectangle(cornerRadius: PanelLayout.compactArtworkCornerRadius(forSize: artworkSize)))
                         .scaleEffect(shouldShowArtwork ? 1.0 : 0.28)
                         .opacity(shouldShowArtwork ? 1.0 : 0.0)
                         .onTapGesture { service.openPlayer() }
@@ -372,7 +372,7 @@ struct ArtworkHeroView: View {
 
     var body: some View {
         let p = min(max(progress, 0), 1)
-        let compactSize = min(max(panelSize.height - 10, 22), 32)
+        let compactSize = PanelLayout.compactArtworkSize(forHeight: panelSize.height)
         let compactPadding = PanelLayout.compactHorizontalPadding
         let expandedSize: CGFloat = PanelLayout.nowPlayingArtworkSize
 
@@ -389,7 +389,7 @@ struct ArtworkHeroView: View {
             height: expandedSize
         )
         let frame = interpolate(from: startFrame, to: endFrame, progress: p)
-        let cornerRadius = interpolate(from: min(7, compactSize / 4), to: 12, progress: p)
+        let cornerRadius = interpolate(from: PanelLayout.compactArtworkCornerRadius(forSize: compactSize), to: 12, progress: p)
 
         artworkView
             .frame(width: frame.width, height: frame.height)
@@ -485,7 +485,8 @@ struct PlayingIndicator: View {
     }
 }
 
-private func formatTime(_ seconds: Double) -> String {
+/// `m:ss`
+func formatTime(_ seconds: Double) -> String {
     let s = Int(max(seconds, 0))
     return String(format: "%d:%02d", s / 60, s % 60)
 }

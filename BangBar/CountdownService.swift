@@ -9,6 +9,12 @@ struct Countdown: Codable, Equatable {
     var updatedAt: Date
 }
 
+extension Countdown {
+    func remaining(at now: Date) -> CountdownRemaining {
+        CountdownFormatter.remaining(now: now, target: targetDate, includesTime: includesTime, calendar: .autoupdatingCurrent)
+    }
+}
+
 @MainActor
 final class CountdownService: ObservableObject {
     static let shared = CountdownService()

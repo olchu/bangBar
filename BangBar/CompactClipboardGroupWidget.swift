@@ -9,7 +9,7 @@ struct CompactClipboardGroupWidget: View {
     var body: some View {
         GeometryReader { geo in
             let horizontalPadding = PanelLayout.compactHorizontalPadding
-            let previewSize = min(max(geo.size.height - 10, 22), 32)
+            let previewSize = PanelLayout.compactArtworkSize(forHeight: geo.size.height)
 
             HStack(spacing: 9) {
                 previewStack(size: previewSize)
@@ -36,7 +36,7 @@ struct CompactClipboardGroupWidget: View {
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.72))
 
-                    Text("stops in \(compactTime(service.collectionSecondsRemaining))")
+                    Text("stops in \(formatTime(Double(service.collectionSecondsRemaining)))")
                         .font(.system(size: 8, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.42))
                 }
@@ -77,10 +77,5 @@ struct CompactClipboardGroupWidget: View {
             }
         }
         .frame(width: size + 4, height: size)
-    }
-
-    private func compactTime(_ seconds: Int) -> String {
-        let safeSeconds = max(seconds, 0)
-        return String(format: "%d:%02d", safeSeconds / 60, safeSeconds % 60)
     }
 }

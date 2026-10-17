@@ -3,7 +3,7 @@ import Foundation
 /// Letter pairs and triples a language never uses (`qz`, `vbn` in English; `ъь`, a word starting with `ь` in
 /// Russian). `^` and `$` mark the start and end of a word. The tables are generated from word lists by
 /// `scripts/build_keyboard_letter_patterns.py`.
-struct KeyboardLetterPatterns {
+nonisolated struct KeyboardLetterPatterns {
     private let impossible: Set<String>
 
     init(impossible: Set<String>) {

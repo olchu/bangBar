@@ -172,20 +172,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mouseLocation = NSEvent.mouseLocation
         guard let screen = screenContainingMouse() else { return }
         let screenFrame = screen.frame
-        let menuBarHeight = NSStatusBar.system.thickness
-
-        let triggerZone: NSRect
-        if let notch = PanelLayout.notchRect(on: screen) {
-            triggerZone = notch
-        } else {
-            let panelWidth = hoverPanel?.frame.width ?? 560
-            triggerZone = NSRect(
-                x: screenFrame.midX - panelWidth / 2,
-                y: screenFrame.maxY - menuBarHeight,
-                width: panelWidth,
-                height: menuBarHeight
-            )
-        }
+        let triggerZone = PanelLayout.notchRect(on: screen) ?? PanelLayout.topCenteredFrame(
+            width: hoverPanel?.frame.width ?? 560,
+            height: NSStatusBar.system.thickness,
+            on: screen
+        )
 
         let activationThreshold = BangBarSettings.panelActivationThreshold
         let activationZone = PanelActivationGeometry.zone(
@@ -243,9 +234,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func screenContainingMouse() -> NSScreen? {
-        let mouseLocation = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
-            ?? NSScreen.main
+        NSScreen.containing(NSEvent.mouseLocation)
     }
 
     @objc func openSettings() {

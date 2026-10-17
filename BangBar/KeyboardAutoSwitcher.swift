@@ -17,23 +17,20 @@ final class KeyboardAutoSwitcher {
 
     private(set) var enabledLayouts: [KeyboardLayout] = []
     private var frontmostBundleID: String?
-    private var isSpellCheckerWarm = false
+    private var preparedLanguages: Set<String> = []
     private lazy var spellCheckerLanguages = Set(NSSpellChecker.shared.availableLanguages)
     private var letterPatterns: [String: KeyboardLetterPatterns] = [:]
 
     // Cached from UserDefaults by `reloadSettings()`: `plan(for:)` runs inside the event tap on every Space.
     private(set) var isEnabled = false
     private var excludedApps: Set<String> = []
-    private var isFrontmostAppExcluded = false
     private var exceptions: Set<String> = []
     private var undoCounts: [String: Int] = [:]
     private var learnedWords = KeyboardLearnedWords()
 
     func refreshLayouts() {
         enabledLayouts = KeyboardLayouts.enabled()
-        if isSpellCheckerWarm {
-            loadLetterPatterns()
-        }
+        prepareLanguagesIfNeeded()
     }
 
     func layout(withID id: String) -> KeyboardLayout? {
@@ -46,28 +43,24 @@ final class KeyboardAutoSwitcher {
         exceptions = BangBarSettings.keyboardSwitcherExceptions
         undoCounts = BangBarSettings.keyboardSwitcherUndoCounts
         learnedWords = BangBarSettings.keyboardSwitcherLearnedWords
-        isFrontmostAppExcluded = frontmostBundleID.map(excludedApps.contains) ?? false
     }
 
     func setFrontmostApp(_ bundleID: String?) {
         frontmostBundleID = bundleID
-        isFrontmostAppExcluded = bundleID.map(excludedApps.contains) ?? false
     }
 
-    /// The first check loads dictionaries; doing it inside the event tap could stall typing long enough
-    /// for macOS to disable the tap.
-    func warmUpIfNeeded() {
-        guard isEnabled, !isSpellCheckerWarm else { return }
-        isSpellCheckerWarm = true
-        for language in Set(enabledLayouts.compactMap(spellLanguage(for:))) {
+    private var isFrontmostAppExcluded: Bool {
+        frontmostBundleID.map(excludedApps.contains) ?? false
+    }
+
+    /// The first check of a language loads its dictionary; doing it inside the event tap could stall typing
+    /// long enough for macOS to disable the tap.
+    func prepareLanguagesIfNeeded() {
+        guard isEnabled else { return }
+        for language in Set(enabledLayouts.compactMap(spellLanguage(for:))) where !preparedLanguages.contains(language) {
+            preparedLanguages.insert(language)
             _ = isWord("warmup", language: language)
             _ = nearestWordDistance("warmupp", language: language)
-        }
-        loadLetterPatterns()
-    }
-
-    private func loadLetterPatterns() {
-        for language in Set(enabledLayouts.compactMap(spellLanguage(for:))) where letterPatterns[language] == nil {
             letterPatterns[language] = KeyboardLetterPatterns.bundled(language: language)
         }
     }
@@ -78,21 +71,17 @@ final class KeyboardAutoSwitcher {
         let source = enabledLayouts[sourceIndex]
         let sourceLanguage = spellLanguage(for: source)
 
-        let typed = buffer.keystrokes.map { KeyboardLayouts.translate([$0], with: source) }
+        let typed = keyOutputs(buffer.keystrokes, in: source)
         let typedWord = typed.joined()
         guard !exceptions.contains(typedWord.lowercased()) else { return nil }
 
         for offset in 1..<enabledLayouts.count {
             let target = enabledLayouts[(sourceIndex + offset) % enabledLayouts.count]
             let targetLanguage = spellLanguage(for: target)
-            let candidate = buffer.keystrokes.map { KeyboardLayouts.translate([$0], with: target) }
+            let candidate = keyOutputs(buffer.keystrokes, in: target)
             guard let cores = KeyboardAutoSwitchRules.cores(typed: typed, candidate: candidate) else { continue }
 
-            let learnedWord = KeyboardLearnedWord(
-                sourceLayoutID: source.id,
-                targetLayoutID: target.id,
-                word: cores.candidate.lowercased()
-            )
+            let learnedWord = KeyboardLearnedWord(from: source, to: target, candidateCore: cores.candidate)
             let isConvertible = learnedWords.contains(learnedWord) || isDictionaryConversion(
                 typed: typed,
                 candidate: candidate,
@@ -177,14 +166,14 @@ final class KeyboardAutoSwitcher {
     /// Writes only what changed: every defaults write makes the whole app re-read its settings.
     private func save(
         exceptions updatedExceptions: Set<String>,
-        undoCounts updatedUndoCounts: [String: Int]? = nil,
+        undoCounts updatedUndoCounts: [String: Int],
         learnedWords updatedLearnedWords: KeyboardLearnedWords
     ) {
         if updatedExceptions != exceptions {
             exceptions = updatedExceptions
             BangBarSettings.keyboardSwitcherExceptions = updatedExceptions
         }
-        if let updatedUndoCounts, updatedUndoCounts != undoCounts {
+        if updatedUndoCounts != undoCounts {
             undoCounts = updatedUndoCounts
             BangBarSettings.keyboardSwitcherUndoCounts = updatedUndoCounts
         }
@@ -198,46 +187,35 @@ final class KeyboardAutoSwitcher {
     /// Converting it back to the layout it was typed in takes the lesson back. Real words in the typed
     /// layout are never learned, so a stray conversion cannot break normal typing.
     func learnManualConversion(of keystrokes: [TypedKeystroke], from originLayoutID: String, to targetLayoutID: String) {
-        guard let origin = enabledLayouts.first(where: { $0.id == originLayoutID }) else { return }
-        let typed = keystrokes.map { KeyboardLayouts.translate([$0], with: origin) }
+        guard let origin = layout(withID: originLayoutID) else { return }
+        let typed = keyOutputs(keystrokes, in: origin)
 
         var updatedLearnedWords = learnedWords
         var updatedExceptions = exceptions
         var updatedUndoCounts = undoCounts
-        for layout in enabledLayouts where layout.id != origin.id {
-            if let entry = learnedWord(typed: typed, keystrokes: keystrokes, from: origin, to: layout) {
-                updatedLearnedWords.remove(entry)
+        for other in enabledLayouts where other.id != origin.id {
+            if let cores = KeyboardAutoSwitchRules.cores(typed: typed, candidate: keyOutputs(keystrokes, in: other)) {
+                updatedLearnedWords.remove(KeyboardLearnedWord(from: origin, to: other, candidateCore: cores.candidate))
             }
         }
         defer { save(exceptions: updatedExceptions, undoCounts: updatedUndoCounts, learnedWords: updatedLearnedWords) }
 
-        guard targetLayoutID != originLayoutID,
-              let target = enabledLayouts.first(where: { $0.id == targetLayoutID }) else { return }
-        let candidate = keystrokes.map { KeyboardLayouts.translate([$0], with: target) }
-        guard let cores = KeyboardAutoSwitchRules.cores(typed: typed, candidate: candidate),
+        guard targetLayoutID != originLayoutID, let target = layout(withID: targetLayoutID),
+              let cores = KeyboardAutoSwitchRules.cores(typed: typed, candidate: keyOutputs(keystrokes, in: target)),
               cores.candidate.count(where: \.isLetter) >= 2 else { return }
         if let language = spellLanguage(for: origin),
            KeyboardAutoSwitchRules.isWord(typedCore: cores.typed, isValid: { isWord($0, language: language) }) {
             return
         }
-        updatedLearnedWords.insert(KeyboardLearnedWord(
-            sourceLayoutID: origin.id,
-            targetLayoutID: target.id,
-            word: cores.candidate.lowercased()
-        ))
-        updatedExceptions.remove(typed.joined().lowercased())
-        updatedUndoCounts[typed.joined().lowercased()] = nil
+        updatedLearnedWords.insert(KeyboardLearnedWord(from: origin, to: target, candidateCore: cores.candidate))
+        let typedWord = typed.joined().lowercased()
+        updatedExceptions.remove(typedWord)
+        updatedUndoCounts[typedWord] = nil
     }
 
-    private func learnedWord(
-        typed: [String],
-        keystrokes: [TypedKeystroke],
-        from origin: KeyboardLayout,
-        to target: KeyboardLayout
-    ) -> KeyboardLearnedWord? {
-        let candidate = keystrokes.map { KeyboardLayouts.translate([$0], with: target) }
-        guard let cores = KeyboardAutoSwitchRules.cores(typed: typed, candidate: candidate) else { return nil }
-        return KeyboardLearnedWord(sourceLayoutID: origin.id, targetLayoutID: target.id, word: cores.candidate.lowercased())
+    /// One output per key, so `KeyboardAutoSwitchRules.cores` can line up the typed word with a candidate.
+    private func keyOutputs(_ keystrokes: [TypedKeystroke], in layout: KeyboardLayout) -> [String] {
+        keystrokes.map { KeyboardLayouts.translate([$0], with: layout) }
     }
 
     private func spellLanguage(for layout: KeyboardLayout) -> String? {
@@ -266,5 +244,11 @@ final class KeyboardAutoSwitcher {
             inSpellDocumentWithTag: 0,
             wordCount: nil
         ).location == NSNotFound
+    }
+}
+
+private extension KeyboardLearnedWord {
+    init(from source: KeyboardLayout, to target: KeyboardLayout, candidateCore: String) {
+        self.init(sourceLayoutID: source.id, targetLayoutID: target.id, word: candidateCore.lowercased())
     }
 }

@@ -8,6 +8,7 @@ final class TooltipManager {
     private var currentText: String?
     private var suppressedUntil: Date?
     private var isPresentationEnabled = true
+    private let cursorOffset = CGSize(width: 14, height: 10)
 
     private init() {}
 
@@ -29,11 +30,11 @@ final class TooltipManager {
         suppressedUntil = Date().addingTimeInterval(interval)
     }
 
-    func show(text: String, nearCursorOffset offset: CGSize = CGSize(width: 14, height: 10)) {
-        show(text: text, near: NSEvent.mouseLocation, offset: offset)
+    func show(text: String) {
+        show(text: text, near: NSEvent.mouseLocation)
     }
 
-    func show(text: String, near cursorPoint: NSPoint, offset: CGSize = CGSize(width: 14, height: 10)) {
+    func show(text: String, near cursorPoint: NSPoint) {
         guard canShow else { return }
 
         let fittedSize = tooltipSize(for: text)
@@ -41,11 +42,10 @@ final class TooltipManager {
         hostingView.frame = NSRect(origin: .zero, size: fittedSize)
         hostingView.layoutSubtreeIfNeeded()
 
-        let screenFrame = NSScreen.screens.first { NSMouseInRect(cursorPoint, $0.frame, false) }?.visibleFrame
-            ?? NSScreen.main?.visibleFrame
+        let screenFrame = NSScreen.containing(cursorPoint)?.visibleFrame
             ?? NSRect(origin: cursorPoint, size: fittedSize)
-        let preferredX = cursorPoint.x + offset.width
-        let preferredY = cursorPoint.y - fittedSize.height - offset.height
+        let preferredX = cursorPoint.x + cursorOffset.width
+        let preferredY = cursorPoint.y - fittedSize.height - cursorOffset.height
         let x = min(max(preferredX, screenFrame.minX + 4), screenFrame.maxX - fittedSize.width - 4)
         let y = min(max(preferredY, screenFrame.minY + 4), screenFrame.maxY - fittedSize.height - 4)
         let frame = NSRect(x: x, y: y, width: fittedSize.width, height: fittedSize.height)
@@ -183,7 +183,6 @@ final class PanelTooltipTrackingNSView: NSView {
         }
     }
     private var trackingArea: NSTrackingArea?
-    private var canShowDuringCurrentHover = true
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -209,29 +208,17 @@ final class PanelTooltipTrackingNSView: NSView {
     override func mouseEntered(with event: NSEvent) {
         guard isPanelContentVisible else { return }
 
-        guard TooltipManager.shared.canShow else {
-            canShowDuringCurrentHover = false
+        if TooltipManager.shared.canShow {
+            showTooltip(for: event)
+        } else {
             TooltipManager.shared.hide()
-            super.mouseEntered(with: event)
-            return
         }
-
-        canShowDuringCurrentHover = true
-        showTooltip(for: event)
         super.mouseEntered(with: event)
     }
 
     override func mouseExited(with event: NSEvent) {
-        canShowDuringCurrentHover = true
         TooltipManager.shared.hide()
         super.mouseExited(with: event)
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window == nil {
-            TooltipManager.shared.hide()
-        }
     }
 
     override func viewDidHide() {
@@ -247,8 +234,7 @@ final class PanelTooltipTrackingNSView: NSView {
     }
 
     private func showTooltip(for event: NSEvent) {
-        guard canShowDuringCurrentHover,
-              isPanelContentVisible,
+        guard isPanelContentVisible,
               let window,
               window.isVisible,
               !isHiddenOrHasHiddenAncestor

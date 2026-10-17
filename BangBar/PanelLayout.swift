@@ -33,6 +33,15 @@ enum PanelLayout {
     }
 
     /// A frame of the given size centered on the screen and pinned to its top edge, like every panel state.
+    /// Shared by compact artwork and the clipboard preview; the artwork hero animation starts from exactly this frame.
+    static func compactArtworkSize(forHeight height: CGFloat) -> CGFloat {
+        min(max(height - 10, 22), 32)
+    }
+
+    static func compactArtworkCornerRadius(forSize size: CGFloat) -> CGFloat {
+        min(7, size / 4)
+    }
+
     static func topCenteredFrame(width: CGFloat, height: CGFloat, on screen: NSScreen) -> NSRect {
         NSRect(x: screen.frame.midX - width / 2, y: screen.frame.maxY - height, width: width, height: height)
     }
@@ -152,4 +161,11 @@ final class PanelState: ObservableObject {
     @Published var clipboardFilter: ClipboardHistoryFilter = .all
     @Published var topSafeInset = PanelLayout.topBarHeight
     @Published var currentPage = 0
+}
+
+extension NSScreen {
+    /// The screen under `point` (in global coordinates), falling back to the main screen.
+    static func containing(_ point: NSPoint) -> NSScreen? {
+        screens.first { NSMouseInRect(point, $0.frame, false) } ?? main
+    }
 }

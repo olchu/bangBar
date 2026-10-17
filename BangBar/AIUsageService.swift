@@ -76,32 +76,34 @@ final class AIUsageService: ObservableObject {
             request.setValue(accountId, forHTTPHeaderField: "ChatGPT-Account-Id")
         }
 
+        return await fetchUsage(request, as: CodexUsageResponse.self) { payload in
+            AIProviderUsage(
+                primary: payload.rateLimit?.primaryWindow?.usageWindow,
+                secondary: payload.rateLimit?.secondaryWindow?.usageWindow
+            )
+        }
+    }
+
+    private static func fetchUsage<Payload: Decodable>(
+        _ request: URLRequest,
+        as type: Payload.Type,
+        makeUsage: (Payload) -> AIProviderUsage
+    ) async -> AIUsageFetchOutcome {
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse else { return .transientFailure }
 
         if http.statusCode == 401 || http.statusCode == 403 { return .notSignedIn }
-        guard (200..<300).contains(http.statusCode) else { return .transientFailure }
-        guard let payload = try? JSONDecoder().decode(CodexUsageResponse.self, from: data) else {
+        guard (200..<300).contains(http.statusCode),
+              let payload = try? snakeCaseDecoder().decode(type, from: data) else {
             return .transientFailure
         }
+        return .usage(makeUsage(payload))
+    }
 
-        let usage = AIProviderUsage(
-            primary: payload.rateLimit?.primaryWindow.map {
-                AIUsageWindow(
-                    label: windowDurationLabel(seconds: $0.limitWindowSeconds),
-                    usedPercent: $0.usedPercent,
-                    resetsAt: Date(timeIntervalSince1970: $0.resetAt)
-                )
-            },
-            secondary: payload.rateLimit?.secondaryWindow.map {
-                AIUsageWindow(
-                    label: windowDurationLabel(seconds: $0.limitWindowSeconds),
-                    usedPercent: $0.usedPercent,
-                    resetsAt: Date(timeIntervalSince1970: $0.resetAt)
-                )
-            }
-        )
-        return .usage(usage)
+    private nonisolated static func snakeCaseDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
     }
 
     private nonisolated static func codexAccessToken() async -> (accessToken: String, accountId: String?)? {
@@ -112,7 +114,7 @@ final class AIUsageService: ObservableObject {
             let authURL = URL(fileURLWithPath: codexHome).appendingPathComponent("auth.json")
 
             guard let data = try? Data(contentsOf: authURL),
-                  let auth = try? JSONDecoder().decode(CodexAuthFile.self, from: data),
+                  let auth = try? snakeCaseDecoder().decode(CodexAuthFile.self, from: data),
                   let accessToken = auth.tokens?.accessToken else { return nil }
 
             return (accessToken, auth.tokens?.accountId)
@@ -123,11 +125,6 @@ final class AIUsageService: ObservableObject {
         struct Tokens: Decodable {
             let accessToken: String?
             let accountId: String?
-
-            enum CodingKeys: String, CodingKey {
-                case accessToken = "access_token"
-                case accountId = "account_id"
-            }
         }
 
         let tokens: Tokens?
@@ -140,27 +137,20 @@ final class AIUsageService: ObservableObject {
                 let resetAt: TimeInterval
                 let limitWindowSeconds: TimeInterval
 
-                enum CodingKeys: String, CodingKey {
-                    case usedPercent = "used_percent"
-                    case resetAt = "reset_at"
-                    case limitWindowSeconds = "limit_window_seconds"
+                var usageWindow: AIUsageWindow {
+                    AIUsageWindow(
+                        label: windowDurationLabel(seconds: limitWindowSeconds),
+                        usedPercent: usedPercent,
+                        resetsAt: Date(timeIntervalSince1970: resetAt)
+                    )
                 }
             }
 
             let primaryWindow: Window?
             let secondaryWindow: Window?
-
-            enum CodingKeys: String, CodingKey {
-                case primaryWindow = "primary_window"
-                case secondaryWindow = "secondary_window"
-            }
         }
 
         let rateLimit: RateLimit?
-
-        enum CodingKeys: String, CodingKey {
-            case rateLimit = "rate_limit"
-        }
     }
 
     // MARK: - Claude
@@ -173,32 +163,12 @@ final class AIUsageService: ObservableObject {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse else { return .transientFailure }
-
-        if http.statusCode == 401 || http.statusCode == 403 { return .notSignedIn }
-        guard (200..<300).contains(http.statusCode) else { return .transientFailure }
-        guard let payload = try? JSONDecoder().decode(ClaudeUsageResponse.self, from: data) else {
-            return .transientFailure
+        return await fetchUsage(request, as: ClaudeUsageResponse.self) { payload in
+            AIProviderUsage(
+                primary: payload.fiveHour?.usageWindow(label: "5h"),
+                secondary: payload.sevenDay?.usageWindow(label: "W")
+            )
         }
-
-        let usage = AIProviderUsage(
-            primary: payload.fiveHour.map {
-                AIUsageWindow(
-                    label: "5h",
-                    usedPercent: Int($0.utilization.rounded()),
-                    resetsAt: $0.resetsAt.flatMap(parseISO8601Date)
-                )
-            },
-            secondary: payload.sevenDay.map {
-                AIUsageWindow(
-                    label: "W",
-                    usedPercent: Int($0.utilization.rounded()),
-                    resetsAt: $0.resetsAt.flatMap(parseISO8601Date)
-                )
-            }
-        )
-        return .usage(usage)
     }
 
     /// Anthropic may return ISO-8601 timestamps either with or without fractional seconds.
@@ -261,18 +231,16 @@ final class AIUsageService: ObservableObject {
             let utilization: Double
             let resetsAt: String?
 
-            enum CodingKeys: String, CodingKey {
-                case utilization
-                case resetsAt = "resets_at"
+            func usageWindow(label: String) -> AIUsageWindow {
+                AIUsageWindow(
+                    label: label,
+                    usedPercent: Int(utilization.rounded()),
+                    resetsAt: resetsAt.flatMap(parseISO8601Date)
+                )
             }
         }
 
         let fiveHour: Window?
         let sevenDay: Window?
-
-        enum CodingKeys: String, CodingKey {
-            case fiveHour = "five_hour"
-            case sevenDay = "seven_day"
-        }
     }
 }

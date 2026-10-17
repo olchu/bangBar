@@ -95,9 +95,9 @@ final class KeyboardSwitcherService: NSObject {
             stopPermissionPolling()
             return
         }
-        autoSwitcher.warmUpIfNeeded()
+        autoSwitcher.prepareLanguagesIfNeeded()
         guard eventTap == nil else { return }
-        if AXIsProcessTrusted() {
+        if AccessibilityAccess.isTrusted {
             stopPermissionPolling()
             installTap()
         } else {
@@ -109,7 +109,7 @@ final class KeyboardSwitcherService: NSObject {
         guard permissionTimer == nil else { return }
         permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard AXIsProcessTrusted() else { return }
+                guard AccessibilityAccess.isTrusted else { return }
                 self?.updateState()
             }
         }
@@ -232,7 +232,7 @@ final class KeyboardSwitcherService: NSObject {
             shiftTaps.interrupt()
             return
         }
-        guard flags.intersection([.maskControl, .maskAlternate, .maskCommand]).isEmpty else {
+        guard flags.intersection(Self.commandModifierMask).isEmpty else {
             shiftTaps.interrupt()
             return
         }
@@ -346,7 +346,7 @@ final class KeyboardSwitcherService: NSObject {
     private func convertSelection() {
         isConvertingSelection = true
         Task {
-            if let target = await SelectedTextConverter.convertSelection() {
+            if let target = await SelectedTextConverter.convertSelection(among: autoSwitcher.enabledLayouts) {
                 currentLayout = target
             }
             isConvertingSelection = false
@@ -361,13 +361,12 @@ final class KeyboardSwitcherService: NSObject {
         let source = layouts[fromIndex]
         let target = layouts[(fromIndex + 1) % layouts.count]
 
-        let spaces = String(repeating: " ", count: buffer.trailingSpaces)
-        let onScreen = KeyboardLayouts.translate(buffer.keystrokes, with: source, composingDeadKeys: true)
-        let replacement = KeyboardLayouts.translate(buffer.keystrokes, with: target)
-        guard !replacement.isEmpty else { return }
+        let onScreen = KeyboardLayouts.render([buffer.current], with: source, composingDeadKeys: true)
+        let replacement = KeyboardLayouts.render([buffer.current], with: target)
+        guard replacement.count > buffer.trailingSpaces else { return }
 
-        SyntheticKeyboard.deleteBackward(count: onScreen.count + spaces.count)
-        SyntheticKeyboard.type(replacement + spaces)
+        SyntheticKeyboard.deleteBackward(count: onScreen.count)
+        SyntheticKeyboard.type(replacement)
 
         KeyboardLayouts.select(target)
         currentLayout = target
@@ -390,9 +389,9 @@ final class KeyboardSwitcherService: NSObject {
     private func autoSwitch(before boundary: CGEvent, proxy: CGEventTapProxy) -> Bool {
         guard buffer.trailingSpaces == 0, !buffer.isEmpty, let plan = autoSwitcher.plan(for: buffer) else { return false }
 
-        let words = buffer.previousWords.suffix(plan.previousWordCount) + [buffer.current]
-        let onScreen = KeyboardLayouts.render(Array(words), with: plan.source, composingDeadKeys: true)
-        let replacement = KeyboardLayouts.render(Array(words), with: plan.target)
+        let words = Array(buffer.previousWords.suffix(plan.previousWordCount) + [buffer.current])
+        let onScreen = KeyboardLayouts.render(words, with: plan.source, composingDeadKeys: true)
+        let replacement = KeyboardLayouts.render(words, with: plan.target)
         SyntheticKeyboard.deleteBackward(count: onScreen.count, via: proxy)
         SyntheticKeyboard.type(replacement, via: proxy)
         if let boundaryCopy = boundary.copy() {
@@ -410,13 +409,13 @@ final class KeyboardSwitcherService: NSObject {
         }
         // Showing a window inside the tap callback would delay the user's next keystrokes.
         DispatchQueue.main.async { [weak self] in
-            self?.onAutoSwitch?(KeyboardLayouts.render(Array(words), with: plan.source), replacement)
+            self?.onAutoSwitch?(KeyboardLayouts.render(words, with: plan.source), replacement)
         }
         return true
     }
 
     /// Backspace right after an automatic switch restores the typed words (consuming the space, as Backspace
-    /// would) and remembers the switched word so it is never switched again.
+    /// would) and counts an undo of the switched word.
     private func undoAutoSwitch(_ plan: AutoSwitchPlan, proxy: CGEventTapProxy) -> Bool {
         guard buffer.trailingSpaces == 1, buffer.layoutID == plan.target.id else { return false }
 
@@ -430,8 +429,9 @@ final class KeyboardSwitcherService: NSObject {
         currentLayout = plan.source
         buffer.deleteBackward()
         buffer.markConverted(to: plan.source.id, includingPrevious: plan.previousWordCount)
-        autoSwitcher.rememberUndo(for: plan)
+        // Saving the undo writes defaults, and every defaults observer would run inside the tap callback.
         DispatchQueue.main.async { [weak self] in
+            self?.autoSwitcher.rememberUndo(for: plan)
             self?.onAutoSwitchUndo?()
         }
         return true
