@@ -1,11 +1,16 @@
 import Foundation
 import SwiftUI
 
-enum MusicPlayer: String, CaseIterable, Identifiable {
+nonisolated enum MusicPlayer: String, CaseIterable, Identifiable {
     case spotify
     case appleMusic
 
     var id: Self { self }
+
+    init?(bundleIdentifier: String?) {
+        guard let player = Self.allCases.first(where: { $0.bundleIdentifier == bundleIdentifier }) else { return nil }
+        self = player
+    }
 
     var title: String {
         switch self {

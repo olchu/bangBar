@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import OSLog
 
-struct NowPlayingInfo {
+struct NowPlayingInfo: Equatable {
     var title: String = ""
     var artist: String = ""
     var isPlaying: Bool = false
@@ -15,49 +15,37 @@ struct NowPlayingInfo {
     var canFavorite: Bool = false
 }
 
-private extension NowPlayingInfo {
-    func matchesMetadata(
-        title: String,
-        artist: String,
-        isPlaying: Bool,
-        duration: Double,
-        shuffleEnabled: Bool,
-        repeatMode: RepeatMode,
-        isFavorited: Bool,
-        canFavorite: Bool
-    ) -> Bool {
-        self.title == title
-            && self.artist == artist
-            && self.isPlaying == isPlaying
-            && self.duration == duration
-            && self.shuffleEnabled == shuffleEnabled
-            && self.repeatMode == repeatMode
-            && self.isFavorited == isFavorited
-            && self.canFavorite == canFavorite
-    }
-}
-
 enum RepeatMode: String {
     case off
     case one
     case all
 }
 
-private extension MusicPlayer {
+private nonisolated extension MusicPlayer {
     var isRunning: Bool {
         NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == bundleIdentifier }
     }
 
-    // Returns: title\nartist\nartworkHint\nisPlaying\nposition\nduration\nshuffle\nrepeat\nfavorite\ncanFavorite
-    var trackInfoScript: String {
+    /// Posted by the player on play, pause, and track changes, so polling is only a fallback.
+    var playbackNotificationName: Notification.Name {
+        switch self {
+        case .spotify: Notification.Name("com.spotify.client.PlaybackStateChanged")
+        case .appleMusic: Notification.Name("com.apple.Music.playerInfo")
+        }
+    }
+
+    // The running check stops a refresh fired by the player's own quit notification from relaunching it.
+    // Cheap enough to run on every poll. Returns: trackID\ntitle\nartist\nisPlaying\nposition\nduration\nshuffle\nrepeat
+    var stateScript: String {
         switch self {
         case .spotify:
             return """
+            if application "Spotify" is not running then return ""
             tell application "Spotify"
                 if player state is not stopped then
+                    set i to id of current track
                     set t to name of current track
                     set a to artist of current track
-                    set u to artwork url of current track
                     set pos to ((player position as integer) as string)
                     set dur to (((duration of current track) / 1000 as integer) as string)
                     if player state is playing then
@@ -75,7 +63,7 @@ private extension MusicPlayer {
                     else
                         set r to "off"
                     end if
-                    return t & "\n" & a & "\n" & u & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r & "\n0\n0"
+                    return i & "\n" & t & "\n" & a & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
                 else
                     return ""
                 end if
@@ -83,8 +71,10 @@ private extension MusicPlayer {
             """
         case .appleMusic:
             return """
+            if application "Music" is not running then return ""
             tell application "Music"
                 if player state is not stopped then
+                    set i to persistent ID of current track
                     set t to name of current track
                     set a to artist of current track
                     set pos to ((player position as integer) as string)
@@ -100,35 +90,56 @@ private extension MusicPlayer {
                         set s to "0"
                     end if
                     set r to song repeat as string
-                    set loved to "0"
-                    set canLove to "0"
-                    try
-                        if favorited of current track then set loved to "1"
-                        set canLove to "1"
-                    end try
-                    try
-                        set libraryMatches to every track of library playlist 1 whose name is t and artist is a
-                        repeat with libraryTrack in libraryMatches
-                            if favorited of libraryTrack then
-                                set loved to "1"
-                                exit repeat
-                            end if
-                        end repeat
-                    end try
-                    set tmpPath to "/tmp/bangbar_artwork.png"
-                    try
-                        set imgData to data of artwork 1 of current track
-                        set f to open for access POSIX file tmpPath with write permission
-                        set eof of f to 0
-                        write imgData to f
-                        close access f
-                        return t & "\n" & a & "\n" & tmpPath & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r & "\n" & loved & "\n" & canLove
-                    on error
-                        return t & "\n" & a & "\n" & "" & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r & "\n" & loved & "\n" & canLove
-                    end try
+                    return i & "\n" & t & "\n" & a & "\n" & p & "\n" & pos & "\n" & dur & "\n" & s & "\n" & r
                 else
                     return ""
                 end if
+            end tell
+            """
+        }
+    }
+
+    // Scans the library and writes artwork to disk, so it runs only when the track changes.
+    // Returns: artworkHint\nfavorite\ncanFavorite
+    var detailsScript: String {
+        switch self {
+        case .spotify:
+            return """
+            tell application "Spotify"
+                return (artwork url of current track) & "\n0\n0"
+            end tell
+            """
+        case .appleMusic:
+            return """
+            tell application "Music"
+                set t to name of current track
+                set a to artist of current track
+                set loved to "0"
+                set canLove to "0"
+                try
+                    if favorited of current track then set loved to "1"
+                    set canLove to "1"
+                end try
+                try
+                    set libraryMatches to every track of library playlist 1 whose name is t and artist is a
+                    repeat with libraryTrack in libraryMatches
+                        if favorited of libraryTrack then
+                            set loved to "1"
+                            exit repeat
+                        end if
+                    end repeat
+                end try
+                set tmpPath to "/tmp/bangbar_artwork.png"
+                try
+                    set imgData to data of artwork 1 of current track
+                    set f to open for access POSIX file tmpPath with write permission
+                    set eof of f to 0
+                    write imgData to f
+                    close access f
+                on error
+                    set tmpPath to ""
+                end try
+                return tmpPath & "\n" & loved & "\n" & canLove
             end tell
             """
         }
@@ -218,9 +229,62 @@ private extension MusicPlayer {
     }
 }
 
-final class NowPlayingService: ObservableObject {
+private nonisolated struct PlaybackState {
+    let trackID: String
+    let title: String
+    let artist: String
+    let isPlaying: Bool
+    let position: Double
+    let duration: Double
+    let shuffleEnabled: Bool
+    let repeatMode: RepeatMode
+
+    var detailsKey: String { "\(trackID)|\(title)|\(artist)" }
+
+    init?(output: String) {
+        let part = scriptFields(output)
+        guard !part(1).isEmpty else { return nil }
+        trackID = part(0)
+        title = part(1)
+        artist = part(2)
+        isPlaying = part(3) == "1"
+        position = Double(part(4)) ?? 0
+        duration = Double(part(5)) ?? 0
+        shuffleEnabled = part(6) == "1"
+        repeatMode = RepeatMode(rawValue: part(7)) ?? .off
+    }
+}
+
+/// Splits newline-separated script output into a lookup that returns "" for missing fields.
+private nonisolated func scriptFields(_ output: String?) -> (Int) -> String {
+    let parts = output?.components(separatedBy: "\n") ?? []
+    return { index in index < parts.count ? parts[index] : "" }
+}
+
+private nonisolated struct TrackDetails {
+    let artwork: NSImage?
+    let isFavorited: Bool
+    let canFavorite: Bool
+    /// false when the details script failed, so the next refresh retries instead of caching the empty result.
+    let isComplete: Bool
+}
+
+private nonisolated struct PlayerSnapshot {
+    let player: MusicPlayer
+    let state: PlaybackState
+    /// nil when the track has not changed since the last details fetch.
+    let details: TrackDetails?
+}
+
+final class NowPlayingService: NSObject, ObservableObject {
     private static let logger = Logger(subsystem: "BangBar", category: "NowPlaying")
     private static let idleAudioLevels = [0.18, 0.28, 0.22, 0.34]
+    private static let visiblePollInterval: TimeInterval = 10
+    private static let backgroundPollInterval: TimeInterval = 30
+    /// Players post several notifications per track change; one refresh covers the burst.
+    private static let notificationCoalescingDelay: TimeInterval = 0.2
+    /// Serial so rapid commands reach the player in the order they were issued.
+    private static let commandQueue = DispatchQueue(label: "BangBar.NowPlaying.commands", qos: .userInitiated)
 
     @Published var info = NowPlayingInfo()
     @Published var isAvailable = false
@@ -233,14 +297,20 @@ final class NowPlayingService: ObservableObject {
     private var pollTimer: Timer?
     private var tickTimer: Timer?
     private var activePlayer: MusicPlayer?
-    private var artworkCacheKey: String = ""
-    private var artworkCacheImage: NSImage?
+    private var detailsKey: String?
+    private var detailsRefreshRequested = false
+    /// Bumped by every command so a poll that started before it cannot revert the optimistic UI.
+    private var commandGeneration = 0
+    /// A poll started while a command is still running reads the state before that command, so it is discarded too.
+    private var commandsInFlight = 0
     private var pendingFavorite: PendingFavorite?
     private var isPollInFlight = false
     private var pollRequested = false
     private var audioLevelMonitor: AudioLevelMonitor?
     private var isAudioLevelMonitoringRequested = false
     private var positionUpdatesRequested = false
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var coalescedPoll: DispatchWorkItem?
 
     private struct PendingFavorite {
         let trackKey: String
@@ -248,103 +318,159 @@ final class NowPlayingService: ObservableObject {
         let expiresAt: Date
     }
 
-    init() {
+    override init() {
+        super.init()
+        observePlayers()
         poll()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            self?.poll()
-        }
-        pollTimer?.tolerance = 0.5
+        schedulePollTimer()
     }
 
     deinit {
         pollTimer?.invalidate()
         tickTimer?.invalidate()
+        coalescedPoll?.cancel()
+        DistributedNotificationCenter.default().removeObserver(self)
+        workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
     }
 
-    private func poll() {
+    private func observePlayers() {
+        // AppKit suspends distributed notifications while the app is inactive, which for a menu bar app is nearly always.
+        let distributed = DistributedNotificationCenter.default()
+        for player in MusicPlayer.allCases {
+            distributed.addObserver(
+                self,
+                selector: #selector(playerNotificationReceived),
+                name: player.playbackNotificationName,
+                object: nil,
+                suspensionBehavior: .deliverImmediately
+            )
+        }
+
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspaceObservers = [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification].map { name in
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard MusicPlayer(bundleIdentifier: app?.bundleIdentifier) != nil else { return }
+                MainActor.assumeIsolated { self?.playerNotificationReceived() }
+            }
+        }
+    }
+
+    @objc private func playerNotificationReceived() {
+        coalescedPoll?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.poll() }
+        coalescedPoll = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.notificationCoalescingDelay, execute: work)
+    }
+
+    private func schedulePollTimer() {
+        pollTimer?.invalidate()
+        let interval = positionUpdatesRequested ? Self.visiblePollInterval : Self.backgroundPollInterval
+        pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.poll()
+        }
+        pollTimer?.tolerance = interval / 6
+    }
+
+    private func poll(refreshingDetails: Bool = false) {
+        if refreshingDetails {
+            detailsRefreshRequested = true
+        }
         guard !isPollInFlight else {
             pollRequested = true
             return
         }
         isPollInFlight = true
+        // A pending favorite keeps re-reading details so a failed command reverts once it expires.
+        let knownDetailsKey = detailsRefreshRequested || pendingFavorite != nil ? nil : detailsKey
+        detailsRefreshRequested = false
+        let generation = commandsInFlight == 0 ? commandGeneration : nil
+        // The last active player answers first, so an idle player does not cost an extra osascript launch per poll.
+        let players = MusicPlayer.allCases.filter { $0 == activePlayer } + MusicPlayer.allCases.filter { $0 != activePlayer }
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            for player in MusicPlayer.allCases where player.isRunning {
-                guard let result = self?.runScript(player.trackInfoScript), !result.isEmpty else { continue }
-                let parts     = result.components(separatedBy: "\n")
-                let title     = parts.count > 0 ? parts[0] : ""
-                let artist    = parts.count > 1 ? parts[1] : ""
-                let hint      = parts.count > 2 ? parts[2] : ""
-                let isPlaying = parts.count > 3 ? parts[3] == "1" : false
-                let position  = parts.count > 4 ? Double(parts[4]) ?? 0 : 0
-                let duration  = parts.count > 5 ? Double(parts[5]) ?? 0 : 0
-                let shuffleEnabled = parts.count > 6 ? parts[6] == "1" : false
-                let repeatMode = parts.count > 7 ? RepeatMode(rawValue: parts[7]) ?? .off : .off
-                let isFavorited = parts.count > 8 ? parts[8] == "1" : false
-                let canFavorite = parts.count > 9 ? parts[9] == "1" : false
-                guard !title.isEmpty else { continue }
-
-                let artwork = self?.loadArtwork(hint: hint, player: player, title: title, artist: artist)
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    let trackKey = "\(title)|\(artist)"
-                    var displayedFavorite = isFavorited
-                    if let pending = self.pendingFavorite, pending.trackKey == trackKey {
-                        if pending.value == isFavorited {
-                            self.pendingFavorite = nil
-                        } else if pending.expiresAt > Date() {
-                            displayedFavorite = pending.value
-                        } else {
-                            self.pendingFavorite = nil
-                        }
-                    } else if self.pendingFavorite != nil {
-                        self.pendingFavorite = nil
-                    }
-
-                    self.activePlayer = player
-                    if !self.isAvailable {
-                        self.isAvailable = true
-                    }
-                    if self.info.matchesMetadata(
-                        title: title,
-                        artist: artist,
-                        isPlaying: isPlaying,
-                        duration: duration,
-                        shuffleEnabled: shuffleEnabled,
-                        repeatMode: repeatMode,
-                        isFavorited: displayedFavorite,
-                        canFavorite: canFavorite
-                    ) {
-                        if self.positionUpdatesRequested {
-                            self.info.position = position
-                        }
-                    } else {
-                        self.info = NowPlayingInfo(
-                            title: title, artist: artist,
-                            isPlaying: isPlaying, artwork: artwork,
-                            position: position, duration: duration,
-                            shuffleEnabled: shuffleEnabled,
-                            repeatMode: repeatMode,
-                            isFavorited: displayedFavorite,
-                            canFavorite: canFavorite
-                        )
-                    }
-                    self.updateAudioLevelMonitoring()
-                    self.finishPoll()
-                }
-                return
-            }
+            let snapshot = NowPlayingService.fetchSnapshot(players: players, knownDetailsKey: knownDetailsKey)
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.activePlayer = nil
-                if self.isAvailable {
-                    self.isAvailable = false
-                    self.info = NowPlayingInfo()
+                if generation == self.commandGeneration {
+                    self.apply(snapshot)
                 }
-                self.updateAudioLevelMonitoring()
                 self.finishPoll()
             }
         }
+    }
+
+    private nonisolated static func fetchSnapshot(players: [MusicPlayer], knownDetailsKey: String?) -> PlayerSnapshot? {
+        for player in players where player.isRunning {
+            guard let output = AppleScriptRunner.output(of: player.stateScript),
+                  let state = PlaybackState(output: output) else { continue }
+            let details = state.detailsKey == knownDetailsKey ? nil : fetchDetails(player: player, state: state)
+            return PlayerSnapshot(player: player, state: state, details: details)
+        }
+        return nil
+    }
+
+    private nonisolated static func fetchDetails(player: MusicPlayer, state: PlaybackState) -> TrackDetails {
+        let output = AppleScriptRunner.output(of: player.detailsScript)
+        let part = scriptFields(output)
+        return TrackDetails(
+            artwork: loadArtwork(hint: part(0), player: player, title: state.title, artist: state.artist),
+            isFavorited: part(1) == "1",
+            canFavorite: part(2) == "1",
+            isComplete: output != nil
+        )
+    }
+
+    private func apply(_ snapshot: PlayerSnapshot?) {
+        guard let snapshot else {
+            activePlayer = nil
+            detailsKey = nil
+            if isAvailable {
+                isAvailable = false
+                info = NowPlayingInfo()
+            }
+            updateAudioLevelMonitoring()
+            return
+        }
+
+        let state = snapshot.state
+        activePlayer = snapshot.player
+        if !isAvailable {
+            isAvailable = true
+        }
+
+        var next = info
+        next.title = state.title
+        next.artist = state.artist
+        next.isPlaying = state.isPlaying
+        next.duration = state.duration
+        next.shuffleEnabled = state.shuffleEnabled
+        next.repeatMode = state.repeatMode
+        if let details = snapshot.details {
+            detailsKey = details.isComplete ? state.detailsKey : nil
+            next.artwork = details.artwork
+            next.isFavorited = displayedFavorite(details.isFavorited, trackKey: state.detailsKey)
+            next.canFavorite = details.canFavorite
+        }
+
+        // Position ticks locally while visible; republishing it from a background poll would re-render every observer.
+        let metadataChanged = snapshot.details != nil || next != info
+        if metadataChanged || positionUpdatesRequested {
+            next.position = state.position
+        }
+        if metadataChanged || next.position != info.position {
+            info = next
+        }
+        updateAudioLevelMonitoring()
+    }
+
+    private func displayedFavorite(_ reported: Bool, trackKey: String) -> Bool {
+        guard let pending = pendingFavorite else { return reported }
+        if pending.trackKey == trackKey, pending.value != reported, pending.expiresAt > Date() {
+            return pending.value
+        }
+        pendingFavorite = nil
+        return reported
     }
 
     private func finishPoll() {
@@ -354,33 +480,22 @@ final class NowPlayingService: ObservableObject {
         poll()
     }
 
-    private func loadArtwork(hint: String, player: MusicPlayer, title: String, artist: String) -> NSImage? {
-        let cacheKey = "\(player.rawValue)|\(hint)|\(title)|\(artist)"
-        if cacheKey == artworkCacheKey, let cached = artworkCacheImage {
-            return cached
-        }
-
-        func cache(_ image: NSImage?) -> NSImage? {
-            artworkCacheKey = cacheKey
-            artworkCacheImage = image
-            return image
-        }
-
+    private nonisolated static func loadArtwork(hint: String, player: MusicPlayer, title: String, artist: String) -> NSImage? {
         switch player {
         case .spotify:
             guard !hint.isEmpty,
                   let url = URL(string: hint),
                   let data = try? Data(contentsOf: url) else { return nil }
-            return cache(NSImage(data: data))
+            return NSImage(data: data)
         case .appleMusic:
             if !hint.isEmpty, let img = NSImage(contentsOfFile: hint) {
-                return cache(img)
+                return img
             }
-            return cache(fetchITunesArtwork(title: title, artist: artist))
+            return fetchITunesArtwork(title: title, artist: artist)
         }
     }
 
-    private func fetchITunesArtwork(title: String, artist: String) -> NSImage? {
+    private nonisolated static func fetchITunesArtwork(title: String, artist: String) -> NSImage? {
         let query = "\(title) \(artist)"
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         guard let url = URL(string: "https://itunes.apple.com/search?term=\(query)&entity=song&limit=1&media=music"),
@@ -393,20 +508,6 @@ final class NowPlayingService: ObservableObject {
         guard let imgUrl = URL(string: hiRes),
               let imgData = try? Data(contentsOf: imgUrl) else { return nil }
         return NSImage(data: imgData)
-    }
-
-    private func runScript(_ source: String) -> String? {
-        guard let script = NSAppleScript(source: source) else { return nil }
-        var errorInfo: NSDictionary?
-        let result = script.executeAndReturnError(&errorInfo)
-        if let errorInfo {
-            let message = errorInfo[NSAppleScript.errorMessage] as? String ?? "Unknown AppleScript error"
-            let number = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
-            Self.logger.error("AppleScript failed: \(message, privacy: .public) (\(number))")
-            return nil
-        }
-        let output = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return output?.isEmpty == false ? output : nil
     }
 
     func togglePlayPause() {
@@ -449,15 +550,15 @@ final class NowPlayingService: ObservableObject {
         sendCommand(player.cycleRepeatScript)
     }
     func toggleFavorite() {
-        guard info.canFavorite else { return }
+        guard info.canFavorite, let detailsKey else { return }
         info.isFavorited.toggle()
         let newValue = info.isFavorited
         pendingFavorite = PendingFavorite(
-            trackKey: "\(info.title)|\(info.artist)",
+            trackKey: detailsKey,
             value: newValue,
             expiresAt: Date().addingTimeInterval(8)
         )
-        sendCommand(activePlayer?.setFavoriteScript(to: newValue))
+        sendCommand(activePlayer?.setFavoriteScript(to: newValue), refreshingDetails: true)
     }
 
     func seek(to position: Double) {
@@ -496,6 +597,7 @@ final class NowPlayingService: ObservableObject {
         positionUpdatesRequested = isRequested
         tickTimer?.invalidate()
         tickTimer = nil
+        schedulePollTimer()
 
         guard isRequested else { return }
         poll()
@@ -535,11 +637,17 @@ final class NowPlayingService: ObservableObject {
         liveAudioLevels = levels
     }
 
-    private func sendCommand(_ source: String?) {
+    private func sendCommand(_ source: String?, refreshingDetails: Bool = false) {
         guard let source else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            _ = self?.runScript(source)
-            DispatchQueue.main.async { self?.poll() }
+        commandGeneration += 1
+        commandsInFlight += 1
+        Self.commandQueue.async { [weak self] in
+            _ = AppleScriptRunner.run(source)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.commandsInFlight -= 1
+                self.poll(refreshingDetails: refreshingDetails)
+            }
         }
     }
 }

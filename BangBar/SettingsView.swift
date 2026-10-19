@@ -1438,12 +1438,17 @@ private struct PrivacySettingsSection: View {
 
         var lastMessage = "Permission was not granted"
         for player in players {
-            ensureApplicationIsRunning(bundleID: player.bundleIdentifier)
-            try? await Task.sleep(for: .milliseconds(500))
+            if launchApplicationIfNeeded(bundleID: player.bundleIdentifier) {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
 
-            let permissionStatus = automationPermissionStatus(for: player.bundleIdentifier)
+            let bundleID = player.bundleIdentifier
+            // Blocks while the consent prompt is up.
+            let permissionStatus = await Task.detached(priority: .userInitiated) {
+                automationPermissionStatus(for: bundleID)
+            }.value
             if permissionStatus == noErr {
-                return verifyAutomationScript(for: player)
+                return await verifyAutomationScript(for: player)
             }
 
             if permissionStatus != errAEEventWouldRequireUserConsent {
@@ -1451,7 +1456,7 @@ private struct PrivacySettingsSection: View {
                 continue
             }
 
-            return verifyAutomationScript(for: player)
+            return await verifyAutomationScript(for: player)
         }
 
         return ("Permission needed: \(lastMessage)", true)
@@ -1466,18 +1471,19 @@ private struct PrivacySettingsSection: View {
     }
 
     @MainActor
-    private static func ensureApplicationIsRunning(bundleID: String) {
+    private static func launchApplicationIfNeeded(bundleID: String) -> Bool {
         guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty,
               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-            return
+            return false
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+        return true
     }
 
-    private static func automationPermissionStatus(for bundleID: String) -> OSStatus {
+    private nonisolated static func automationPermissionStatus(for bundleID: String) -> OSStatus {
         guard let data = bundleID.data(using: .utf8) else { return OSStatus(paramErr) }
 
         var target = AEAddressDesc()
@@ -1502,22 +1508,12 @@ private struct PrivacySettingsSection: View {
 
     private static func verifyAutomationScript(
         for player: MusicPlayer
-    ) -> (message: String, shouldOpenSettings: Bool) {
-        let script = NSAppleScript(source: """
-        tell application "\(player.applicationName)"
-            get player state
-        end tell
-        """)
-        var errorInfo: NSDictionary?
-        _ = script?.executeAndReturnError(&errorInfo)
-
-        if let errorInfo {
-            let message = errorInfo[NSAppleScript.errorMessage] as? String
-                ?? "Unknown AppleScript error"
-            let number = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
-            return ("Permission needed: \(message) (\(number))", true)
+    ) async -> (message: String, shouldOpenSettings: Bool) {
+        let source = "tell application \"\(player.applicationName)\" to get player state"
+        let result = await Task.detached(priority: .userInitiated) { AppleScriptRunner.run(source) }.value
+        if case .failure(let message) = result {
+            return ("Permission needed: \(message)", true)
         }
-
         return ("Allowed for \(player.applicationName)", false)
     }
 
