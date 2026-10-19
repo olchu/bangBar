@@ -886,6 +886,23 @@ struct NotionTask: Identifiable {
 
 ---
 
+## Live Activities
+
+Short notices that grow out of the notch for system events, so the notch reacts on its own instead of only on hover.
+
+**Presentation:**
+- All notch notices go through one `NotchNoticeCenter` owned by `AppDelegate`: one click-through `NSPanel` above the status bar, never part of the hover panel lifecycle. A new notice of any kind (layout switch or live activity) replaces the visible one, and the center drops notices while the expanded panel is open. The black body grows out of the notch through the same stem-and-fillet shape (`NotchNoticeShape`); on displays without a notch it floats below the menu bar with a thin light outline.
+- Content: an SF Symbol tinted with the accent color, a white title, and a dimmer detail, on one line (e.g. `bolt.fill  Charging  82%`).
+- Visible for 2.4 s, then shrinks back into the notch. A new activity replaces the current one immediately.
+- Shown on the screen that has the notch, otherwise on the main screen.
+- Not shown while the expanded panel is open; the panel already shows the system state. A visible notice is not hidden when the panel expands.
+
+**Activities:**
+- **Power** (`PowerSourceMonitor`): when the power adapter is connected or disconnected (`notify_register_dispatch` on `kIOPSNotifyPowerSource`, which posts only when the providing source switches, compared against the previous `kIOPSPowerSourceStateKey`). Connected shows `bolt.fill` · `Charged` when full, `Charging` while charging, otherwise `Plugged in` (charge limit or optimized charging hold) · battery percent; disconnected shows the battery symbol for the level (`BatteryStatus.symbolName`, shared with `SystemWidget`) · `On battery` · percent. Macs without an internal battery never post it. The state at launch is recorded without a notice.
+- **Bluetooth audio** (`AudioOutputMonitor`): when the default output device changes to a device whose transport type is Bluetooth or Bluetooth LE (`kAudioHardwarePropertyDefaultOutputDevice` listener). Shows `headphones` · device name · `Connected`. Switching away from Bluetooth shows nothing. No Bluetooth permission is needed because only Core Audio is read.
+
+**Settings:** Appearance → `LIVE ACTIVITIES` card with `Charging` and `Bluetooth audio` toggles (`liveActivityPowerEnabled`, `liveActivityAudioEnabled`, both default on). Disabling a toggle stops showing that activity; the monitors keep running because they cost nothing between events.
+
 ## Keyboard Layout Switcher
 
 **Goal:** Fix text typed in the wrong keyboard layout (`ghbdtn` → `привет`, `руддщ` → `hello`) without retyping it by hand. Delivered in two phases: manual conversion by hotkey first, automatic detection later on top of the same machinery.
@@ -1007,7 +1024,7 @@ Off by default; enabled with "Switch automatically" in Settings › Keyboard (on
 - Notch shape: a stem exactly the notch's width behind the physical notch, flaring through `8 pt` concave fillets into a `30 pt` tall body with `12 pt` corners. The body is the text width plus padding, at least notch width + 40 pt, at most 300 pt (longer text truncates in the middle). Because only the notch-wide stem overlaps the menu bar row, the compact panel's artwork and indicator stay visible; the body hangs below the compact panel.
 - Displays without a notch: a rounded body floating `6 pt` below the menu bar.
 - Reveal: spring (`response 0.32`, `damping 0.82`) of the body height from 0; hide: `0.22 s` ease-in, then the window is ordered out.
-- Its own borderless, non-activating, click-through `NSPanel` one level above the hover panel, on all Spaces and over full-screen apps, on `NSScreen.main`. It never touches the hover panel's lifecycle, and is skipped while the hover panel is expanded.
+- Shown through the shared `NotchNoticeCenter` (see Live Activities): a borderless, non-activating, click-through `NSPanel` one level above the hover panel, on all Spaces and over full-screen apps; the notch fallback uses `NSScreen.main`. It never touches the hover panel's lifecycle and is skipped while the hover panel is expanded. It replaces a visible live activity, and an undo dismisses only a layout switch notice.
 
 **Not yet implemented:** letter-pattern tables for languages other than English and Russian.
 

@@ -261,6 +261,8 @@ enum BangBarSettings {
         static let accentColorHex = "accentColorHex"
         static let tintWalkingMan = "tintWalkingMan"
         static let panelActivationThreshold = "panelActivationThreshold"
+        static let liveActivityPowerEnabled = "liveActivityPowerEnabled"
+        static let liveActivityAudioEnabled = "liveActivityAudioEnabled"
         static let showPomodoroWidget = "showPomodoroWidget"
         static let showCountdownWidget = "showCountdownWidget"
         static let countdownData = "countdownData"
@@ -328,6 +330,8 @@ enum BangBarSettings {
             Key.accentColorHex: defaultAccentColorHex,
             Key.tintWalkingMan: true,
             Key.panelActivationThreshold: 0,
+            Key.liveActivityPowerEnabled: true,
+            Key.liveActivityAudioEnabled: true,
             Key.calendarAlertsEnabled: false,
             Key.calendarAlertLeadMinutes: 0,
             Key.calendarAlertBackgroundOpacity: 62,

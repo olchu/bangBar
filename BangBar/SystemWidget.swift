@@ -1,7 +1,6 @@
 import AppKit
 import Combine
 import Darwin
-import IOKit.ps
 import SwiftUI
 
 struct SystemWidget: View {
@@ -106,12 +105,7 @@ struct SystemWidget: View {
     }
 
     private var batterySymbol: String {
-        if metrics.isCharging { return "battery.100percent.bolt" }
-        guard let level = metrics.batteryLevel else { return "battery.0percent" }
-        if level > 75 { return "battery.100percent" }
-        if level > 40 { return "battery.50percent" }
-        if level > 15 { return "battery.25percent" }
-        return "battery.0percent"
+        BatteryStatus.symbolName(level: metrics.batteryLevel, isCharging: metrics.isCharging)
     }
 
     private var batteryLabel: String {
@@ -365,7 +359,7 @@ final class SystemMetricsService: NSObject, ObservableObject {
 
         if forceSlowMetrics
             || lastAuxiliaryRefresh.map({ now.timeIntervalSince($0) >= 30 }) != false {
-            let battery = Self.readBattery()
+            let battery = BatteryStatus.current()
             batteryLevel = battery?.level
             isCharging = battery?.isCharging ?? false
             ipAddress = Self.readLocalIPv4Address()
@@ -433,28 +427,6 @@ final class SystemMetricsService: NSObject, ObservableObject {
         let totalMemory = ProcessInfo.processInfo.physicalMemory
         guard totalMemory > 0 else { return 0 }
         return min(100, Int((Double(usedPages * pageSize) / Double(totalMemory) * 100).rounded()))
-    }
-
-    private static func readBattery() -> (level: Int, isCharging: Bool)? {
-        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
-        else { return nil }
-
-        for source in sources {
-            guard let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue()
-                as? [String: Any],
-                  description[kIOPSTypeKey as String] as? String == kIOPSInternalBatteryType,
-                  let current = description[kIOPSCurrentCapacityKey as String] as? Int,
-                  let maximum = description[kIOPSMaxCapacityKey as String] as? Int,
-                  maximum > 0
-            else { continue }
-
-            return (
-                level: min(100, Int((Double(current) / Double(maximum) * 100).rounded())),
-                isCharging: description[kIOPSIsChargingKey as String] as? Bool ?? false
-            )
-        }
-        return nil
     }
 
     private static func readDiskFreeGB() -> Int {

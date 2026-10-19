@@ -46,6 +46,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.tintWalkingMan) private var tintWalkingMan = true
     @AppStorage(BangBarSettings.Key.panelActivationThreshold) private var panelActivationThreshold = 0
+    @AppStorage(BangBarSettings.Key.liveActivityPowerEnabled) private var liveActivityPowerEnabled = true
+    @AppStorage(BangBarSettings.Key.liveActivityAudioEnabled) private var liveActivityAudioEnabled = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
     @AppStorage(BangBarSettings.Key.pageSwipeInverted) private var pageSwipeInverted = false
@@ -155,6 +157,25 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         SettingsSectionLabel("APPEARANCE")
                         appearanceCard(accentColor: accentColor)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        SettingsSectionLabel("LIVE ACTIVITIES")
+                        SettingsCard {
+                            SettingsToggleRow(
+                                title: "Charging",
+                                subtitle: "Show the battery level at the notch when the power adapter is connected or removed.",
+                                isOn: $liveActivityPowerEnabled,
+                                accentColor: accentColor
+                            )
+                            SettingsDivider()
+                            SettingsToggleRow(
+                                title: "Bluetooth audio",
+                                subtitle: "Show the device name at the notch when sound switches to AirPods or other Bluetooth audio.",
+                                isOn: $liveActivityAudioEnabled,
+                                accentColor: accentColor
+                            )
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
