@@ -902,12 +902,11 @@ Short notices that grow out of the notch for system events, so the notch reacts 
 - **Bluetooth audio** (`AudioOutputMonitor`): when the default output device changes to a device whose transport type is Bluetooth or Bluetooth LE (`kAudioHardwarePropertyDefaultOutputDevice` listener). Shows `headphones` · device name · `Connected`. Switching away from Bluetooth shows nothing. No Bluetooth permission is needed because only Core Audio is read.
 
 - **Volume** (`AudioOutputMonitor`): whenever the default output device's volume or mute changes, from any source (keys, Control Center, AirPods controls). Listens to `kAudioHardwareServiceDeviceProperty_VirtualMainVolume` and `kAudioDevicePropertyMute` on the output scope and moves the listeners when the default output device changes; a device switch alone shows nothing, and volume changes in the first second after a switch are ignored (Bluetooth devices push a volume sync on connect, which would replace the `Connected` notice). Shows a speaker symbol for the level (`speaker.slash.fill` when muted or at 0, otherwise `speaker.wave.1/2/3.fill`), a `120 pt` accent-colored level bar and the percent. Visible for 1.5 s; repeated changes update the bar in place and restart the timer.
-- **Replace system HUD** (`VolumeKeyInterceptor`, optional): a session event tap for `NX_SYSDEFINED` media key events swallows volume up / down / mute and applies them itself, so the system HUD never appears. A key-up is swallowed only when its key-down was. The tap is an `EventTap`, the wrapper shared with the layout switcher: it installs on the main run loop once Accessibility is granted (polling every 2 s until then), re-enables itself after a timeout, and is driven by a single `isEnabled`. Steps are 1/16 of the range, 1/64 with Option+Shift (the system's fine step). Volume up while muted unmutes. A press that changes nothing (up at full volume, down at zero) fires no Core Audio listener, so the interceptor presents the volume notice itself. Mute passes through when the device has no settable main-element mute. Needs Accessibility; without it the tap cannot be created and the keys keep reaching the system (both HUDs then show). Keys also pass through unchanged while the expanded panel is open (notices are suppressed there) and when the output device has no settable volume, so the system can handle them.
+- The system volume indicator cannot be hidden. On macOS 26 the volume keys are handled by the HID system before any event tap: swallowing the `NX_SYSDEFINED` key events at a session or HID-level tap (verified with `CGGetEventTapList` and posted key events) still changes the volume and shows the system HUD, and applying the key ourselves then moves the volume two steps per press. So the notch HUD shows alongside the system one and never intercepts keys.
 
 **Settings:** Appearance → `LIVE ACTIVITIES` card:
-- `Charging` (`liveActivityPowerEnabled`, default on) and `Bluetooth audio` (`liveActivityAudioEnabled`, default on). Disabling a toggle stops showing that activity; the monitors keep running because they cost nothing between events.
-- `Volume` (`liveActivityVolumeEnabled`, default on).
-- `Replace system HUD` (`volumeHUDReplacesSystem`, default on), disabled while `Volume` is off. Its subtitle says it needs Accessibility. The interceptor is enabled or disabled as soon as either toggle changes (KVO on the two defaults keys, not `UserDefaults.didChangeNotification`). Repeated volume notices with unchanged geometry only swap the content and restart the hide timer.
+- `Charging` (`liveActivityPowerEnabled`), `Bluetooth audio` (`liveActivityAudioEnabled`) and `Volume` (`liveActivityVolumeEnabled`), all default on. Disabling a toggle stops showing that activity; the monitors keep running because they cost nothing between events. The `Volume` subtitle says the system volume indicator still appears.
+- Repeated volume notices with unchanged geometry only swap the content and restart the hide timer, so a held volume key does not move or re-animate the window.
 
 ## Keyboard Layout Switcher
 
@@ -920,6 +919,7 @@ Short notices that grow out of the notch for system events, so the notch reacts 
 - `KeyboardWordBuffer.swift` — pure logic with no AppKit/Carbon: the last-word keystroke buffer and the double-tap modifier detector. Covered by `Tests/KeyboardWordBufferTests.swift` (`scripts/test_keyboard_switcher.sh` runs all keyboard tests).
 - `KeyboardLayouts.swift` — Text Input Sources wrapper: enabled keyboard layouts, current layout, selecting a layout, translating key codes to text with `UCKeyTranslate`, converting arbitrary text between layouts.
 - `KeyboardSwitcherService.swift` — `CGEventTap`, buffer bookkeeping, trigger detection, choosing word vs. selection mode, last-word correction.
+- `EventTap.swift` — the session event tap wrapper: Accessibility polling, install/remove on the main run loop, re-enable after a timeout.
 - `SelectedTextConverter.swift` — selection conversion through a pasteboard round-trip.
 - `SyntheticKeyboard.swift` — posting marked synthetic key events (Backspace, Unicode text, ⌘C/⌘V, ⇧←), either at session level or through the tap proxy.
 - `KeyboardAutoSwitchRules.swift` — pure decision rules for automatic conversion.
@@ -972,7 +972,7 @@ Short notices that grow out of the notch for system events, so the notch reacts 
 **Layouts:** enabled, selectable keyboard layouts (`kTISTypeKeyboardLayout`) with Unicode layout data, in system order. Input methods (e.g. Japanese) are ignored; their underlying keyboard layout is used.
 
 **Event tap:**
-- Session-level active `CGEventTap` on the main run loop for key-down, key-up, flags-changed, and mouse-down events.
+- Session-level active `CGEventTap` on the main run loop for key-down, key-up, flags-changed, and mouse-down events, through the `EventTap` wrapper: it installs once Accessibility is granted (polling every 2 s until then) and re-enables itself after a timeout.
 - Re-enabled automatically after `tapDisabledByTimeout` / `tapDisabledByUserInput`.
 - Secure input (password fields, Terminal secure keyboard entry) hides keystrokes from the tap, so passwords never enter the buffer.
 

@@ -47,33 +47,6 @@ nonisolated enum SystemAudio {
         return uint32(at: &address, of: device) == 1
     }
 
-    static func isVolumeSettable(_ device: AudioDeviceID) -> Bool {
-        isSettable(volumeAddress, of: device)
-    }
-
-    /// False on devices that only expose per-channel mute, where setting the main element does nothing.
-    static func isMuteSettable(_ device: AudioDeviceID) -> Bool {
-        isSettable(muteAddress, of: device)
-    }
-
-    private static func isSettable(_ address: AudioObjectPropertyAddress, of device: AudioDeviceID) -> Bool {
-        var address = address
-        var settable: DarwinBoolean = false
-        return AudioObjectIsPropertySettable(device, &address, &settable) == noErr && settable.boolValue
-    }
-
-    static func setVolume(_ volume: Float, of device: AudioDeviceID) {
-        var address = volumeAddress
-        var value = Float32(min(max(volume, 0), 1))
-        AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<Float32>.size), &value)
-    }
-
-    static func setMuted(_ isMuted: Bool, of device: AudioDeviceID) {
-        var address = muteAddress
-        var value: UInt32 = isMuted ? 1 : 0
-        AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<UInt32>.size), &value)
-    }
-
     private static func uint32(at address: inout AudioObjectPropertyAddress, of object: AudioObjectID) -> UInt32? {
         var value: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)

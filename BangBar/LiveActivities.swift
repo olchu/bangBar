@@ -26,8 +26,6 @@ final class LiveActivityController {
     private let center: NotchNoticeCenter
     private let powerMonitor = PowerSourceMonitor()
     private let audioMonitor = AudioOutputMonitor()
-    private let volumeKeys = VolumeKeyInterceptor()
-    private var settingsObservations: [NSKeyValueObservation] = []
 
     init(center: NotchNoticeCenter) {
         self.center = center
@@ -46,27 +44,8 @@ final class LiveActivityController {
             guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled) else { return }
             self?.center.present(.volume(level: volume, isMuted: isMuted))
         }
-        // While notices are suppressed the system HUD is the only feedback, so the keys must reach it.
-        volumeKeys.shouldIntercept = { [weak self] in self?.center.isSuppressed() == false }
-        volumeKeys.onUnchangedPress = { [weak self] volume, isMuted in
-            self?.center.present(.volume(level: volume, isMuted: isMuted))
-        }
         powerMonitor.start()
         audioMonitor.start()
-
-        // KVO on just these two keys: UserDefaults.didChangeNotification fires for every write in the app.
-        settingsObservations = [\UserDefaults.liveActivityVolumeEnabled, \UserDefaults.volumeHUDReplacesSystem].map {
-            UserDefaults.standard.observe($0) { [weak self] _, _ in
-                DispatchQueue.main.async { self?.updateVolumeKeys() }
-            }
-        }
-        updateVolumeKeys()
-    }
-
-    private func updateVolumeKeys() {
-        let defaults = UserDefaults.standard
-        volumeKeys.isEnabled = defaults.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled)
-            && defaults.bool(forKey: BangBarSettings.Key.volumeHUDReplacesSystem)
     }
 }
 

@@ -49,7 +49,6 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.liveActivityPowerEnabled) private var liveActivityPowerEnabled = true
     @AppStorage(BangBarSettings.Key.liveActivityAudioEnabled) private var liveActivityAudioEnabled = true
     @AppStorage(BangBarSettings.Key.liveActivityVolumeEnabled) private var liveActivityVolumeEnabled = true
-    @AppStorage(BangBarSettings.Key.volumeHUDReplacesSystem) private var volumeHUDReplacesSystem = true
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
     @AppStorage(BangBarSettings.Key.pageSwipeInverted) private var pageSwipeInverted = false
@@ -180,19 +179,10 @@ struct SettingsView: View {
                             SettingsDivider()
                             SettingsToggleRow(
                                 title: "Volume",
-                                subtitle: "Show the volume level at the notch whenever it changes.",
+                                subtitle: "Show the volume level at the notch whenever it changes. The system volume indicator still appears; macOS does not let apps hide it.",
                                 isOn: $liveActivityVolumeEnabled,
                                 accentColor: accentColor
                             )
-                            SettingsDivider()
-                            SettingsToggleRow(
-                                title: "Replace system HUD",
-                                subtitle: "Handle the volume keys in BangBar so only the notch HUD appears. Needs Accessibility; without it both HUDs show.",
-                                isOn: $volumeHUDReplacesSystem,
-                                accentColor: accentColor
-                            )
-                            .disabled(!liveActivityVolumeEnabled)
-                            .opacity(liveActivityVolumeEnabled ? 1 : 0.45)
                         }
                     }
 
