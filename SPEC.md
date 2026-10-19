@@ -359,6 +359,16 @@ Shows audio from any app (YouTube in a browser, a video player, a voice message)
 16. ✅ Keyboard Layout Switcher, Phase 2 (automatic conversion).
 17. ⬜ Work through the Refactoring Backlog (P1 items first) — see "Refactoring Backlog" below.
 18. ✅ Now Playing shows audio from other apps (browsers, video players) — see "Audio From Other Apps".
+19. ⬜ File Shelf — later, together with Mirror photo capture and `NotionWidget`. See "FileShelf" below.
+
+### FileShelf
+
+**Status:** ⬜ Planned for later, after the current improvements; not started.
+
+**Goal:** a temporary place for files at the notch: drag a file onto the notch, take it from there later (drag it out into another app or Finder).
+
+- Most notch apps have one, so its absence is noticeable, but it is low priority: it is a convenience, not a differentiator.
+- Should be built as an extension of Clipboard History (a files view next to `All` / `Text` / `Images`) rather than as a separate widget. The detailed spec is written before implementation.
 
 ### MoonWidget
 
