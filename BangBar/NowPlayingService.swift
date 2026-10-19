@@ -276,9 +276,25 @@ private nonisolated struct PlayerSnapshot {
     let details: TrackDetails?
 }
 
+final class LiveAudioLevels: ObservableObject {
+    private static let idle = [0.18, 0.28, 0.22, 0.34]
+
+    @Published private(set) var values = idle
+
+    /// Skips identical values (silence, repeated resets) so the bars are not re-rendered for nothing.
+    fileprivate func update(_ newValues: [Double]) {
+        if values != newValues {
+            values = newValues
+        }
+    }
+
+    fileprivate func reset() {
+        update(Self.idle)
+    }
+}
+
 final class NowPlayingService: NSObject, ObservableObject {
     private static let logger = Logger(subsystem: "BangBar", category: "NowPlaying")
-    private static let idleAudioLevels = [0.18, 0.28, 0.22, 0.34]
     private static let visiblePollInterval: TimeInterval = 10
     private static let backgroundPollInterval: TimeInterval = 30
     /// Players post several notifications per track change; one refresh covers the burst.
@@ -288,7 +304,8 @@ final class NowPlayingService: NSObject, ObservableObject {
 
     @Published var info = NowPlayingInfo()
     @Published var isAvailable = false
-    @Published private(set) var liveAudioLevels = idleAudioLevels
+    /// Separate from `info` so visualizer ticks do not re-render every observer of the service.
+    let audioLevels = LiveAudioLevels()
 
     var isCurrentlyPlaying: Bool {
         isAvailable && info.isPlaying
@@ -617,10 +634,7 @@ final class NowPlayingService: NSObject, ObservableObject {
               let activePlayer else {
             audioLevelMonitor?.stop()
             audioLevelMonitor = nil
-            // Runs on every playback poll; republishing the same levels would re-render every observer.
-            if liveAudioLevels != Self.idleAudioLevels {
-                liveAudioLevels = Self.idleAudioLevels
-            }
+            audioLevels.reset()
             return
         }
 
@@ -634,7 +648,7 @@ final class NowPlayingService: NSObject, ObservableObject {
 
     private func receiveLiveAudioLevels(_ levels: [Double]) {
         guard isAudioLevelMonitoringRequested, info.isPlaying else { return }
-        liveAudioLevels = levels
+        audioLevels.update(levels)
     }
 
     private func sendCommand(_ source: String?, refreshingDetails: Bool = false) {

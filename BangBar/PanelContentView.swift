@@ -3,9 +3,10 @@ import Combine
 
 struct PanelContentView: View {
     @ObservedObject var state: PanelState
-    @ObservedObject var nowPlaying: NowPlayingService
-    @ObservedObject var pomodoro: PomodoroService
-    @ObservedObject var clipboardHistory: ClipboardHistoryService
+    // Not observed: the root reads none of their values, and their ticks would re-render the whole panel.
+    let nowPlaying: NowPlayingService
+    let pomodoro: PomodoroService
+    let clipboardHistory: ClipboardHistoryService
     let onOpenSettings: () -> Void
 
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
@@ -32,10 +33,13 @@ struct PanelContentView: View {
     @StateObject private var habits = HabitService.shared
     @StateObject private var countdown = CountdownService.shared
     @StateObject private var dayPlans = DayPlanService.shared
-    @StateObject private var panelClock = PanelClock()
+    // @State, not @StateObject: only the widgets that show the time observe it, so its ticks skip the root body.
+    @State private var panelClock = PanelClock()
     private let panelBlack = Color(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
 
     var body: some View {
+        let pages = activeWidgetPages()
+        let timeUpdateInterval = timeUpdateInterval(for: pages[state.currentPage])
         GeometryReader { geo in
             let hideExpandedArtwork = if let heroProgress = state.artworkHeroProgress {
                 heroProgress < 0.995
@@ -52,7 +56,7 @@ struct PanelContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     ZStack {
-                        pagedWidgets(hideExpandedArtwork: hideExpandedArtwork)
+                        pagedWidgets(pages, hideExpandedArtwork: hideExpandedArtwork)
                             .frame(width: geo.size.width, alignment: .topLeading)
                             .opacity(state.showsClipboardHistory ? 0 : 1)
                             .allowsHitTesting(!state.showsClipboardHistory)
@@ -73,7 +77,7 @@ struct PanelContentView: View {
                     .animation(.easeOut(duration: 0.16), value: state.showsClipboardHistory)
                 }
 
-                if !state.isCompact, !state.showsClipboardHistory, !activeWidgets(forPage: 1).isEmpty {
+                if !state.isCompact, !state.showsClipboardHistory, !pages[1].isEmpty {
                     pageIndicator
                         .position(x: geo.size.width / 2, y: geo.size.height - 16)
                         .transaction { transaction in
@@ -84,7 +88,7 @@ struct PanelContentView: View {
                         .allowsHitTesting(false)
                 }
 
-                if let progress = state.artworkHeroProgress, nowPlaying.isAvailable {
+                if let progress = state.artworkHeroProgress {
                     ArtworkHeroView(
                         service: nowPlaying,
                         progress: progress,
@@ -100,15 +104,7 @@ struct PanelContentView: View {
                         clipboardFilter: $state.clipboardFilter,
                         width: geo.size.width,
                         height: state.topSafeInset,
-                        isClearDisabled: clipboardHistory.items.isEmpty,
-                        activeGroupName: clipboardHistory.activeGroup?.name,
-                        activeGroupItemCount: clipboardHistory.activeGroupItemCount,
-                        onNewGroup: {
-                            state.clipboardFilter = .images
-                            clipboardHistory.startNewGroup()
-                        },
-                        onStopGroup: clipboardHistory.stopCollecting,
-                        onClear: clipboardHistory.clear,
+                        clipboardHistory: clipboardHistory,
                         onOpenSettings: onOpenSettings
                     )
                     .opacity(state.contentVisible ? 1.0 : 0.0)
@@ -129,11 +125,6 @@ struct PanelContentView: View {
             if interval == 1 {
                 calendarEvents.start()
                 calendarEvents.refreshIfNeeded(now: panelClock.date)
-            }
-        }
-        .onChange(of: panelClock.date) { _, date in
-            if timeUpdateInterval == 1 {
-                calendarEvents.refreshIfNeeded(now: date)
             }
         }
         .onAppear {
@@ -179,14 +170,13 @@ struct PanelContentView: View {
         return 0.22
     }
 
-    private var timeUpdateInterval: TimeInterval? {
+    private func timeUpdateInterval(for visibleWidgets: [BangBarWidget]) -> TimeInterval? {
         guard state.isExpanded,
               state.contentVisible,
               !state.showsClipboardHistory else {
             return nil
         }
 
-        let visibleWidgets = activeWidgets(forPage: state.currentPage)
         if visibleWidgets.contains(.clock) { return 1 }
         if visibleWidgets.contains(.moon) || visibleWidgets.contains(.countdown) { return 60 }
         return nil
@@ -211,12 +201,13 @@ struct PanelContentView: View {
     }
 
     @ViewBuilder
-    private func pagedWidgets(hideExpandedArtwork: Bool) -> some View {
+    private func pagedWidgets(_ pages: [[BangBarWidget]], hideExpandedArtwork: Bool) -> some View {
         ZStack(alignment: .topLeading) {
-            pageLayer(page: 0, hideExpandedArtwork: hideExpandedArtwork)
+            let currentPageWidth = PanelLayout.expandedWidth(for: pages[state.currentPage])
+            pageLayer(page: 0, widgets: pages[0], currentPageWidth: currentPageWidth, hideExpandedArtwork: hideExpandedArtwork)
 
-            if !activeWidgets(forPage: 1).isEmpty {
-                pageLayer(page: 1, hideExpandedArtwork: hideExpandedArtwork)
+            if !pages[1].isEmpty {
+                pageLayer(page: 1, widgets: pages[1], currentPageWidth: currentPageWidth, hideExpandedArtwork: hideExpandedArtwork)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -225,8 +216,7 @@ struct PanelContentView: View {
     }
 
     @ViewBuilder
-    private func pageLayer(page: Int, hideExpandedArtwork: Bool) -> some View {
-        let widgets = activeWidgets(forPage: page)
+    private func pageLayer(page: Int, widgets: [BangBarWidget], currentPageWidth: CGFloat, hideExpandedArtwork: Bool) -> some View {
         let isActive = state.isExpanded
             && state.contentVisible
             && !state.showsClipboardHistory
@@ -236,16 +226,16 @@ struct PanelContentView: View {
             hideExpandedArtwork: hideExpandedArtwork,
             isActive: isActive
         )
-            .offset(x: pageLayerOffset(page: page, widgets: widgets))
+            .offset(x: pageLayerOffset(page: page, widgets: widgets, currentPageWidth: currentPageWidth))
     }
 
-    private func pageLayerOffset(page: Int, widgets: [BangBarWidget]) -> CGFloat {
+    private func pageLayerOffset(page: Int, widgets: [BangBarWidget], currentPageWidth: CGFloat) -> CGFloat {
         if page == state.currentPage {
             return 0
         } else if page > state.currentPage {
             // Appears to the right: must clear the currently visible page's own width,
             // regardless of how narrow this (still off-screen) page itself is.
-            return PanelLayout.expandedWidth(for: activeWidgets(forPage: state.currentPage))
+            return currentPageWidth
         } else {
             // Appears to the left: must clear its own width, since it extends
             // rightward from its offset origin toward x = 0.
@@ -328,14 +318,22 @@ struct PanelContentView: View {
                         alignment: .topLeading
                     )
                 case .clock:
-                    ClockWidget(
-                        date: panelClock.date,
-                        calendarEvents: calendarEvents,
-                        isPanelContentVisible: isActive
-                    )
+                    PanelClockReader(clock: panelClock) { date in
+                        ClockWidget(
+                            date: date,
+                            calendarEvents: calendarEvents,
+                            isPanelContentVisible: isActive
+                        )
+                        .onChange(of: date) { _, date in
+                            // The clock also ticks (every 60 s) for Moon/Countdown while this page is off-screen.
+                            if isActive {
+                                calendarEvents.refreshIfNeeded(now: date)
+                            }
+                        }
+                    }
                         .frame(width: PanelLayout.clockWidgetWidth, alignment: .leading)
                 case .moon:
-                    MoonWidget(date: panelClock.date)
+                    PanelClockReader(clock: panelClock) { MoonWidget(date: $0) }
                         .frame(
                             width: PanelLayout.moonWidgetWidth,
                             height: PanelLayout.nowPlayingWidgetHeight,
@@ -344,7 +342,7 @@ struct PanelContentView: View {
                 case .pomodoro:
                     PomodoroWidget(service: pomodoro)
                 case .countdown:
-                    CountdownWidget(service: countdown, date: panelClock.date)
+                    PanelClockReader(clock: panelClock) { CountdownWidget(service: countdown, date: $0) }
                 case .reminders:
                     RemindersWidget(
                         service: reminders,
@@ -386,15 +384,16 @@ struct PanelContentView: View {
         }
     }
 
-    private func activeWidgets(forPage page: Int) -> [BangBarWidget] {
+    private func activeWidgetPages() -> [[BangBarWidget]] {
         let pageAssignments = BangBarSettings.widgetPages(from: widgetPagesRaw)
-        let enabledWidgets = BangBarSettings.widgetOrder(from: widgetOrderRaw)
-            .filter(isWidgetVisible)
-            .filter { (pageAssignments[$0.rawValue] ?? 0) == page }
-        return PanelLayout.widgetsThatFit(
-            enabledWidgets,
-            maximumWidth: PanelLayout.maximumExpandedWidth(on: NSScreen.main)
-        )
+        let enabledWidgets = BangBarSettings.widgetOrder(from: widgetOrderRaw).filter(isWidgetVisible)
+        let maximumWidth = PanelLayout.maximumExpandedWidth(on: NSScreen.main)
+        return [0, 1].map { page in
+            PanelLayout.widgetsThatFit(
+                enabledWidgets.filter { (pageAssignments[$0.rawValue] ?? 0) == page },
+                maximumWidth: maximumWidth
+            )
+        }
     }
 
     private func isWidgetVisible(_ widget: BangBarWidget) -> Bool {
@@ -428,6 +427,15 @@ struct PanelContentView: View {
         case .dayPlans:
             return showDayPlansWidget
         }
+    }
+}
+
+private struct PanelClockReader<Content: View>: View {
+    @ObservedObject var clock: PanelClock
+    @ViewBuilder let content: (Date) -> Content
+
+    var body: some View {
+        content(clock.date)
     }
 }
 

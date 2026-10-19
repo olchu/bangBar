@@ -6,12 +6,8 @@ struct PanelTopBar: View {
     @Binding var clipboardFilter: ClipboardHistoryFilter
     let width: CGFloat
     let height: CGFloat
-    let isClearDisabled: Bool
-    let activeGroupName: String?
-    let activeGroupItemCount: Int
-    let onNewGroup: () -> Void
-    let onStopGroup: () -> Void
-    let onClear: () -> Void
+    /// Not observed: only the clipboard controls below read it, and only while the history is shown.
+    let clipboardHistory: ClipboardHistoryService
     let onOpenSettings: () -> Void
     @AppStorage(BangBarSettings.Key.accentColorHex) private var accentColorHex = BangBarSettings.defaultAccentColorHex
     @AppStorage(BangBarSettings.Key.clipboardButtonPosition) private var clipboardButtonPositionRaw = ClipboardButtonPosition.nearNotch.rawValue
@@ -57,18 +53,8 @@ struct PanelTopBar: View {
 
             HStack(spacing: 10) {
                 if showsClipboardHistory {
-                    Button(action: onClear) {
-                        Label("Clear", systemImage: "trash")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(accentColor.opacity(0.9))
-                            .padding(.horizontal, 7)
-                            .frame(height: 20)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isClearDisabled)
-                    .opacity(isClearDisabled ? 0.35 : 1)
-                    .transition(.opacity)
+                    ClipboardClearButton(service: clipboardHistory, accentColor: accentColor)
+                        .transition(.opacity)
                 }
 
                 topBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
@@ -103,45 +89,9 @@ struct PanelTopBar: View {
             }
 
             toolbarDivider
-            imageGroupControl
+            ImageGroupControl(service: clipboardHistory, clipboardFilter: $clipboardFilter, accentColor: accentColor)
         }
         .transition(.opacity.combined(with: .move(edge: clipboardButtonPosition == .nearNotch ? .trailing : .leading)))
-    }
-
-    @ViewBuilder
-    private var imageGroupControl: some View {
-        if let activeGroupName {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(accentColor)
-                    .frame(width: 5, height: 5)
-
-                Text("\(activeGroupName) · \(activeGroupItemCount)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.72))
-                    .lineLimit(1)
-
-                Button("Stop", action: onStopGroup)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(accentColor)
-                    .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 7)
-            .frame(height: 20)
-            .background(Color.white.opacity(0.055))
-            .clipShape(.rect(cornerRadius: 6))
-        } else {
-            Button(action: onNewGroup) {
-                Label("New Image Group", systemImage: "photo.badge.plus")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .padding(.horizontal, 7)
-                    .frame(height: 20)
-                    .background(Color.white.opacity(0.055))
-                    .clipShape(.rect(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     private var toolbarDivider: some View {
@@ -189,6 +139,69 @@ struct PanelTopBar: View {
         }
         .help(help)
         .buttonStyle(PanelTopBarButtonStyle())
+    }
+}
+
+private struct ClipboardClearButton: View {
+    @ObservedObject var service: ClipboardHistoryService
+    let accentColor: Color
+
+    var body: some View {
+        Button(action: service.clear) {
+            Label("Clear", systemImage: "trash")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(accentColor.opacity(0.9))
+                .padding(.horizontal, 7)
+                .frame(height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(service.items.isEmpty)
+        .opacity(service.items.isEmpty ? 0.35 : 1)
+    }
+}
+
+private struct ImageGroupControl: View {
+    @ObservedObject var service: ClipboardHistoryService
+    @Binding var clipboardFilter: ClipboardHistoryFilter
+    let accentColor: Color
+
+    var body: some View {
+        if let activeGroupName = service.activeGroup?.name {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(accentColor)
+                    .frame(width: 5, height: 5)
+
+                Text("\(activeGroupName) · \(service.activeGroupItemCount)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .lineLimit(1)
+
+                Button("Stop", action: service.stopCollecting)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(accentColor)
+                    .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 20)
+            .background(Color.white.opacity(0.055))
+            .clipShape(.rect(cornerRadius: 6))
+        } else {
+            Button {
+                clipboardFilter = .images
+                service.startNewGroup()
+            } label: {
+                Label("New Image Group", systemImage: "photo.badge.plus")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .padding(.horizontal, 7)
+                    .frame(height: 20)
+                    .background(Color.white.opacity(0.055))
+                    .clipShape(.rect(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 

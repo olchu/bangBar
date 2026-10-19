@@ -258,10 +258,11 @@ struct CompactNowPlayingWidget: View {
                 }
                 HStack {
                     Spacer()
-                    PlayingIndicator(
+                    LivePlayingIndicator(
+                        levels: service.audioLevels,
                         isPlaying: service.info.isPlaying,
                         maxHeight: indicatorHeight,
-                        liveLevels: musicVisualizerMode == .live ? service.liveAudioLevels : nil
+                        isLive: musicVisualizerMode == .live
                     )
                         .frame(width: indicatorWidth, height: indicatorHeight)
                         .scaleEffect(shouldShowIndicator ? 1.0 : 0.28)
@@ -395,6 +396,7 @@ struct ArtworkHeroView: View {
             .frame(width: frame.width, height: frame.height)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .position(x: frame.midX, y: frame.midY)
+            .opacity(service.isAvailable ? 1 : 0)
             .transaction { transaction in
                 transaction.animation = nil
             }
@@ -423,6 +425,18 @@ struct ArtworkHeroView: View {
 
     private func interpolate(from start: CGFloat, to end: CGFloat, progress: CGFloat) -> CGFloat {
         start + (end - start) * progress
+    }
+}
+
+/// Observes only the audio levels, so 12.5 Hz level updates re-render the bars and not the whole compact widget.
+private struct LivePlayingIndicator: View {
+    @ObservedObject var levels: LiveAudioLevels
+    let isPlaying: Bool
+    let maxHeight: CGFloat
+    let isLive: Bool
+
+    var body: some View {
+        PlayingIndicator(isPlaying: isPlaying, maxHeight: maxHeight, liveLevels: isLive ? levels.values : nil)
     }
 }
 
