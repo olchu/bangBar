@@ -85,7 +85,7 @@ final class AudioActivityMonitor {
     }
 
     private func addOutputListener(to process: AudioObjectID) -> Bool {
-        var address = SystemAudio.address(kAudioProcessPropertyIsRunningOutput)
+        var address = SystemAudio.processRunningAddress
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             MainActor.assumeIsolated { self?.outputChanged(of: process) }
         }
@@ -98,7 +98,7 @@ final class AudioActivityMonitor {
         runningProcesses.remove(process)
         owners[process] = nil
         guard let listener = outputListeners.removeValue(forKey: process) else { return }
-        var address = SystemAudio.address(kAudioProcessPropertyIsRunningOutput)
+        var address = SystemAudio.processRunningAddress
         AudioObjectRemovePropertyListenerBlock(process, &address, .main, listener)
     }
 

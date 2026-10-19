@@ -35,6 +35,9 @@ nonisolated enum SystemAudio {
         return Array(objects.prefix(Int(size) / MemoryLayout<AudioObjectID>.size))
     }
 
+    /// Listen here for output starts and stops: Core Audio does not notify `IsRunningOutput` changes, though it reports them when read.
+    static let processRunningAddress = address(kAudioProcessPropertyIsRunning)
+
     static func isRunningOutput(_ process: AudioObjectID) -> Bool {
         var address = address(kAudioProcessPropertyIsRunningOutput)
         return (uint32(at: &address, of: process) ?? 0) != 0
