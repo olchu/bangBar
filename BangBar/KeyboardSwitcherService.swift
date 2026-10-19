@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import Carbon
-import OSLog
 
 final class KeyboardSwitcherService: NSObject {
     private static let shortcutModifierMask: CGEventFlags = [
@@ -10,10 +9,12 @@ final class KeyboardSwitcherService: NSObject {
     private static let commandModifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
     private static let autoSwitchBoundaryKeys: Set<Int> = [kVK_Space, kVK_Return, kVK_ANSI_KeypadEnter]
 
-    private let logger = Logger(subsystem: "BangBar", category: "KeyboardSwitcher")
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var permissionTimer: Timer?
+    private lazy var eventTap = EventTap(
+        name: "keyboard",
+        mask: EventTap.mask([.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown])
+    ) { [weak self] type, event, proxy in
+        self?.handle(type: type, event: event, proxy: proxy) ?? Unmanaged.passUnretained(event)
+    }
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var buffer = KeyboardWordBuffer()
     private var shiftTaps = DoubleTapDetector()
@@ -71,8 +72,8 @@ final class KeyboardSwitcherService: NSObject {
         observers.forEach { center, token in center.removeObserver(token) }
         observers.removeAll()
         DistributedNotificationCenter.default().removeObserver(self)
-        removeTap()
-        stopPermissionPolling()
+        eventTap.isEnabled = false
+        resetTypingState()
     }
 
     @objc private func enabledInputSourcesChanged() {
@@ -91,85 +92,19 @@ final class KeyboardSwitcherService: NSObject {
         reloadTriggerSettings()
         autoSwitcher.reloadSettings()
         guard isEnabled else {
-            removeTap()
-            stopPermissionPolling()
+            eventTap.isEnabled = false
+            resetTypingState()
             return
         }
         autoSwitcher.prepareLanguagesIfNeeded()
-        guard eventTap == nil else { return }
-        if AccessibilityAccess.isTrusted {
-            stopPermissionPolling()
-            installTap()
-        } else {
-            startPermissionPolling()
-        }
-    }
-
-    private func startPermissionPolling() {
-        guard permissionTimer == nil else { return }
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard AccessibilityAccess.isTrusted else { return }
-                self?.updateState()
-            }
-        }
-    }
-
-    private func stopPermissionPolling() {
-        permissionTimer?.invalidate()
-        permissionTimer = nil
+        eventTap.isEnabled = true
     }
 
     // MARK: - Event Tap
 
-    private func installTap() {
-        let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
-        let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
-        let callback: CGEventTapCallBack = { proxy, type, event, refcon in
-            guard let refcon else { return Unmanaged.passUnretained(event) }
-            let service = Unmanaged<KeyboardSwitcherService>.fromOpaque(refcon).takeUnretainedValue()
-            return MainActor.assumeIsolated { service.handle(type: type, event: event, proxy: proxy) }
-        }
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: callback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            logger.error("Failed to create keyboard event tap")
-            startPermissionPolling()
-            return
-        }
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        eventTap = tap
-        runLoopSource = source
-    }
-
-    private func removeTap() {
-        if let eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-            CFMachPortInvalidate(eventTap)
-        }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        }
-        eventTap = nil
-        runLoopSource = nil
-        resetTypingState()
-    }
-
     private func handle(type: CGEventType, event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {
         let passThrough = Unmanaged.passUnretained(event)
         switch type {
-        case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
-            return passThrough
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             resetTypingState()
             return passThrough

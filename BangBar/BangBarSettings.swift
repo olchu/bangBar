@@ -263,6 +263,8 @@ enum BangBarSettings {
         static let panelActivationThreshold = "panelActivationThreshold"
         static let liveActivityPowerEnabled = "liveActivityPowerEnabled"
         static let liveActivityAudioEnabled = "liveActivityAudioEnabled"
+        static let liveActivityVolumeEnabled = "liveActivityVolumeEnabled"
+        static let volumeHUDReplacesSystem = "volumeHUDReplacesSystem"
         static let showPomodoroWidget = "showPomodoroWidget"
         static let showCountdownWidget = "showCountdownWidget"
         static let countdownData = "countdownData"
@@ -332,6 +334,8 @@ enum BangBarSettings {
             Key.panelActivationThreshold: 0,
             Key.liveActivityPowerEnabled: true,
             Key.liveActivityAudioEnabled: true,
+            Key.liveActivityVolumeEnabled: true,
+            Key.volumeHUDReplacesSystem: true,
             Key.calendarAlertsEnabled: false,
             Key.calendarAlertLeadMinutes: 0,
             Key.calendarAlertBackgroundOpacity: 62,
@@ -515,5 +519,16 @@ extension Color {
             Int((c.greenComponent * 255).rounded()),
             Int((c.blueComponent * 255).rounded())
         )
+    }
+}
+
+/// Key paths for KVO on single settings; each property name must equal its defaults key.
+extension UserDefaults {
+    @objc dynamic var liveActivityVolumeEnabled: Bool {
+        bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled)
+    }
+
+    @objc dynamic var volumeHUDReplacesSystem: Bool {
+        bool(forKey: BangBarSettings.Key.volumeHUDReplacesSystem)
     }
 }

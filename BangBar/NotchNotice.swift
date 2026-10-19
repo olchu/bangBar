@@ -5,11 +5,13 @@ import SwiftUI
 enum NotchNotice {
     case layoutSwitch(original: String, replacement: String)
     case activity(LiveActivity)
+    case volume(level: Float, isMuted: Bool)
 
     var visibleDuration: TimeInterval {
         switch self {
         case .layoutSwitch: 1.8
         case .activity: 2.4
+        case .volume: 1.5
         }
     }
 
@@ -19,8 +21,17 @@ enum NotchNotice {
             NotchNoticeGeometry.contentWidth(texts: [original, replacement], glyphWidth: NotchNoticeGeometry.arrowWidth)
         case .activity(let activity):
             NotchNoticeGeometry.contentWidth(texts: [activity.title, activity.detail], glyphWidth: NotchNoticeGeometry.symbolWidth)
+        case .volume:
+            Self.volumeContentWidth
         }
     }
+
+    /// Sized for "100%" in the view's monospaced digits so the body keeps its width while the level changes.
+    private static let volumeContentWidth = NotchNoticeGeometry.contentWidth(
+        texts: ["100%"],
+        glyphWidth: NotchNoticeGeometry.symbolWidth + NotchNoticeGeometry.volumeBarWidth,
+        font: .monospacedDigitSystemFont(ofSize: NotchNoticeGeometry.font.pointSize, weight: .medium)
+    )
 
     var isLayoutSwitch: Bool {
         if case .layoutSwitch = self { return true }
@@ -50,11 +61,14 @@ final class NotchNoticeCenter {
 
         orderOutWorkItem?.cancel()
         state.notice = notice
-        state.geometry = geometry
-        window.setFrame(geometry.windowFrame, display: true)
-        window.orderFrontRegardless()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-            state.isRevealed = true
+        // Held volume keys update the visible notice many times a second; only the content changes then.
+        if !state.isRevealed || state.geometry != geometry {
+            state.geometry = geometry
+            window.setFrame(geometry.windowFrame, display: true)
+            window.orderFrontRegardless()
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                state.isRevealed = true
+            }
         }
 
         hideWorkItem?.cancel()
@@ -103,7 +117,7 @@ private final class NotchNoticeState: ObservableObject {
     @Published var isRevealed = false
 }
 
-struct NotchNoticeGeometry {
+struct NotchNoticeGeometry: Equatable {
     static let bodyHeight: CGFloat = 30
     static let fillet: CGFloat = 8
     static let cornerRadius: CGFloat = 12
@@ -111,6 +125,7 @@ struct NotchNoticeGeometry {
     static let contentSpacing: CGFloat = 8
     static let arrowWidth: CGFloat = 10
     static let symbolWidth: CGFloat = 16
+    static let volumeBarWidth: CGFloat = 120
     static let maximumBodyWidth: CGFloat = 300
     /// Without a notch the notice floats this far below the menu bar instead of growing out of it.
     static let menuBarGap: CGFloat = 6
@@ -173,7 +188,7 @@ struct NotchNoticeGeometry {
     }
 
     /// Body width for one line of `texts` plus one fixed-width glyph between or before them.
-    static func contentWidth(texts: [String], glyphWidth: CGFloat) -> CGFloat {
+    static func contentWidth(texts: [String], glyphWidth: CGFloat, font: NSFont = font) -> CGFloat {
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let textWidth = texts.reduce(0) { $0 + ($1 as NSString).size(withAttributes: attributes).width }
         return (textWidth + glyphWidth + contentSpacing * 2 + horizontalPadding * 2).rounded(.up)
@@ -232,8 +247,44 @@ private struct NotchNoticeView: View {
             Text(activity.detail)
                 .foregroundStyle(Color.white.opacity(0.45))
                 .fixedSize()
+        case .volume(let level, let isMuted):
+            VolumeNoticeContent(level: isMuted ? 0 : level, accentColor: Color(hex: accentColorHex))
         case nil:
             EmptyView()
+        }
+    }
+}
+
+private struct VolumeNoticeContent: View {
+    let level: Float
+    let accentColor: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(accentColor)
+            .frame(width: NotchNoticeGeometry.symbolWidth)
+        Capsule()
+            .fill(Color.white.opacity(0.18))
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(accentColor)
+                    .frame(width: NotchNoticeGeometry.volumeBarWidth * CGFloat(level))
+            }
+            .frame(width: NotchNoticeGeometry.volumeBarWidth, height: 5)
+            .animation(.easeOut(duration: 0.12), value: level)
+        Text("\(Int((level * 100).rounded()))%")
+            .monospacedDigit()
+            .foregroundStyle(Color.white.opacity(0.45))
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var symbol: String {
+        switch level {
+        case ...0: "speaker.slash.fill"
+        case ..<0.34: "speaker.wave.1.fill"
+        case ..<0.67: "speaker.wave.2.fill"
+        default: "speaker.wave.3.fill"
         }
     }
 }

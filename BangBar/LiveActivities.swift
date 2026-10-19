@@ -26,6 +26,8 @@ final class LiveActivityController {
     private let center: NotchNoticeCenter
     private let powerMonitor = PowerSourceMonitor()
     private let audioMonitor = AudioOutputMonitor()
+    private let volumeKeys = VolumeKeyInterceptor()
+    private var settingsObservations: [NSKeyValueObservation] = []
 
     init(center: NotchNoticeCenter) {
         self.center = center
@@ -40,8 +42,31 @@ final class LiveActivityController {
             guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.liveActivityAudioEnabled) else { return }
             self?.center.present(.activity(LiveActivity(symbol: "headphones", title: deviceName, detail: "Connected")))
         }
+        audioMonitor.onVolumeChange = { [weak self] volume, isMuted in
+            guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled) else { return }
+            self?.center.present(.volume(level: volume, isMuted: isMuted))
+        }
+        // While notices are suppressed the system HUD is the only feedback, so the keys must reach it.
+        volumeKeys.shouldIntercept = { [weak self] in self?.center.isSuppressed() == false }
+        volumeKeys.onUnchangedPress = { [weak self] volume, isMuted in
+            self?.center.present(.volume(level: volume, isMuted: isMuted))
+        }
         powerMonitor.start()
         audioMonitor.start()
+
+        // KVO on just these two keys: UserDefaults.didChangeNotification fires for every write in the app.
+        settingsObservations = [\UserDefaults.liveActivityVolumeEnabled, \UserDefaults.volumeHUDReplacesSystem].map {
+            UserDefaults.standard.observe($0) { [weak self] _, _ in
+                DispatchQueue.main.async { self?.updateVolumeKeys() }
+            }
+        }
+        updateVolumeKeys()
+    }
+
+    private func updateVolumeKeys() {
+        let defaults = UserDefaults.standard
+        volumeKeys.isEnabled = defaults.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled)
+            && defaults.bool(forKey: BangBarSettings.Key.volumeHUDReplacesSystem)
     }
 }
 
@@ -78,73 +103,81 @@ final class PowerSourceMonitor {
     }
 }
 
-/// Reports when the default output switches to a Bluetooth device. Reads only Core Audio, so it needs no
-/// Bluetooth permission.
+/// Reports default output switches to a Bluetooth device and volume or mute changes on the default output.
+/// Reads only Core Audio, so it needs no Bluetooth permission.
 final class AudioOutputMonitor {
     var onBluetoothOutput: ((String) -> Void)?
-    private var listener: AudioObjectPropertyListenerBlock?
+    var onVolumeChange: ((_ volume: Float, _ isMuted: Bool) -> Void)?
+    private var deviceListener: AudioObjectPropertyListenerBlock?
+    private var volumeListener: AudioObjectPropertyListenerBlock?
     private var currentDevice = AudioDeviceID(kAudioObjectUnknown)
-    private var defaultOutputAddress = address(kAudioHardwarePropertyDefaultOutputDevice)
+    private var lastVolume: (volume: Float, isMuted: Bool)?
+    /// Bluetooth devices push a volume sync right after becoming the default output; that is not a user change
+    /// and would replace the "Connected" notice.
+    private var ignoresVolumeUntil = Date.distantPast
+    private static let deviceSwitchVolumeGrace: TimeInterval = 1
+    private var defaultOutputAddress = SystemAudio.address(kAudioHardwarePropertyDefaultOutputDevice)
 
     func start() {
-        guard listener == nil else { return }
-        currentDevice = Self.defaultOutputDevice()
+        guard deviceListener == nil else { return }
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             MainActor.assumeIsolated { self?.defaultOutputChanged() }
         }
-        let status = AudioObjectAddPropertyListenerBlock(
-            AudioObjectID(kAudioObjectSystemObject), &defaultOutputAddress, .main, listener
-        )
-        if status == noErr {
-            self.listener = listener
-        }
+        guard AudioObjectAddPropertyListenerBlock(SystemAudio.systemObject, &defaultOutputAddress, .main, listener) == noErr
+        else { return }
+        deviceListener = listener
+        attachVolumeListeners(to: SystemAudio.defaultOutputDevice)
     }
 
     deinit {
-        if let listener {
-            AudioObjectRemovePropertyListenerBlock(
-                AudioObjectID(kAudioObjectSystemObject), &defaultOutputAddress, .main, listener
-            )
+        if let deviceListener {
+            AudioObjectRemovePropertyListenerBlock(SystemAudio.systemObject, &defaultOutputAddress, .main, deviceListener)
         }
+        detachVolumeListeners()
     }
 
     private func defaultOutputChanged() {
-        let device = Self.defaultOutputDevice()
+        let device = SystemAudio.defaultOutputDevice
         guard device != currentDevice else { return }
-        currentDevice = device
-        let transport = Self.uint32Property(kAudioDevicePropertyTransportType, of: device)
-        guard transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE,
-              let name = Self.nameProperty(of: device)
-        else { return }
+        attachVolumeListeners(to: device)
+        ignoresVolumeUntil = Date().addingTimeInterval(Self.deviceSwitchVolumeGrace)
+        guard SystemAudio.isBluetooth(device), let name = SystemAudio.name(of: device) else { return }
         onBluetoothOutput?(name)
     }
 
-    private static func defaultOutputDevice() -> AudioDeviceID {
-        uint32Property(kAudioHardwarePropertyDefaultOutputDevice, of: AudioObjectID(kAudioObjectSystemObject))
-            ?? AudioDeviceID(kAudioObjectUnknown)
+    /// Moves the volume and mute listeners to `device`; its current level is recorded without a report.
+    private func attachVolumeListeners(to device: AudioDeviceID) {
+        detachVolumeListeners()
+        currentDevice = device
+        lastVolume = SystemAudio.volume(of: device).map { ($0, SystemAudio.isMuted(device)) }
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.volumeChanged() }
+        }
+        var volumeAddress = SystemAudio.volumeAddress
+        var muteAddress = SystemAudio.muteAddress
+        let volumeStatus = AudioObjectAddPropertyListenerBlock(device, &volumeAddress, .main, listener)
+        let muteStatus = AudioObjectAddPropertyListenerBlock(device, &muteAddress, .main, listener)
+        if volumeStatus == noErr || muteStatus == noErr {
+            volumeListener = listener
+        }
     }
 
-    private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
-        AudioObjectPropertyAddress(
-            mSelector: selector,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
+    private func detachVolumeListeners() {
+        guard let volumeListener else { return }
+        var volumeAddress = SystemAudio.volumeAddress
+        var muteAddress = SystemAudio.muteAddress
+        AudioObjectRemovePropertyListenerBlock(currentDevice, &volumeAddress, .main, volumeListener)
+        AudioObjectRemovePropertyListenerBlock(currentDevice, &muteAddress, .main, volumeListener)
+        self.volumeListener = nil
     }
 
-    private static func uint32Property(_ selector: AudioObjectPropertySelector, of object: AudioObjectID) -> UInt32? {
-        var address = address(selector)
-        var value: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr else { return nil }
-        return value
-    }
-
-    private static func nameProperty(of object: AudioObjectID) -> String? {
-        var address = address(kAudioObjectPropertyName)
-        var name: Unmanaged<CFString>?
-        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &name) == noErr else { return nil }
-        return name?.takeRetainedValue() as String?
+    private func volumeChanged() {
+        guard let volume = SystemAudio.volume(of: currentDevice) else { return }
+        let isMuted = SystemAudio.isMuted(currentDevice)
+        // Volume and mute listeners both fire for one key press on some devices.
+        guard lastVolume.map({ $0.volume != volume || $0.isMuted != isMuted }) ?? true else { return }
+        lastVolume = (volume, isMuted)
+        guard Date() >= ignoresVolumeUntil else { return }
+        onVolumeChange?(volume, isMuted)
     }
 }
