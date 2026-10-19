@@ -294,14 +294,30 @@ Album artwork should read visually as one continuous element between compact and
 Shows audio from any app (YouTube in a browser, a video player, a voice message) in the Now Playing widget and compact mode, not only Spotify and Music.
 
 - A playing Spotify or Music track always wins. A paused player is replaced while another app plays and comes back when that audio stops.
-- Detection uses public Core Audio process objects only (`kAudioHardwarePropertyProcessObjectList`, `kAudioProcessPropertyIsRunningOutput`, `kAudioProcessPropertyPID`, `kAudioProcessPropertyBundleID`) in `AudioActivityMonitor`. No permission is needed and nothing is polled: listeners on the process list and on each process's running-output flag drive it.
+- Detection uses public Core Audio process objects only (`kAudioHardwarePropertyProcessObjectList`, `kAudioProcessPropertyIsRunningOutput`, `kAudioProcessPropertyPID`, `kAudioProcessPropertyBundleID`) in `AudioActivityMonitor`. No permission is needed and nothing is polled: listeners on the process list and on each process's `kAudioProcessPropertyIsRunning` drive it, and each event re-reads `IsRunningOutput` of that process. Core Audio does not notify `IsRunningOutput` changes itself (verified on macOS 27), so listening to it alone misses every stop.
 - Audio usually comes from a helper process. Its owning app is, in order: the process itself when it is a regular app; the first regular app among its parent processes (Chrome, Firefox and Electron helpers); a running regular app whose bundle ID prefixes the helper's (`com.google.Chrome.helper`); a running regular app whose name starts the process name (WebKit's GPU process is named after its app, e.g. `Safari Graphics and Media`; the longest name wins). Processes without an owning app (system sounds, daemons), BangBar, Spotify and Music are ignored.
 - Output must run for 2 s before the app is shown, so notification sounds do not open compact mode. The app stays shown until its output has been stopped for 2 s; output that restarts within that time keeps it shown without a new start delay, which bridges the gap between videos. With several apps playing, the one that started last is shown.
-- Display: title is the app name, subtitle `Playing audio`, artwork is the app icon (compact, expanded and hero). No progress bar and no favorite corner. Playback controls are dimmed and disabled: without MediaRemote there is no public way to control another app's playback. Clicking the artwork brings the app forward through Launch Services (`NSWorkspace.open`), because `activate()` is ignored while BangBar is not active.
-- The page or track title is not shown: browsers do not expose through AppleScript which tab is playing.
+- Display: for a browser, the playing tab's media (see "Browser Tab Preview"); otherwise, or until the lookup finishes, title is the app name, subtitle `Playing audio`, artwork is the app icon (compact, expanded and hero). No progress bar and no favorite corner. Playback controls are dimmed and disabled: without MediaRemote there is no public way to control another app's playback. Clicking the artwork brings the app forward through Launch Services (`NSWorkspace.open`), because `activate()` is ignored while BangBar is not active.
 - Live bars tap the audio process's bundle ID (for example every `com.google.Chrome.helper` process), the same way as for players.
 - Known limitation: an app that keeps its audio stream running while silent (some pages using Web Audio, call apps) counts as playing.
+- Known limitation: `IsRunning` covers input and output together, so while a process keeps its microphone input running (a call, dictation), its output starting or stopping is not noticed until the input stops.
 - Settings → Widgets → Now Playing: `Other apps` toggle (`nowPlayingShowsOtherAudio`, default on), observed through KVO on that key only. Turning it off removes the Core Audio listeners.
+
+#### Browser Tab Preview
+
+When the playing app is a scriptable browser, Now Playing shows the playing page instead of the browser icon: page title, channel/author or site name, and a preview image (`OtherAppMedia`, which also builds the name-and-icon fallback for every other app).
+
+- Browsers: Safari and Safari Technology Preview; Chrome (all channels), Brave, Edge, Arc, Vivaldi, Yandex Browser and Chromium through the Chrome AppleScript dictionary. Firefox has no tab scripting and keeps the icon. macOS asks once per browser for Automation permission; when it is denied the icon stays.
+- One osascript call reads the front tab's URL and every tab's URL and title through bulk property reads (three Apple Events however many tabs are open). Browsers do not say which tab plays, so the tab is picked as: a media page that is the front tab; otherwise the first media page; otherwise the front tab. Media pages are YouTube video URLs (`watch`, `shorts`, `live`, `embed`, `youtu.be`, YouTube Music) and known media hosts (Vimeo, SoundCloud, Twitch, Spotify Web, Apple Music, Dailymotion, Bandcamp, Deezer, Tidal, Yandex Music, Rutube, Netflix, Kinopoisk, Prime Video, Disney+, Apple TV).
+- While a browser is shown the tabs are re-read every 5 s, so autoplay moving to the next video is picked up, and every 15 s once the shown page has not changed for 30 s. Only a different media key triggers a new lookup; results of media pages are cached per key (YouTube video ID, otherwise the URL without fragment; the 8 most recently used); a lookup cancelled by an app change is not cached. A different helper process of the same browser taking over the audio keeps the shown page.
+- Lookup, all public and without keys:
+  - YouTube: title and channel from `youtube.com/oembed`, image `i.ytimg.com/vi/<id>/mqdefault.jpg` (16:9, no letterbox).
+  - Vimeo, SoundCloud, Spotify, Dailymotion: their oEmbed endpoints (title, author, thumbnail).
+  - Other media hosts: their Open Graph tags (`og:title`, `og:site_name`, `og:image`, falling back to `twitter:*`), read up to `</head>`, at most 512 KB.
+  - Any other tab (the front-tab fallback) and failed lookups: the tab title and the host name, with the browser icon, without a network request.
+  - Preview images are decoded and scaled to 320 px off the main thread.
+- Requests go only to the playing page's own site or its oEmbed endpoint, through an ephemeral `URLSession` without a URL cache (no cookies), with a 6 s timeout.
+- Known limitation: with several media tabs open, a background tab that plays while another media tab is in front is shown wrong.
 
 ### MirrorWidget
 

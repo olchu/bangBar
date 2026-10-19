@@ -332,8 +332,8 @@ final class NowPlayingService: NSObject, ObservableObject {
 
     /// The player's own state, nil without a player; `info` shows it unless another app plays while the player does not.
     private var playerInfo: NowPlayingInfo?
-    private var audioAppIcon: NSImage?
     private let audioActivity = AudioActivityMonitor()
+    private let otherAppMedia = OtherAppMedia()
     private var otherAudioObservation: NSKeyValueObservation?
 
     private var pollTimer: Timer?
@@ -403,6 +403,9 @@ final class NowPlayingService: NSObject, ObservableObject {
 
     private func observeOtherAudio() {
         audioActivity.onChange = { [weak self] in
+            self?.publish()
+        }
+        otherAppMedia.onChange = { [weak self] in
             self?.publish()
         }
         // KVO on this key only: UserDefaults.didChangeNotification fires for every write in the app.
@@ -541,10 +544,9 @@ final class NowPlayingService: NSObject, ObservableObject {
         let app = playerInfo?.isPlaying == true ? nil : audioActivity.playingApp
         if audioApp != app {
             audioApp = app
-            audioAppIcon = app.flatMap { NSRunningApplication(processIdentifier: $0.processIdentifier)?.icon }
+            otherAppMedia.track(app)
         }
-        let next = app.map { NowPlayingInfo(title: $0.name, isPlaying: true, artwork: audioAppIcon) }
-            ?? playerInfo ?? NowPlayingInfo()
+        let next = otherAppMedia.info ?? playerInfo ?? NowPlayingInfo()
         let available = app != nil || playerInfo != nil
         if isAvailable != available { isAvailable = available }
         if info != next { info = next }

@@ -21,7 +21,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>BangBar uses AppleScript to show Now Playing info from Spotify and Apple Music.</string>
+	<string>BangBar uses AppleScript to show Now Playing info from Spotify, Apple Music and the browser tab that plays audio.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>BangBar uses music audio levels to animate the live playback indicator.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

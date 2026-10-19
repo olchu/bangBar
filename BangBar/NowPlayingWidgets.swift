@@ -18,8 +18,7 @@ struct NowPlayingWidget: View {
     }
 
     private var subtitle: String {
-        guard service.isAvailable else { return "Ready when music starts" }
-        return service.audioApp == nil ? service.info.artist : "Playing audio"
+        service.isAvailable ? service.info.artist : "Ready when music starts"
     }
 
     var body: some View {
