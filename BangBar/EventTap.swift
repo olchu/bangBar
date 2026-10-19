@@ -1,15 +1,15 @@
 import AppKit
 import OSLog
 
-/// An event tap on the main run loop. While `isEnabled` it installs as soon as Accessibility is granted,
-/// polling until then, and turns itself back on when macOS disables it after a slow callback.
+/// A session event tap on the main run loop. While `isEnabled` it installs as soon as Accessibility is granted,
+/// removes itself when Accessibility is revoked (polling for both), and turns itself back on when macOS disables
+/// it after a slow callback.
 final class EventTap {
     typealias Handler = (_ type: CGEventType, _ event: CGEvent, _ proxy: CGEventTapProxy) -> Unmanaged<CGEvent>?
 
     private static let logger = Logger(subsystem: "BangBar", category: "EventTap")
 
     private let name: String
-    private let location: CGEventTapLocation
     private let mask: CGEventMask
     private let handler: Handler
     private var tap: CFMachPort?
@@ -23,9 +23,13 @@ final class EventTap {
         }
     }
 
-    init(name: String, location: CGEventTapLocation = .cgSessionEventTap, mask: CGEventMask, handler: @escaping Handler) {
+    /// Called with `true` once the tap is really installed and with `false` when it is removed.
+    var onInstalledChange: ((Bool) -> Void)?
+
+    var isInstalled: Bool { tap != nil }
+
+    init(name: String, mask: CGEventMask, handler: @escaping Handler) {
         self.name = name
-        self.location = location
         self.mask = mask
         self.handler = handler
     }
@@ -45,23 +49,24 @@ final class EventTap {
             remove()
             return
         }
-        if install() {
-            stopPermissionPolling()
+        // Revoking Accessibility stops event delivery without telling the tap, so trust stays watched once installed.
+        if AccessibilityAccess.isTrusted {
+            install()
         } else {
-            startPermissionPolling()
+            remove()
         }
+        startPermissionPolling()
     }
 
-    private func install() -> Bool {
-        guard tap == nil else { return true }
-        guard AccessibilityAccess.isTrusted else { return false }
+    private func install() {
+        guard tap == nil else { return }
         let callback: CGEventTapCallBack = { proxy, type, event, refcon in
             guard let refcon else { return Unmanaged.passUnretained(event) }
             let eventTap = Unmanaged<EventTap>.fromOpaque(refcon).takeUnretainedValue()
             return MainActor.assumeIsolated { eventTap.handle(type: type, event: event, proxy: proxy) }
         }
         guard let tap = CGEvent.tapCreate(
-            tap: location,
+            tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
@@ -69,26 +74,26 @@ final class EventTap {
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             Self.logger.error("Failed to create the \(self.name, privacy: .public) event tap")
-            return false
+            return
         }
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         runLoopSource = source
-        return true
+        onInstalledChange?(true)
     }
 
     private func remove() {
-        if let tap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
-        }
+        guard let tap else { return }
+        CGEvent.tapEnable(tap: tap, enable: false)
+        CFMachPortInvalidate(tap)
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
-        tap = nil
+        self.tap = nil
         runLoopSource = nil
+        onInstalledChange?(false)
     }
 
     private func handle(type: CGEventType, event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {

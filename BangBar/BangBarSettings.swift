@@ -265,7 +265,6 @@ enum BangBarSettings {
         static let liveActivityAudioEnabled = "liveActivityAudioEnabled"
         static let liveActivityVolumeEnabled = "liveActivityVolumeEnabled"
         static let volumeHUDReplacesSystem = "volumeHUDReplacesSystem"
-        static let volumeKeyInterceptionFailedOSMajor = "volumeKeyInterceptionFailedOSMajor"
         static let showPomodoroWidget = "showPomodoroWidget"
         static let showCountdownWidget = "showCountdownWidget"
         static let countdownData = "countdownData"
@@ -489,24 +488,6 @@ enum BangBarSettings {
             return .appleMusic
         }
         return MusicPlayer(rawValue: rawValue) ?? .appleMusic
-    }
-
-    /// Recorded when the system turned out to handle the volume keys itself; a new major macOS earns another try.
-    static func isVolumeKeyInterceptionUnsupported(failedMajorVersion: Int) -> Bool {
-        failedMajorVersion == ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-    }
-
-    static var isVolumeKeyInterceptionUnsupported: Bool {
-        isVolumeKeyInterceptionUnsupported(
-            failedMajorVersion: UserDefaults.standard.integer(forKey: Key.volumeKeyInterceptionFailedOSMajor)
-        )
-    }
-
-    static func markVolumeKeyInterceptionUnsupported() {
-        UserDefaults.standard.set(
-            ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
-            forKey: Key.volumeKeyInterceptionFailedOSMajor
-        )
     }
 
     static var panelActivationThreshold: CGFloat {

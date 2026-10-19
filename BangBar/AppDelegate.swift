@@ -46,6 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         stopMouseTracking()
         keyboardSwitcher.stop()
+        liveActivities.stop()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         workspaceObservers.removeAll()
         applicationObservers.forEach(NotificationCenter.default.removeObserver)

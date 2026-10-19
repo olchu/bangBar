@@ -52,8 +52,8 @@ final class NotchNoticeCenter {
     private var orderOutWorkItem: DispatchWorkItem?
 
     /// Without a `geometry` the notice grows out of the notch, on the screen that has one.
-    func present(_ notice: NotchNotice, geometry: NotchNoticeGeometry? = nil) {
-        guard !isSuppressed(),
+    func present(_ notice: NotchNotice, geometry: NotchNoticeGeometry? = nil, overridesSuppression: Bool = false) {
+        guard overridesSuppression || !isSuppressed(),
               let geometry = geometry ?? Self.notchScreen.map({ NotchNoticeGeometry(screen: $0, contentWidth: notice.contentWidth) })
         else { return }
         let window = window ?? makeWindow()

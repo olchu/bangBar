@@ -115,6 +115,11 @@ final class KeyboardSwitcherService: NSObject {
         guard !SyntheticKeyboard.isSynthetic(event) else {
             return passThrough
         }
+        // Volume presses arrive as F18–F20 while BangBar takes them over; they must not end the typed word.
+        if type == .keyDown || type == .keyUp,
+           VolumeKeyInterceptor.remappedKeyCodes.contains(Int(event.getIntegerValueField(.keyboardEventKeycode))) {
+            return passThrough
+        }
 
         switch type {
         case .flagsChanged:

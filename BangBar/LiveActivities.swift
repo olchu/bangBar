@@ -43,14 +43,9 @@ final class LiveActivityController {
             self?.center.present(.activity(LiveActivity(symbol: "headphones", title: deviceName, detail: "Connected")))
         }
         audioMonitor.onVolumeChange = { [weak self] volume, isMuted in
-            guard UserDefaults.standard.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled) else { return }
-            self?.center.present(.volume(level: volume, isMuted: isMuted))
-        }
-        // While notices are suppressed the system HUD is the only feedback, so the keys must reach it.
-        volumeKeys.shouldIntercept = { [weak self] in self?.center.isSuppressed() == false }
-        volumeKeys.onSystemHandledKey = { [weak self] in
-            BangBarSettings.markVolumeKeyInterceptionUnsupported()
-            self?.updateVolumeKeys()
+            guard let self, UserDefaults.standard.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled) else { return }
+            // With the keys taken over this is the only volume feedback, so it shows even over the expanded panel.
+            center.present(.volume(level: volume, isMuted: isMuted), overridesSuppression: volumeKeys.isActive)
         }
         volumeKeys.onUnchangedPress = { [weak self] volume, isMuted in
             self?.audioMonitor.onVolumeChange?(volume, isMuted)
@@ -71,7 +66,12 @@ final class LiveActivityController {
         let defaults = UserDefaults.standard
         volumeKeys.isEnabled = defaults.bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled)
             && defaults.bool(forKey: BangBarSettings.Key.volumeHUDReplacesSystem)
-            && !BangBarSettings.isVolumeKeyInterceptionUnsupported
+    }
+
+    /// Gives the volume keys back to the system.
+    func stop() {
+        settingsObservations.removeAll()
+        volumeKeys.isEnabled = false
     }
 }
 

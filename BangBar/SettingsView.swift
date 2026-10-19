@@ -50,7 +50,6 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.liveActivityAudioEnabled) private var liveActivityAudioEnabled = true
     @AppStorage(BangBarSettings.Key.liveActivityVolumeEnabled) private var liveActivityVolumeEnabled = true
     @AppStorage(BangBarSettings.Key.volumeHUDReplacesSystem) private var volumeHUDReplacesSystem = true
-    @AppStorage(BangBarSettings.Key.volumeKeyInterceptionFailedOSMajor) private var volumeKeyInterceptionFailedOSMajor = 0
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
     @AppStorage(BangBarSettings.Key.pageSwipeInverted) private var pageSwipeInverted = false
@@ -186,19 +185,14 @@ struct SettingsView: View {
                                 accentColor: accentColor
                             )
                             SettingsDivider()
-                            let canReplaceSystemHUD = !BangBarSettings.isVolumeKeyInterceptionUnsupported(
-                                failedMajorVersion: volumeKeyInterceptionFailedOSMajor
-                            )
                             SettingsToggleRow(
                                 title: "Replace system HUD",
-                                subtitle: canReplaceSystemHUD
-                                    ? "Handle the volume keys in BangBar so only the notch HUD appears. Needs Accessibility; without it both HUDs show."
-                                    : "Not available on this macOS version: the system handles the volume keys before any app can, so its indicator still appears.",
+                                subtitle: "Handle the volume keys in BangBar so only the notch HUD appears. Needs Accessibility; without it both HUDs show.",
                                 isOn: $volumeHUDReplacesSystem,
                                 accentColor: accentColor
                             )
-                            .disabled(!(liveActivityVolumeEnabled && canReplaceSystemHUD))
-                            .opacity(liveActivityVolumeEnabled && canReplaceSystemHUD ? 1 : 0.45)
+                            .disabled(!liveActivityVolumeEnabled)
+                            .opacity(liveActivityVolumeEnabled ? 1 : 0.45)
                         }
                     }
 
