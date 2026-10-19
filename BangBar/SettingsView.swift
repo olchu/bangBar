@@ -19,6 +19,8 @@ struct SettingsView: View {
     private var preferredMusicPlayerRaw = MusicPlayer.appleMusic.rawValue
     @AppStorage(BangBarSettings.Key.musicVisualizerMode)
     private var musicVisualizerModeRaw = MusicVisualizerMode.animated.rawValue
+    @AppStorage(BangBarSettings.Key.nowPlayingShowsOtherAudio)
+    private var nowPlayingShowsOtherAudio = true
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
     @AppStorage(BangBarSettings.Key.showMoonWidget) private var showMoonWidget = true
     @AppStorage(BangBarSettings.Key.showMirrorWidget) private var showMirrorWidget = true
@@ -424,7 +426,7 @@ struct SettingsView: View {
     private func musicWidgetSettings(accentColor: Color) -> some View {
         widgetSpecificSettings(
             widget: .nowPlaying,
-            description: "Choose the player and compact playback indicator."
+            description: "Choose the player, the compact playback indicator and audio from other apps."
         ) {
             SettingsCard {
                 VStack(spacing: 0) {
@@ -469,6 +471,15 @@ struct SettingsView: View {
                         .environment(\.colorScheme, .dark)
                     }
                     .frame(height: 56)
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: "Other apps",
+                        subtitle: "Shows audio from browsers and other apps while the player is not playing.",
+                        isOn: $nowPlayingShowsOtherAudio,
+                        accentColor: accentColor
+                    )
                 }
             }
         }

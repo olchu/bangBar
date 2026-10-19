@@ -239,6 +239,7 @@ enum BangBarSettings {
         static let showNowPlayingWidget = "showNowPlayingWidget"
         static let preferredMusicPlayer = "preferredMusicPlayer"
         static let musicVisualizerMode = "musicVisualizerMode"
+        static let nowPlayingShowsOtherAudio = "nowPlayingShowsOtherAudio"
         static let showClockWidget = "showClockWidget"
         static let showMoonWidget = "showMoonWidget"
         static let showMirrorWidget = "showMirrorWidget"
@@ -323,6 +324,7 @@ enum BangBarSettings {
         var defaults: [String: Any] = [
             Key.preferredMusicPlayer: MusicPlayer.appleMusic.rawValue,
             Key.musicVisualizerMode: MusicVisualizerMode.animated.rawValue,
+            Key.nowPlayingShowsOtherAudio: true,
             Key.translatorSourceIsRussian: true,
             Key.githubUsername: "",
             Key.moonUsesCurrentLocation: true,
@@ -524,6 +526,10 @@ extension Color {
 
 /// Key paths for KVO on single settings; each property name must equal its defaults key.
 extension UserDefaults {
+    @objc dynamic var nowPlayingShowsOtherAudio: Bool {
+        bool(forKey: BangBarSettings.Key.nowPlayingShowsOtherAudio)
+    }
+
     @objc dynamic var liveActivityVolumeEnabled: Bool {
         bool(forKey: BangBarSettings.Key.liveActivityVolumeEnabled)
     }

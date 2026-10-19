@@ -19,6 +19,17 @@ enum RepeatMode: String {
     case off
     case one
     case all
+
+    /// Spotify only toggles repeat; Music cycles off → all → one.
+    func next(for player: MusicPlayer) -> RepeatMode {
+        switch (player, self) {
+        case (.spotify, .off): .all
+        case (.spotify, _): .off
+        case (.appleMusic, .off): .all
+        case (.appleMusic, .all): .one
+        case (.appleMusic, .one): .off
+        }
+    }
 }
 
 private nonisolated extension MusicPlayer {
@@ -304,14 +315,26 @@ final class NowPlayingService: NSObject, ObservableObject {
     /// Serial so rapid commands reach the player in the order they were issued.
     private static let commandQueue = DispatchQueue(label: "BangBar.NowPlaying.commands", qos: .userInitiated)
 
-    @Published var info = NowPlayingInfo()
-    @Published var isAvailable = false
+    @Published private(set) var info = NowPlayingInfo()
+    @Published private(set) var isAvailable = false
+    /// Set while `info` shows another app's audio instead of a player; such playback cannot be controlled.
+    @Published private(set) var audioApp: AudioApp?
     /// Separate from `info` so visualizer ticks do not re-render every observer of the service.
     let audioLevels = LiveAudioLevels()
 
     var isCurrentlyPlaying: Bool {
         isAvailable && info.isPlaying
     }
+
+    var canControlPlayer: Bool {
+        isAvailable && audioApp == nil
+    }
+
+    /// The player's own state, nil without a player; `info` shows it unless another app plays while the player does not.
+    private var playerInfo: NowPlayingInfo?
+    private var audioAppIcon: NSImage?
+    private let audioActivity = AudioActivityMonitor()
+    private var otherAudioObservation: NSKeyValueObservation?
 
     private var pollTimer: Timer?
     private var tickTimer: Timer?
@@ -342,6 +365,7 @@ final class NowPlayingService: NSObject, ObservableObject {
     override init() {
         super.init()
         observePlayers()
+        observeOtherAudio()
         poll()
         schedulePollTimer()
     }
@@ -374,6 +398,17 @@ final class NowPlayingService: NSObject, ObservableObject {
                 guard MusicPlayer(bundleIdentifier: app?.bundleIdentifier) != nil else { return }
                 MainActor.assumeIsolated { self?.playerNotificationReceived() }
             }
+        }
+    }
+
+    private func observeOtherAudio() {
+        audioActivity.onChange = { [weak self] in
+            self?.publish()
+        }
+        // KVO on this key only: UserDefaults.didChangeNotification fires for every write in the app.
+        otherAudioObservation = UserDefaults.standard.observe(\.nowPlayingShowsOtherAudio, options: [.initial]) { [weak self] defaults, _ in
+            let isEnabled = defaults.nowPlayingShowsOtherAudio
+            DispatchQueue.main.async { self?.audioActivity.isEnabled = isEnabled }
         }
     }
 
@@ -467,21 +502,15 @@ final class NowPlayingService: NSObject, ObservableObject {
         guard let snapshot else {
             activePlayer = nil
             detailsKey = nil
-            if isAvailable {
-                isAvailable = false
-                info = NowPlayingInfo()
-            }
-            updateAudioLevelMonitoring()
+            playerInfo = nil
+            publish()
             return
         }
 
         let state = snapshot.state
         activePlayer = snapshot.player
-        if !isAvailable {
-            isAvailable = true
-        }
 
-        var next = info
+        var next = playerInfo ?? NowPlayingInfo()
         next.title = state.title
         next.artist = state.artist
         next.isPlaying = state.isPlaying
@@ -499,14 +528,42 @@ final class NowPlayingService: NSObject, ObservableObject {
         }
 
         // Position ticks locally while visible; republishing it from a background poll would re-render every observer.
-        let metadataChanged = snapshot.details != nil || next != info
+        let metadataChanged = snapshot.details != nil || next != playerInfo
         if metadataChanged || positionUpdatesRequested {
             next.position = state.position
         }
-        if metadataChanged || next.position != info.position {
-            info = next
+        playerInfo = next
+        publish()
+    }
+
+    /// A playing player always wins; otherwise another app's audio replaces the paused or missing player.
+    private func publish() {
+        let app = playerInfo?.isPlaying == true ? nil : audioActivity.playingApp
+        if audioApp != app {
+            audioApp = app
+            audioAppIcon = app.flatMap { NSRunningApplication(processIdentifier: $0.processIdentifier)?.icon }
         }
+        let next = app.map { NowPlayingInfo(title: $0.name, isPlaying: true, artwork: audioAppIcon) }
+            ?? playerInfo ?? NowPlayingInfo()
+        let available = app != nil || playerInfo != nil
+        if isAvailable != available { isAvailable = available }
+        if info != next { info = next }
         updateAudioLevelMonitoring()
+    }
+
+    /// Sends a command to the shown player with optimistic feedback; the refresh after it confirms or reverts the change.
+    @discardableResult
+    private func perform(
+        refreshingDetails: Bool = false,
+        _ change: (inout NowPlayingInfo, MusicPlayer) -> Void,
+        script: (MusicPlayer) -> String?
+    ) -> Bool {
+        guard audioApp == nil, let player = activePlayer, var next = playerInfo else { return false }
+        change(&next, player)
+        playerInfo = next
+        publish()
+        sendCommand(script(player), refreshingDetails: refreshingDetails)
+        return true
     }
 
     /// Right after a track change the player may not have the artwork yet, so a missing one is re-fetched shortly,
@@ -569,71 +626,58 @@ final class NowPlayingService: NSObject, ObservableObject {
     }
 
     func togglePlayPause() {
-        guard isAvailable else { return }
-        info.isPlaying.toggle()
-        updateAudioLevelMonitoring()
-        sendCommand(activePlayer?.playPauseScript)
+        perform({ info, _ in info.isPlaying.toggle() }, script: { $0.playPauseScript })
     }
 
     func nextTrack() {
-        guard isAvailable else { return }
-        info.position = 0
-        sendCommand(activePlayer?.nextScript)
+        perform({ info, _ in info.position = 0 }, script: { $0.nextScript })
     }
 
     func previousTrack() {
-        guard isAvailable else { return }
-        info.position = 0
-        sendCommand(activePlayer?.prevScript)
+        perform({ info, _ in info.position = 0 }, script: { $0.prevScript })
     }
 
     func toggleShuffle() {
-        guard isAvailable else { return }
-        info.shuffleEnabled.toggle()
-        sendCommand(activePlayer?.toggleShuffleScript)
+        perform({ info, _ in info.shuffleEnabled.toggle() }, script: { $0.toggleShuffleScript })
     }
 
     func cycleRepeat() {
-        guard let player = activePlayer else { return }
-        switch player {
-        case .spotify:
-            info.repeatMode = info.repeatMode == .off ? .all : .off
-        case .appleMusic:
-            info.repeatMode = switch info.repeatMode {
-            case .off: .all
-            case .all: .one
-            case .one: .off
-            }
-        }
-        sendCommand(player.cycleRepeatScript)
+        perform({ info, player in info.repeatMode = info.repeatMode.next(for: player) }, script: { $0.cycleRepeatScript })
     }
+
     func toggleFavorite() {
-        guard info.canFavorite, let detailsKey else { return }
-        info.isFavorited.toggle()
-        let newValue = info.isFavorited
+        guard let playerInfo, playerInfo.canFavorite, let detailsKey else { return }
+        let newValue = !playerInfo.isFavorited
+        let sent = perform(refreshingDetails: true, { info, _ in info.isFavorited = newValue }, script: {
+            $0.setFavoriteScript(to: newValue)
+        })
+        guard sent else { return }
         pendingFavorite = PendingFavorite(
             trackKey: detailsKey,
             value: newValue,
             expiresAt: Date().addingTimeInterval(8)
         )
-        sendCommand(activePlayer?.setFavoriteScript(to: newValue), refreshingDetails: true)
     }
 
     func seek(to position: Double) {
-        guard let player = activePlayer else { return }
-        let clamped = max(0, min(position, info.duration))
-        info.position = clamped
-        let script: String
-        switch player {
-        case .spotify:
-            script = "tell application \"Spotify\" to set player position to \(Int(clamped))"
-        case .appleMusic:
-            script = "tell application \"Music\" to set player position to \(clamped)"
-        }
-        sendCommand(script)
+        guard let duration = playerInfo?.duration else { return }
+        let clamped = max(0, min(position, duration))
+        perform({ info, _ in info.position = clamped }, script: { player in
+            switch player {
+            case .spotify: "tell application \"Spotify\" to set player position to \(Int(clamped))"
+            case .appleMusic: "tell application \"Music\" to set player position to \(clamped)"
+            }
+        })
     }
 
     func openPlayer() {
+        // Opening through Launch Services, unlike activate(), brings the app forward while BangBar is not active.
+        if let audioApp {
+            if let url = NSRunningApplication(processIdentifier: audioApp.processIdentifier)?.bundleURL {
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
         let player = activePlayer ?? BangBarSettings.preferredMusicPlayer
         guard let url = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: player.bundleIdentifier
@@ -659,9 +703,12 @@ final class NowPlayingService: NSObject, ObservableObject {
 
         guard isRequested else { return }
         poll()
+        // Ticks only while the player plays, and a playing player is always what `info` shows.
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, self.info.isPlaying, self.info.duration > 0 else { return }
-            self.info.position = min(self.info.position + 1, self.info.duration)
+            guard let self, let player = self.playerInfo, player.isPlaying, player.duration > 0 else { return }
+            let position = min(player.position + 1, player.duration)
+            self.playerInfo?.position = position
+            self.info.position = position
         }
         timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
@@ -672,7 +719,7 @@ final class NowPlayingService: NSObject, ObservableObject {
         guard isAudioLevelMonitoringRequested,
               isAvailable,
               info.isPlaying,
-              let activePlayer else {
+              let audioBundleIdentifier = audioApp?.audioBundleIdentifier ?? activePlayer?.bundleIdentifier else {
             audioLevelMonitor?.stop()
             audioLevelMonitor = nil
             audioLevels.reset()
@@ -684,7 +731,7 @@ final class NowPlayingService: NSObject, ObservableObject {
                 self?.receiveLiveAudioLevels(levels)
             }
         }
-        audioLevelMonitor?.start(bundleIdentifier: activePlayer.bundleIdentifier)
+        audioLevelMonitor?.start(bundleIdentifier: audioBundleIdentifier)
     }
 
     private func receiveLiveAudioLevels(_ levels: [Double]) {

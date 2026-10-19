@@ -94,7 +94,7 @@ Album artwork should read visually as one continuous element between compact and
 - Compact content uses `PanelLayout.compactHorizontalPadding(for:)` so artwork and the indicator sit clear of the rounded side corners while remaining visible at menu-bar height.
 - Artwork size is smaller than the bar height and clipped with a small rounded rectangle.
 - Clicking artwork opens the active player.
-- Compact mode remains available only while music is playing.
+- Compact mode remains available only while music or audio from another app is playing (see "Audio From Other Apps").
 
 ## Current Widgets
 
@@ -289,6 +289,20 @@ Album artwork should read visually as one continuous element between compact and
 - Expanded artwork participates in the hero artwork transition from compact mode.
 - When the active player closes or no track can be read, `NowPlayingService` clears the entire `NowPlayingInfo`, including artwork, so stale artwork is not displayed.
 
+### Audio From Other Apps
+
+Shows audio from any app (YouTube in a browser, a video player, a voice message) in the Now Playing widget and compact mode, not only Spotify and Music.
+
+- A playing Spotify or Music track always wins. A paused player is replaced while another app plays and comes back when that audio stops.
+- Detection uses public Core Audio process objects only (`kAudioHardwarePropertyProcessObjectList`, `kAudioProcessPropertyIsRunningOutput`, `kAudioProcessPropertyPID`, `kAudioProcessPropertyBundleID`) in `AudioActivityMonitor`. No permission is needed and nothing is polled: listeners on the process list and on each process's running-output flag drive it.
+- Audio usually comes from a helper process. Its owning app is, in order: the process itself when it is a regular app; the first regular app among its parent processes (Chrome, Firefox and Electron helpers); a running regular app whose bundle ID prefixes the helper's (`com.google.Chrome.helper`); a running regular app whose name starts the process name (WebKit's GPU process is named after its app, e.g. `Safari Graphics and Media`; the longest name wins). Processes without an owning app (system sounds, daemons), BangBar, Spotify and Music are ignored.
+- Output must run for 2 s before the app is shown, so notification sounds do not open compact mode. The app stays shown until its output has been stopped for 2 s; output that restarts within that time keeps it shown without a new start delay, which bridges the gap between videos. With several apps playing, the one that started last is shown.
+- Display: title is the app name, subtitle `Playing audio`, artwork is the app icon (compact, expanded and hero). No progress bar and no favorite corner. Playback controls are dimmed and disabled: without MediaRemote there is no public way to control another app's playback. Clicking the artwork brings the app forward through Launch Services (`NSWorkspace.open`), because `activate()` is ignored while BangBar is not active.
+- The page or track title is not shown: browsers do not expose through AppleScript which tab is playing.
+- Live bars tap the audio process's bundle ID (for example every `com.google.Chrome.helper` process), the same way as for players.
+- Known limitation: an app that keeps its audio stream running while silent (some pages using Web Audio, call apps) counts as playing.
+- Settings → Widgets → Now Playing: `Other apps` toggle (`nowPlayingShowsOtherAudio`, default on), observed through KVO on that key only. Turning it off removes the Core Audio listeners.
+
 ### MirrorWidget
 
 - Mirror widget is shown on the right side of the expanded panel.
@@ -344,6 +358,7 @@ Album artwork should read visually as one continuous element between compact and
 15. ✅ Keyboard Layout Switcher, Phase 1 (manual conversion by hotkey) — see "Keyboard Layout Switcher" below.
 16. ✅ Keyboard Layout Switcher, Phase 2 (automatic conversion).
 17. ⬜ Work through the Refactoring Backlog (P1 items first) — see "Refactoring Backlog" below.
+18. ✅ Now Playing shows audio from other apps (browsers, video players) — see "Audio From Other Apps".
 
 ### MoonWidget
 

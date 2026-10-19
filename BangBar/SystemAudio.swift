@@ -23,11 +23,38 @@ nonisolated enum SystemAudio {
     }
 
     static func name(of device: AudioDeviceID) -> String? {
-        var address = address(kAudioObjectPropertyName)
-        var name: Unmanaged<CFString>?
+        string(kAudioObjectPropertyName, of: device)
+    }
+
+    static var processObjects: [AudioObjectID] {
+        var address = address(kAudioHardwarePropertyProcessObjectList)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(systemObject, &address, 0, nil, &size) == noErr else { return [] }
+        var objects = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(systemObject, &address, 0, nil, &size, &objects) == noErr else { return [] }
+        return Array(objects.prefix(Int(size) / MemoryLayout<AudioObjectID>.size))
+    }
+
+    static func isRunningOutput(_ process: AudioObjectID) -> Bool {
+        var address = address(kAudioProcessPropertyIsRunningOutput)
+        return (uint32(at: &address, of: process) ?? 0) != 0
+    }
+
+    static func pid(of process: AudioObjectID) -> pid_t? {
+        var address = address(kAudioProcessPropertyPID)
+        return uint32(at: &address, of: process).map { pid_t(bitPattern: $0) }
+    }
+
+    static func bundleIdentifier(of process: AudioObjectID) -> String? {
+        string(kAudioProcessPropertyBundleID, of: process)
+    }
+
+    private static func string(_ selector: AudioObjectPropertySelector, of object: AudioObjectID) -> String? {
+        var address = address(selector)
+        var value: Unmanaged<CFString>?
         var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &name) == noErr else { return nil }
-        return name?.takeRetainedValue() as String?
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &value) == noErr else { return nil }
+        return value?.takeRetainedValue() as String?
     }
 
     static let volumeAddress = address(kAudioHardwareServiceDeviceProperty_VirtualMainVolume, scope: kAudioDevicePropertyScopeOutput)

@@ -18,7 +18,8 @@ struct NowPlayingWidget: View {
     }
 
     private var subtitle: String {
-        service.isAvailable ? service.info.artist : "Ready when music starts"
+        guard service.isAvailable else { return "Ready when music starts" }
+        return service.audioApp == nil ? service.info.artist : "Playing audio"
     }
 
     var body: some View {
@@ -135,9 +136,9 @@ struct NowPlayingWidget: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.white.opacity(service.isAvailable ? 1.0 : 0.35))
+                .foregroundColor(.white.opacity(service.canControlPlayer ? 1.0 : 0.35))
                 .font(.system(size: 15))
-                .disabled(!service.isAvailable)
+                .disabled(!service.canControlPlayer)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 14)
