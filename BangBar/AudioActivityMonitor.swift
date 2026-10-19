@@ -12,9 +12,9 @@ struct AudioApp: Equatable {
 /// Publishes the app playing audio through Core Audio, for apps that have no AppleScript player API.
 final class AudioActivityMonitor {
     /// Skips notification sounds; the app must keep its output running this long to be shown.
-    private static let startDelay: TimeInterval = 2
+    private static let startDelay: TimeInterval = 0.5
     /// Bridges the gap between two videos instead of collapsing the compact panel.
-    private static let stopDelay: TimeInterval = 2
+    private static let stopDelay: TimeInterval = 1
 
     var onChange: (() -> Void)?
     private(set) var playingApp: AudioApp? {
