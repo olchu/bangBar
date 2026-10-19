@@ -7,7 +7,7 @@ enum EventTapDecision {
     case swallow
 }
 
-/// A session event tap on the main run loop. While `isEnabled` it installs as soon as Accessibility is granted,
+/// An event tap on the main run loop, session level unless told otherwise. While `isEnabled` it installs as soon as Accessibility is granted,
 /// removes itself when Accessibility is revoked (polling for both), and turns itself back on when macOS disables
 /// it after a slow callback.
 final class EventTap {
@@ -16,6 +16,7 @@ final class EventTap {
     private static let logger = Logger(subsystem: "BangBar", category: "EventTap")
 
     private let name: String
+    private let location: CGEventTapLocation
     private let mask: CGEventMask
     private let handler: Handler
     private var tap: CFMachPort?
@@ -29,13 +30,11 @@ final class EventTap {
         }
     }
 
-    /// Called with `true` once the tap is really installed and with `false` when it is removed.
-    var onInstalledChange: ((Bool) -> Void)?
-
     var isInstalled: Bool { tap != nil }
 
-    init(name: String, mask: CGEventMask, handler: @escaping Handler) {
+    init(name: String, location: CGEventTapLocation = .cgSessionEventTap, mask: CGEventMask, handler: @escaping Handler) {
         self.name = name
+        self.location = location
         self.mask = mask
         self.handler = handler
     }
@@ -72,7 +71,7 @@ final class EventTap {
             return MainActor.assumeIsolated { eventTap.handle(type: type, event: event, proxy: proxy) }
         }
         guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
+            tap: location,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
@@ -87,7 +86,6 @@ final class EventTap {
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         runLoopSource = source
-        onInstalledChange?(true)
     }
 
     private func remove() {
@@ -99,7 +97,6 @@ final class EventTap {
         }
         self.tap = nil
         runLoopSource = nil
-        onInstalledChange?(false)
     }
 
     private func handle(type: CGEventType, event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {
