@@ -125,6 +125,11 @@ final class ClipboardHistoryService: ObservableObject {
         label: "BangBar.ClipboardImageProcessing",
         qos: .utility
     )
+    /// Copying a multi-megabyte payload from the pasteboard server stalls main. Kept apart from the processing
+    /// queue so a read is not delayed behind encoding while the pasteboard moves on and the content is lost.
+    private let persistenceQueue = DispatchQueue(label: "BangBar.ClipboardPersistence", qos: .utility)
+    private var pendingSave: DispatchWorkItem?
+    private var terminationObserver: NSObjectProtocol?
     private var timer: Timer?
     private var settingsObserver: AnyCancellable?
     private var shortcutSettingObserver: AnyCancellable?
@@ -184,14 +189,20 @@ final class ClipboardHistoryService: ObservableObject {
 
         prepareDirectories()
         load()
-        lastStableFingerprint = currentPasteboardFingerprint()
+        adoptCurrentPasteboardAsSeen()
         startMonitoring()
         observeSettings()
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushPendingSave() }
+        }
     }
 
     deinit {
         timer?.invalidate()
         shortcutMonitors.forEach(NSEvent.removeMonitor)
+        terminationObserver.map(NotificationCenter.default.removeObserver)
     }
 
     func image(for item: ClipboardHistoryItem) -> NSImage? {
@@ -258,7 +269,7 @@ final class ClipboardHistoryService: ObservableObject {
         collectionStartedAt = Date()
         lastGroupCaptureAt = Date()
         collectionSecondsRemaining = Int(collectionInactivityTimeout)
-        saveGroups()
+        scheduleSave()
     }
 
     func stopCollecting() {
@@ -267,7 +278,7 @@ final class ClipboardHistoryService: ObservableObject {
         lastGroupCaptureAt = nil
         collectionSecondsRemaining = 0
         removeEmptyGroups()
-        saveGroups()
+        scheduleSave()
     }
 
     func items(in group: ClipboardImageGroup) -> [ClipboardHistoryItem] {
@@ -311,19 +322,19 @@ final class ClipboardHistoryService: ObservableObject {
         guard !trimmedName.isEmpty,
               let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
         groups[index].name = trimmedName
-        saveGroups()
+        scheduleSave()
     }
 
     func togglePin(_ item: ClipboardHistoryItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index].isPinned.toggle()
-        saveIndex()
+        scheduleSave()
     }
 
     func togglePin(_ group: ClipboardImageGroup) {
         guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
         groups[index].isPinned.toggle()
-        saveGroups()
+        scheduleSave()
     }
 
     func delete(_ group: ClipboardImageGroup) {
@@ -338,17 +349,15 @@ final class ClipboardHistoryService: ObservableObject {
         items.removeAll { $0.groupID == group.id }
         groups.removeAll { $0.id == group.id }
         refreshUsage()
-        saveIndex()
-        saveGroups()
+        scheduleSave()
     }
 
     func remove(_ item: ClipboardHistoryItem) {
         deletePayload(for: item)
         items.removeAll { $0.id == item.id }
         refreshUsage()
-        saveIndex()
         removeEmptyGroups()
-        saveGroups()
+        scheduleSave()
     }
 
     func clear() {
@@ -365,8 +374,7 @@ final class ClipboardHistoryService: ObservableObject {
         let retainedGroupIDs = Set(items.compactMap(\.groupID))
         groups.removeAll { !$0.isPinned && !retainedGroupIDs.contains($0.id) }
         refreshUsage()
-        saveIndex()
-        saveGroups()
+        scheduleSave()
     }
 
     private func startMonitoring() {
@@ -407,24 +415,25 @@ final class ClipboardHistoryService: ObservableObject {
             Self.needsResyncAfterSuspension = false
             pendingCaptureDeadline = nil
             lastChangeCount = pasteboard.changeCount
-            lastStableFingerprint = currentPasteboardFingerprint()
+            adoptCurrentPasteboardAsSeen()
             return
         }
 
+        let changeCount = pasteboard.changeCount
         if let pendingCaptureDeadline,
            Date() >= pendingCaptureDeadline,
            !isCaptureSuppressed,
-           pasteboard.changeCount == lastChangeCount {
+           changeCount == lastChangeCount {
             self.pendingCaptureDeadline = nil
             captureCurrentPasteboardIfNew()
         }
 
-        guard pasteboard.changeCount != lastChangeCount else { return }
-        lastChangeCount = pasteboard.changeCount
+        guard changeCount != lastChangeCount else { return }
+        lastChangeCount = changeCount
 
         if isCaptureSuppressed {
             pendingCaptureDeadline = nil
-            lastStableFingerprint = currentPasteboardFingerprint()
+            adoptCurrentPasteboardAsSeen()
             return
         }
 
@@ -449,13 +458,11 @@ final class ClipboardHistoryService: ObservableObject {
             for url in fileURLs where isImageFile(url) {
                 scheduleImageCapture(from: .file(url), groupID: activeGroupID)
             }
-        } else if let (source, fingerprintData) = imageSource(from: pasteboard) {
-            let fingerprint = dataFingerprint(fingerprintData, prefix: "image-source:")
-            guard fingerprint != lastStableFingerprint else { return }
-            lastStableFingerprint = fingerprint
-            scheduleImageCapture(from: source, groupID: activeGroupID)
+        } else if let (source, payload) = imageSource(from: pasteboard) {
+            // The payload is read here because NSPasteboard is not documented as thread-safe; hashing it is not.
+            scheduleImageCapture(from: source, fingerprintPayload: payload, groupID: activeGroupID)
         } else if let text = pasteboard.string(forType: .string), !text.isEmpty,
-                  let data = text.data(using: .utf8) {
+                  let data = text.data(using: .utf8), data.count <= Self.maximumItemBytes {
             let contentHash = Self.dataHash(data)
             let fingerprint = "text:" + contentHash
             guard fingerprint != lastStableFingerprint else { return }
@@ -531,29 +538,36 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    private func currentPasteboardFingerprint() -> String? {
+    /// Marks the current content as seen without capturing it. Image fingerprints are hashed off main and
+    /// adopted only if the pasteboard has not changed since.
+    private func adoptCurrentPasteboardAsSeen() {
         let fileURLs = fileURLs(from: pasteboard)
         if !fileURLs.isEmpty {
-            return fileFingerprint(fileURLs)
+            lastStableFingerprint = fileFingerprint(fileURLs)
+        } else if let (_, payload) = imageSource(from: pasteboard) {
+            let changeCount = lastChangeCount
+            imageProcessingQueue.async { [weak self] in
+                let fingerprint = Self.dataFingerprint(payload, prefix: Self.imageFingerprintPrefix)
+                DispatchQueue.main.async {
+                    guard let self, self.pasteboard.changeCount == changeCount else { return }
+                    self.lastStableFingerprint = fingerprint
+                }
+            }
+        } else if let text = pasteboard.string(forType: .string), let data = text.data(using: .utf8) {
+            lastStableFingerprint = Self.dataFingerprint(data, prefix: "text:")
+        } else {
+            lastStableFingerprint = nil
         }
-        if let (_, fingerprintData) = imageSource(from: pasteboard) {
-            return dataFingerprint(fingerprintData, prefix: "image-source:")
-        }
-        if let text = pasteboard.string(forType: .string),
-           let data = text.data(using: .utf8) {
-            return dataFingerprint(data, prefix: "text:")
-        }
-        return nil
     }
 
     private func fileFingerprint(_ urls: [URL]) -> String? {
         let value = urls.map(\.path).sorted().joined(separator: "\n")
         guard let data = value.data(using: .utf8) else { return nil }
-        return dataFingerprint(data, prefix: "files:")
+        return Self.dataFingerprint(data, prefix: "files:")
     }
 
-    private func dataFingerprint(_ data: Data, prefix: String) -> String {
-        prefix + Self.dataHash(data)
+    private nonisolated static func dataFingerprint(_ data: Data, prefix: String) -> String {
+        prefix + dataHash(data)
     }
 
     private nonisolated static func dataHash(_ data: Data) -> String {
@@ -576,6 +590,8 @@ final class ClipboardHistoryService: ObservableObject {
         return type.conforms(to: .image)
     }
 
+    private nonisolated static let imageFingerprintPrefix = "image-source:"
+
     private func imageSource(from pasteboard: NSPasteboard) -> (ClipboardImageSource, Data)? {
         if let png = pasteboard.data(forType: .png) {
             return (.pngData(png), png)
@@ -586,12 +602,19 @@ final class ClipboardHistoryService: ObservableObject {
         return nil
     }
 
-    private func scheduleImageCapture(from source: ClipboardImageSource, groupID: UUID?) {
+    /// `fingerprintPayload` is the raw pasteboard data; its fingerprint is hashed off main and the capture is
+    /// dropped if it matches the last stable one.
+    private func scheduleImageCapture(from source: ClipboardImageSource, fingerprintPayload: Data? = nil, groupID: UUID?) {
         let imagesDirectory = imagesDirectory
         let maximumItemBytes = Self.maximumItemBytes
         let generation = imageCaptureGeneration
+        let changeCount = lastChangeCount
+        let seenFingerprint = lastStableFingerprint
         imageProcessingQueue.async { [weak self] in
             guard self != nil else { return }
+            let fingerprint = fingerprintPayload.map { Self.dataFingerprint($0, prefix: Self.imageFingerprintPrefix) }
+            // Main would reject it anyway; skipping here saves the decode, encode and file write.
+            guard fingerprint == nil || fingerprint != seenFingerprint else { return }
             guard let data = Self.normalizedImageData(from: source),
                   data.count <= maximumItemBytes else { return }
 
@@ -605,24 +628,32 @@ final class ClipboardHistoryService: ObservableObject {
                 return
             }
 
+            let byteCount = data.count
             DispatchQueue.main.async { [weak self] in
-                guard let self else {
-                    try? FileManager.default.removeItem(at: fileURL)
-                    return
-                }
-                guard self.imageCaptureGeneration == generation,
+                guard let self,
+                      fingerprint.map({ self.adoptImageFingerprint($0, changeCount: changeCount) }) ?? true,
+                      self.imageCaptureGeneration == generation,
                       groupID == nil || self.groups.contains(where: { $0.id == groupID }) else {
                     try? FileManager.default.removeItem(at: fileURL)
                     return
                 }
                 self.insertStoredImage(
                     fileName: fileName,
-                    byteCount: data.count,
+                    byteCount: byteCount,
                     contentHash: contentHash,
                     groupID: groupID
                 )
             }
         }
+    }
+
+    private func adoptImageFingerprint(_ fingerprint: String, changeCount: Int) -> Bool {
+        guard fingerprint != lastStableFingerprint else { return false }
+        // A newer copy already owns the fingerprint; keep it so the pending-capture check compares against current content.
+        if pasteboard.changeCount == changeCount {
+            lastStableFingerprint = fingerprint
+        }
+        return true
     }
 
     private nonisolated static func normalizedImageData(from source: ClipboardImageSource) -> Data? {
@@ -653,14 +684,8 @@ final class ClipboardHistoryService: ObservableObject {
         return output as Data
     }
 
-    private func insertText(_ text: String, data: Data, contentHash: String? = nil) {
-        guard data.count <= Self.maximumItemBytes else { return }
-        insert(
-            kind: .text,
-            payload: text,
-            byteCount: data.count,
-            contentHash: contentHash ?? Self.dataHash(data)
-        )
+    private func insertText(_ text: String, data: Data, contentHash: String) {
+        insert(kind: .text, payload: text, byteCount: data.count, contentHash: contentHash)
     }
 
     private func insertStoredImage(
@@ -713,8 +738,8 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func enforceLimitsAndSave() {
         refreshUsage()
+        let pinnedGroupIDs = Set(groups.filter(\.isPinned).map(\.id))
         while items.count > Self.maximumItemCount || totalBytes > storageLimitBytes {
-            let pinnedGroupIDs = Set(groups.filter(\.isPinned).map(\.id))
             guard let oldest = items.last(where: {
                 !$0.isPinned && !($0.groupID.map(pinnedGroupIDs.contains) ?? false)
             }) else { break }
@@ -723,9 +748,8 @@ final class ClipboardHistoryService: ObservableObject {
             totalBytes -= oldest.byteCount
         }
         refreshUsage()
-        saveIndex()
         removeEmptyGroups()
-        saveGroups()
+        scheduleSave()
     }
 
     private func load() {
@@ -831,21 +855,37 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    private func saveIndex() {
-        do {
-            let data = try JSONEncoder().encode(items)
-            try data.write(to: indexURL, options: .atomic)
-        } catch {
-            NSLog("BangBar clipboard history save failed: %@", error.localizedDescription)
+    /// Coalesces bursts of changes into one write of both files, encoded off main; the serial queue keeps the last snapshot winning.
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        let save = makeSaveWork()
+        pendingSave = save
+        persistenceQueue.asyncAfter(deadline: .now() + 0.3, execute: save)
+    }
+
+    private func flushPendingSave() {
+        guard let pending = pendingSave else { return }
+        pending.cancel()
+        pendingSave = nil
+        persistenceQueue.sync(execute: makeSaveWork())
+    }
+
+    private func makeSaveWork() -> DispatchWorkItem {
+        let items = items
+        let groups = groups
+        let indexURL = indexURL
+        let groupsURL = groupsURL
+        return DispatchWorkItem {
+            Self.write(items, to: indexURL)
+            Self.write(groups, to: groupsURL)
         }
     }
 
-    private func saveGroups() {
+    private nonisolated static func write<Value: Encodable>(_ value: Value, to url: URL) {
         do {
-            let data = try JSONEncoder().encode(groups)
-            try data.write(to: groupsURL, options: .atomic)
+            try JSONEncoder().encode(value).write(to: url, options: .atomic)
         } catch {
-            NSLog("BangBar clipboard groups save failed: %@", error.localizedDescription)
+            NSLog("BangBar clipboard %@ save failed: %@", url.lastPathComponent, error.localizedDescription)
         }
     }
 }
