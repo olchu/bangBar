@@ -49,6 +49,8 @@ struct SettingsView: View {
     @AppStorage(BangBarSettings.Key.liveActivityPowerEnabled) private var liveActivityPowerEnabled = true
     @AppStorage(BangBarSettings.Key.liveActivityAudioEnabled) private var liveActivityAudioEnabled = true
     @AppStorage(BangBarSettings.Key.liveActivityVolumeEnabled) private var liveActivityVolumeEnabled = true
+    @AppStorage(BangBarSettings.Key.volumeHUDReplacesSystem) private var volumeHUDReplacesSystem = true
+    @AppStorage(BangBarSettings.Key.volumeKeyInterceptionFailedOSMajor) private var volumeKeyInterceptionFailedOSMajor = 0
     @AppStorage(BangBarSettings.Key.widgetOrder) private var widgetOrderRaw = BangBarSettings.defaultWidgetOrderRaw
     @AppStorage(BangBarSettings.Key.widgetPages) private var widgetPagesRaw = "{}"
     @AppStorage(BangBarSettings.Key.pageSwipeInverted) private var pageSwipeInverted = false
@@ -179,10 +181,24 @@ struct SettingsView: View {
                             SettingsDivider()
                             SettingsToggleRow(
                                 title: "Volume",
-                                subtitle: "Show the volume level at the notch whenever it changes. The system volume indicator still appears; macOS does not let apps hide it.",
+                                subtitle: "Show the volume level at the notch whenever it changes.",
                                 isOn: $liveActivityVolumeEnabled,
                                 accentColor: accentColor
                             )
+                            SettingsDivider()
+                            let canReplaceSystemHUD = !BangBarSettings.isVolumeKeyInterceptionUnsupported(
+                                failedMajorVersion: volumeKeyInterceptionFailedOSMajor
+                            )
+                            SettingsToggleRow(
+                                title: "Replace system HUD",
+                                subtitle: canReplaceSystemHUD
+                                    ? "Handle the volume keys in BangBar so only the notch HUD appears. Needs Accessibility; without it both HUDs show."
+                                    : "Not available on this macOS version: the system handles the volume keys before any app can, so its indicator still appears.",
+                                isOn: $volumeHUDReplacesSystem,
+                                accentColor: accentColor
+                            )
+                            .disabled(!(liveActivityVolumeEnabled && canReplaceSystemHUD))
+                            .opacity(liveActivityVolumeEnabled && canReplaceSystemHUD ? 1 : 0.45)
                         }
                     }
 

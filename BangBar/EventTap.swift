@@ -1,7 +1,7 @@
 import AppKit
 import OSLog
 
-/// A session event tap on the main run loop. While `isEnabled` it installs as soon as Accessibility is granted,
+/// An event tap on the main run loop. While `isEnabled` it installs as soon as Accessibility is granted,
 /// polling until then, and turns itself back on when macOS disables it after a slow callback.
 final class EventTap {
     typealias Handler = (_ type: CGEventType, _ event: CGEvent, _ proxy: CGEventTapProxy) -> Unmanaged<CGEvent>?
@@ -9,6 +9,7 @@ final class EventTap {
     private static let logger = Logger(subsystem: "BangBar", category: "EventTap")
 
     private let name: String
+    private let location: CGEventTapLocation
     private let mask: CGEventMask
     private let handler: Handler
     private var tap: CFMachPort?
@@ -22,8 +23,9 @@ final class EventTap {
         }
     }
 
-    init(name: String, mask: CGEventMask, handler: @escaping Handler) {
+    init(name: String, location: CGEventTapLocation = .cgSessionEventTap, mask: CGEventMask, handler: @escaping Handler) {
         self.name = name
+        self.location = location
         self.mask = mask
         self.handler = handler
     }
@@ -59,7 +61,7 @@ final class EventTap {
             return MainActor.assumeIsolated { eventTap.handle(type: type, event: event, proxy: proxy) }
         }
         guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
+            tap: location,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
