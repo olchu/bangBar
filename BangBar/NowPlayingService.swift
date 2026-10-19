@@ -299,6 +299,8 @@ final class NowPlayingService: NSObject, ObservableObject {
     private static let backgroundPollInterval: TimeInterval = 30
     /// Players post several notifications per track change; one refresh covers the burst.
     private static let notificationCoalescingDelay: TimeInterval = 0.2
+    private static let artworkRetryDelay: TimeInterval = 1
+    private static let maximumArtworkRetries = 3
     /// Serial so rapid commands reach the player in the order they were issued.
     private static let commandQueue = DispatchQueue(label: "BangBar.NowPlaying.commands", qos: .userInitiated)
 
@@ -315,6 +317,8 @@ final class NowPlayingService: NSObject, ObservableObject {
     private var tickTimer: Timer?
     private var activePlayer: MusicPlayer?
     private var detailsKey: String?
+    /// Artwork fetches used for a track; once past the maximum the artwork is final, found or not.
+    private var artworkAttempts: (key: String, count: Int)?
     private var detailsRefreshRequested = false
     /// Bumped by every command so a poll that started before it cannot revert the optimistic UI.
     private var commandGeneration = 0
@@ -374,10 +378,18 @@ final class NowPlayingService: NSObject, ObservableObject {
     }
 
     @objc private func playerNotificationReceived() {
+        schedulePoll(after: Self.notificationCoalescingDelay)
+    }
+
+    /// One pending poll at a time: a notification burst and a details retry collapse into a single refresh.
+    private func schedulePoll(after delay: TimeInterval) {
         coalescedPoll?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.poll() }
+        let work = DispatchWorkItem { [weak self] in
+            self?.coalescedPoll = nil
+            self?.poll()
+        }
         coalescedPoll = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.notificationCoalescingDelay, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func schedulePollTimer() {
@@ -399,14 +411,21 @@ final class NowPlayingService: NSObject, ObservableObject {
         }
         isPollInFlight = true
         // A pending favorite keeps re-reading details so a failed command reverts once it expires.
-        let knownDetailsKey = detailsRefreshRequested || pendingFavorite != nil ? nil : detailsKey
+        let isArtworkRetryPending = artworkAttempts.map {
+            $0.key == detailsKey && $0.count <= Self.maximumArtworkRetries
+        } ?? false
+        let knownDetailsKey = detailsRefreshRequested || pendingFavorite != nil || isArtworkRetryPending ? nil : detailsKey
         detailsRefreshRequested = false
         let generation = commandsInFlight == 0 ? commandGeneration : nil
         // The last active player answers first, so an idle player does not cost an extra osascript launch per poll.
         let players = MusicPlayer.allCases.filter { $0 == activePlayer } + MusicPlayer.allCases.filter { $0 != activePlayer }
+        // The iTunes Search fallback costs two network requests; usually the player has the artwork by the first retry.
+        let artworkFallbackKey = artworkAttempts.flatMap { $0.count >= Self.maximumArtworkRetries ? $0.key : nil }
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let snapshot = NowPlayingService.fetchSnapshot(players: players, knownDetailsKey: knownDetailsKey)
+            let snapshot = NowPlayingService.fetchSnapshot(
+                players: players, knownDetailsKey: knownDetailsKey, artworkFallbackKey: artworkFallbackKey
+            )
             DispatchQueue.main.async {
                 guard let self else { return }
                 if generation == self.commandGeneration {
@@ -417,21 +436,27 @@ final class NowPlayingService: NSObject, ObservableObject {
         }
     }
 
-    private nonisolated static func fetchSnapshot(players: [MusicPlayer], knownDetailsKey: String?) -> PlayerSnapshot? {
+    private nonisolated static func fetchSnapshot(
+        players: [MusicPlayer], knownDetailsKey: String?, artworkFallbackKey: String?
+    ) -> PlayerSnapshot? {
         for player in players where player.isRunning {
             guard let output = AppleScriptRunner.output(of: player.stateScript),
                   let state = PlaybackState(output: output) else { continue }
-            let details = state.detailsKey == knownDetailsKey ? nil : fetchDetails(player: player, state: state)
+            let details = state.detailsKey == knownDetailsKey ? nil : fetchDetails(
+                player: player, state: state, allowsArtworkFallback: state.detailsKey == artworkFallbackKey
+            )
             return PlayerSnapshot(player: player, state: state, details: details)
         }
         return nil
     }
 
-    private nonisolated static func fetchDetails(player: MusicPlayer, state: PlaybackState) -> TrackDetails {
+    private nonisolated static func fetchDetails(player: MusicPlayer, state: PlaybackState, allowsArtworkFallback: Bool) -> TrackDetails {
         let output = AppleScriptRunner.output(of: player.detailsScript)
         let part = scriptFields(output)
         return TrackDetails(
-            artwork: loadArtwork(hint: part(0), player: player, title: state.title, artist: state.artist),
+            artwork: loadArtwork(
+                hint: part(0), player: player, title: state.title, artist: state.artist, allowsFallback: allowsArtworkFallback
+            ),
             isFavorited: part(1) == "1",
             canFavorite: part(2) == "1",
             isComplete: output != nil
@@ -465,6 +490,9 @@ final class NowPlayingService: NSObject, ObservableObject {
         next.repeatMode = state.repeatMode
         if let details = snapshot.details {
             detailsKey = details.isComplete ? state.detailsKey : nil
+            if details.isComplete {
+                recordArtworkAttempt(for: state.detailsKey, found: details.artwork != nil)
+            }
             next.artwork = details.artwork
             next.isFavorited = displayedFavorite(details.isFavorited, trackKey: state.detailsKey)
             next.canFavorite = details.canFavorite
@@ -479,6 +507,17 @@ final class NowPlayingService: NSObject, ObservableObject {
             info = next
         }
         updateAudioLevelMonitoring()
+    }
+
+    /// Right after a track change the player may not have the artwork yet, so a missing one is re-fetched shortly,
+    /// a few times per track, instead of on every fallback poll. A poll already pending re-fetches it anyway.
+    private func recordArtworkAttempt(for key: String, found: Bool) {
+        let previous = artworkAttempts.flatMap { $0.key == key ? $0.count : nil } ?? 0
+        let count = found ? Self.maximumArtworkRetries + 1 : previous + 1
+        artworkAttempts = (key, count)
+        if count <= Self.maximumArtworkRetries, coalescedPoll == nil {
+            schedulePoll(after: Self.artworkRetryDelay)
+        }
     }
 
     private func displayedFavorite(_ reported: Bool, trackKey: String) -> Bool {
@@ -497,7 +536,9 @@ final class NowPlayingService: NSObject, ObservableObject {
         poll()
     }
 
-    private nonisolated static func loadArtwork(hint: String, player: MusicPlayer, title: String, artist: String) -> NSImage? {
+    private nonisolated static func loadArtwork(
+        hint: String, player: MusicPlayer, title: String, artist: String, allowsFallback: Bool
+    ) -> NSImage? {
         switch player {
         case .spotify:
             guard !hint.isEmpty,
@@ -508,7 +549,7 @@ final class NowPlayingService: NSObject, ObservableObject {
             if !hint.isEmpty, let img = NSImage(contentsOfFile: hint) {
                 return img
             }
-            return fetchITunesArtwork(title: title, artist: artist)
+            return allowsFallback ? fetchITunesArtwork(title: title, artist: artist) : nil
         }
     }
 
