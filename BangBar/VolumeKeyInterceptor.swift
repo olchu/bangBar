@@ -44,7 +44,7 @@ final class VolumeKeyInterceptor {
     var onUnchangedPress: ((_ volume: Float, _ isMuted: Bool) -> Void)?
     private lazy var eventTap: EventTap = {
         let tap = EventTap(name: "volume keys", mask: EventTap.mask([.keyDown, .keyUp])) { [weak self] _, event, _ in
-            self?.handle(event) ?? Unmanaged.passUnretained(event)
+            self?.handle(event) ?? .pass
         }
         // Remapping without a working tap would leave the volume keys doing nothing at all.
         tap.onInstalledChange = { isInstalled in
@@ -66,16 +66,20 @@ final class VolumeKeyInterceptor {
         HIDKeyRemapping.update(Self.remappedPairs, installed: false)
     }
 
-    private func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func handle(_ event: CGEvent) -> EventTapDecision {
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
         guard let remapping = Self.remappings.first(where: { $0.keyCode == keyCode }) else {
-            return Unmanaged.passUnretained(event)
+            return .pass
         }
         // Key-downs include auto-repeat, so a held key keeps stepping like the system's volume key.
         if event.type == .keyDown {
-            adjustVolume(remapping.action, fine: event.flags.isSuperset(of: [.maskAlternate, .maskShift]))
+            let fine = event.flags.isSuperset(of: [.maskAlternate, .maskShift])
+            // Core Audio calls can block (e.g. Bluetooth outputs), and inside the tap callback that stalls all typing.
+            DispatchQueue.main.async { [weak self] in
+                self?.adjustVolume(remapping.action, fine: fine)
+            }
         }
-        return nil
+        return .swallow
     }
 
     private func adjustVolume(_ action: Action, fine: Bool) {

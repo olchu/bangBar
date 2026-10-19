@@ -1,11 +1,17 @@
 import AppKit
 import OSLog
 
+/// Not an `Unmanaged<CGEvent>?`: a nil meaning "swallow" is too easy to confuse with the nil of `self?.handle(...)`.
+enum EventTapDecision {
+    case pass
+    case swallow
+}
+
 /// A session event tap on the main run loop. While `isEnabled` it installs as soon as Accessibility is granted,
 /// removes itself when Accessibility is revoked (polling for both), and turns itself back on when macOS disables
 /// it after a slow callback.
 final class EventTap {
-    typealias Handler = (_ type: CGEventType, _ event: CGEvent, _ proxy: CGEventTapProxy) -> Unmanaged<CGEvent>?
+    typealias Handler = (_ type: CGEventType, _ event: CGEvent, _ proxy: CGEventTapProxy) -> EventTapDecision
 
     private static let logger = Logger(subsystem: "BangBar", category: "EventTap")
 
@@ -103,7 +109,7 @@ final class EventTap {
             }
             return Unmanaged.passUnretained(event)
         }
-        return handler(type, event, proxy)
+        return handler(type, event, proxy) == .swallow ? nil : Unmanaged.passUnretained(event)
     }
 
     private func startPermissionPolling() {

@@ -13,7 +13,7 @@ final class KeyboardSwitcherService: NSObject {
         name: "keyboard",
         mask: EventTap.mask([.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown])
     ) { [weak self] type, event, proxy in
-        self?.handle(type: type, event: event, proxy: proxy) ?? Unmanaged.passUnretained(event)
+        self?.handle(type: type, event: event, proxy: proxy) ?? .pass
     }
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var buffer = KeyboardWordBuffer()
@@ -102,40 +102,39 @@ final class KeyboardSwitcherService: NSObject {
 
     // MARK: - Event Tap
 
-    private func handle(type: CGEventType, event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {
-        let passThrough = Unmanaged.passUnretained(event)
+    private func handle(type: CGEventType, event: CGEvent, proxy: CGEventTapProxy) -> EventTapDecision {
         switch type {
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             resetTypingState()
-            return passThrough
+            return .pass
         default:
             break
         }
 
         guard !SyntheticKeyboard.isSynthetic(event) else {
-            return passThrough
+            return .pass
         }
         // Volume presses arrive as F18–F20 while BangBar takes them over; they must not end the typed word.
         if type == .keyDown || type == .keyUp,
            VolumeKeyInterceptor.remappedKeyCodes.contains(Int(event.getIntegerValueField(.keyboardEventKeycode))) {
-            return passThrough
+            return .pass
         }
 
         switch type {
         case .flagsChanged:
             handleFlagsChanged(event)
-            return passThrough
+            return .pass
         case .keyDown:
             return handleKeyDown(event, proxy: proxy)
         case .keyUp:
             let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
             if keyCode == swallowedKeyUpCode {
                 swallowedKeyUpCode = nil
-                return nil
+                return .swallow
             }
-            return passThrough
+            return .pass
         default:
-            return passThrough
+            return .pass
         }
     }
 
@@ -184,7 +183,7 @@ final class KeyboardSwitcherService: NSObject {
         }
     }
 
-    private func handleKeyDown(_ event: CGEvent, proxy: CGEventTapProxy) -> Unmanaged<CGEvent>? {
+    private func handleKeyDown(_ event: CGEvent, proxy: CGEventTapProxy) -> EventTapDecision {
         shiftTaps.interrupt()
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
@@ -196,22 +195,22 @@ final class KeyboardSwitcherService: NSObject {
             if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
                 scheduleConversion()
             }
-            return nil
+            return .swallow
         }
 
         let undoable = undoableAutoSwitch
         undoableAutoSwitch = nil
         if flags.intersection(Self.commandModifierMask).isEmpty {
             if Int(keyCode) == kVK_Delete, let undoable, undoAutoSwitch(undoable, proxy: proxy) {
-                return nil
+                return .swallow
             }
             if Self.autoSwitchBoundaryKeys.contains(Int(keyCode)), autoSwitch(before: event, proxy: proxy) {
-                return nil
+                return .swallow
             }
         }
 
         record(keyCode: keyCode, flags: flags)
-        return Unmanaged.passUnretained(event)
+        return .pass
     }
 
     private func record(keyCode: UInt16, flags: CGEventFlags) {
