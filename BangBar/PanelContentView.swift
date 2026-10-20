@@ -78,8 +78,9 @@ struct PanelContentView: View {
                 }
 
                 if !state.isCompact, !state.showsClipboardHistory, !pages[1].isEmpty {
+                    // Centered in the bottom edge padding, so a widget filled to its full height never touches it.
                     pageIndicator
-                        .position(x: geo.size.width / 2, y: geo.size.height - 16)
+                        .position(x: geo.size.width / 2, y: geo.size.height - PanelLayout.expandedVisibleEdgePadding / 2)
                         .transaction { transaction in
                             transaction.animation = nil
                             transaction.disablesAnimations = true

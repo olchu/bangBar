@@ -574,6 +574,12 @@ Today  Buy milk
 - Normalizes reminders into app-owned value types before rendering.
 - Refreshes periodically while the panel is expanded and when reminder access changes.
 
+**Current behavior:**
+
+- Shows the incomplete reminders of the list chosen in Settings → Widgets → Reminders (`reminderListId`), or of every list with `All Reminders`. Overdue items come first and are drawn in the accent color, then the rest by due date; at most 10 are kept.
+- The widget has room for four rows. With more items, three are listed and the fourth row reads `+N more`, so the list never grows past the widget into the page indicator.
+- Clicking an item's circle completes it in Reminders; the `+` button opens a small window that adds a reminder with an optional due date. Changes made in Reminders or synced from other devices arrive through `EKEventStoreChanged`.
+
 ---
 
 ### HabitsWidget
@@ -1286,6 +1292,7 @@ Each widget separated by `Divider` at 35pt height.
 
 **Page indicator:**
 - Two small dots, shown only when Page 2 has fitted widgets, hidden in compact mode and while Clipboard History is open.
+- Vertically centered in the bottom edge padding (`expandedVisibleEdgePadding / 2` above the panel's bottom), so widgets filled to their full height, such as Reminders with its `+N more` line, keep clear of the dots.
 - Positioned with SwiftUI `.position(x: geo.size.width / 2, y: ...)` — true absolute placement in the panel's coordinate space, not a `.frame(width:alignment:)`-based layout — wrapped in `.transaction { $0.animation = nil; $0.disablesAnimations = true }` so it never participates in the page-swipe animation and always renders at the same screen point regardless of which page (or width) is active.
 
 **Gesture safety:**

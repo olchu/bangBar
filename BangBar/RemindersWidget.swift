@@ -86,15 +86,17 @@ struct RemindersWidget: View {
     }
 
     private var activeContent: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            ForEach(service.items.prefix(maxVisible)) { item in
+        // With more items than rows, the last row becomes the "+N more" line, so the list never grows past the widget.
+        let visibleCount = service.items.count > maxVisible ? maxVisible - 1 : service.items.count
+        return VStack(alignment: .leading, spacing: 5) {
+            ForEach(service.items.prefix(visibleCount)) { item in
                 ReminderRow(item: item, accentColor: accentColor, isPanelContentVisible: isPanelContentVisible) {
                     service.completeReminder(id: item.id)
                 }
             }
 
-            if service.items.count > maxVisible {
-                Text("+\(service.items.count - maxVisible) more")
+            if service.items.count > visibleCount {
+                Text("+\(service.items.count - visibleCount) more")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.28))
             }
