@@ -22,7 +22,7 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 |---|---|
 | Now Playing | Track, artwork and playback controls; audio from other apps |
 | Clock | Time, date and today's upcoming calendar events |
-| Reminders | Today's and overdue tasks from a Reminders list; add new ones |
+| Reminders | Open tasks from a list in the Reminders app, overdue first; add and complete tasks |
 | Habits | Daily routines with streaks and a completion history |
 | Countdown | Time left until a date you pick |
 | Day Plans | Plans for today, synced through iCloud Drive |
@@ -41,6 +41,16 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 The compact strip shows what is playing; a browser tab shows its own preview. Volume, charging and Bluetooth notices grow out of the notch for a moment and slide back.
 
 ![Compact mode with a YouTube preview and playback bars, and the volume notice under the notch](docs/images/notch-states.png)
+
+### Reminders
+
+The Reminders widget works on your lists in the macOS Reminders app; BangBar keeps no task list of its own. Pick the list in Settings › Widgets › Reminders, or choose All Reminders to see open tasks from every list. The widget shows up to ten open tasks, overdue ones first and in the accent color, then the rest by due date.
+
+Changes go both ways. A task you add with the + button, or complete by clicking its circle, is saved to Reminders at once. A task you add or complete in Reminders, or on another device that syncs your lists, shows up in the widget as soon as Reminders has it.
+
+![A task added from BangBar's New Reminder window appears in the same list in the Reminders app](docs/images/reminders-sync.png)
+
+![Settings, Widgets › Reminders: the list the widget shows](docs/images/settings-reminders.png)
 
 ## Install
 
