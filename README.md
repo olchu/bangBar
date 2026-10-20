@@ -73,6 +73,12 @@ Open Settings from the gear at the top right of the panel or from the BangBar me
 - Clipboard: history size and swipe gestures.
 - Keyboard: the layout switcher.
 
+### Accent color
+
+One accent color runs through the whole panel: the date, habit marks and progress, the countdown, the focus timer, the page dots, the music placeholder, and the icons and bars of the notch notices. Pick it in Settings › Appearance › Accent color: clicking the swatch opens the macOS color panel, and Reset returns to the default red `#FF383C`. Calendar events keep the colors of their calendars.
+
+![The same panel in four accent colors: red, blue, green and purple](docs/images/accent-colors.png)
+
 ![Settings, Appearance tab: accent color and live activity switches](docs/images/settings-appearance.png)
 
 ![Settings, Keyboard tab: convert wrong layout, the Double Shift trigger and automatic switching](docs/images/settings-keyboard.png)
