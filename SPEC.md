@@ -308,6 +308,16 @@ Shows audio from browsers and media players (YouTube in a browser, a film in IIN
 - Known limitation: `IsRunning` covers input and output together, so while a process keeps its microphone input running (a call, dictation), its output starting or stopping is not noticed until the input stops.
 - Settings → Widgets → Now Playing: `Browsers and media players` toggle (`nowPlayingShowsOtherAudio`, default on), observed through KVO on that key only. Turning it off removes the Core Audio listeners.
 
+#### Yandex Music Artwork
+
+Yandex Music (`ru.yandex.desktop.music`, an Electron app without AppleScript) publishes track details only to the system Now Playing, which needs MediaRemote. BangBar shows its album cover from the app's own files instead (`YandexMusicArtwork`, used by `OtherAppMedia` as a second source next to browsers):
+
+- The app's play log lives in its IndexedDB (`~/Library/Application Support/YandexMusic/IndexedDB/music-application_desktop_0.indexeddb.leveldb/*.log`). New records are appended; the last `albumId` in the newest log's final 64 KB is the album playing now.
+- The app caches that album's cover; a Chromium cache entry in `Cache/Cache_Data` has the key `https://avatars.yandex.net/get-music-content/<shard>/<hash>.a.<albumId>-<n>/<size>`. BangBar reads the first 4 KB of the newest entries to find it, then downloads the `400x400` image from that public CDN and scales it like other previews. Results are cached per album in the shared page cache.
+- Refreshed every 4 s while Yandex Music is shown. The app writes the record of a new track about 10 s after the track starts, so the cover follows a track change after roughly 10 to 15 s. The newest cached cover alone is not used: browsing albums in the app caches their covers too. An album whose cover is not found shows the app icon and is looked up again after 30 s, because each lookup scans the app's HTTP cache.
+- No title or artist: they are not on disk, and the public API (`api.music.yandex.net/tracks/<id>`) answers `Unavailable For Legal Reasons` without sign-in. The widget keeps the app name and `Playing audio`.
+- Both formats are undocumented. A missing file, an unexpected layout or a failed download yields nil and the app icon stays; nothing else reads or writes Yandex Music's data.
+
 #### Browser Tab Preview
 
 When the playing app is a scriptable browser, Now Playing shows the playing page instead of the browser icon: page title, channel/author or site name, and a preview image (`OtherAppMedia`, which also builds the name-and-icon fallback for every other app).

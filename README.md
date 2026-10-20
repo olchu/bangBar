@@ -9,7 +9,7 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 ## What it does
 
 - Thirteen widgets sit on up to two pages, and a two-finger swipe moves between them. You pick which widgets are on, their order and their page.
-- Now Playing controls Apple Music and Spotify, and also shows what a browser or a media player plays: a YouTube video appears with its title, channel and preview image, and play, pause, next and previous work through the system media keys. Sounds of other apps, such as a dictation chime, are ignored.
+- Now Playing controls Apple Music and Spotify, and also shows what a browser or a media player plays: a YouTube video appears with its title, channel and preview image, Yandex Music with its album cover, and play, pause, next and previous work through the system media keys. Sounds of other apps, such as a dictation chime, are ignored.
 - The compact strip stays at the notch while music plays, while the focus timer runs, or while you collect images from the clipboard.
 - Short notices grow out of the notch when you plug in or unplug the charger, when sound moves to AirPods, and when the volume changes. BangBar can also take over the volume keys, so the system volume HUD stops covering the screen.
 - Clipboard history keeps the text and images you copy, with pinned items and image groups, one swipe or click away in the panel.
@@ -132,6 +132,7 @@ BangBar has no account, no analytics and no server of its own. Data stays on you
 | AI Usage widget | `api.anthropic.com`, `chatgpt.com` | Your own Claude Code and Codex sign-in tokens, read from `~/.claude`, the macOS keychain and `~/.codex`, to fetch your quota |
 | Apple Music artwork fallback | `itunes.apple.com` | Track title and artist, when Music has no artwork for the track |
 | Browser tab preview | The playing page's own site or its oEmbed endpoint (YouTube, Vimeo, SoundCloud, Spotify, Dailymotion) | The page address, without cookies |
+| Yandex Music cover | `avatars.yandex.net` | A request for the cover image of the album playing, whose address BangBar reads from Yandex Music's local cache |
 
 The Translator widget uses Apple's on-device Translation framework.
 

@@ -9,6 +9,9 @@ final class OtherAppMedia {
     /// Autoplay moves on soon after a page change, so refreshes slow down only once the page has settled.
     private static let settleTime: TimeInterval = 30
     private static let cacheLimit = 8
+    /// Reading Yandex Music's play log is a local file read, so it can follow track changes closely.
+    private static let yandexMusicRefreshInterval: TimeInterval = 4
+    private static let yandexMusicMissRetry: TimeInterval = 30
 
     /// Called when a refresh changes `info`; `track(_:)` does not call it because its caller reads `info` right after.
     var onChange: (() -> Void)?
@@ -17,10 +20,25 @@ final class OtherAppMedia {
         guard let app else { return nil }
         return NowPlayingInfo(
             title: page.map(\.title).flatMap { $0.isEmpty ? nil : $0 } ?? app.name,
-            artist: page?.subtitle ?? (isPlaying ? "Playing audio" : "Paused"),
+            artist: page.map(\.subtitle).flatMap { $0.isEmpty ? nil : $0 } ?? (isPlaying ? "Playing audio" : "Paused"),
             isPlaying: isPlaying,
             artwork: page?.artwork ?? icon
         )
+    }
+
+    private enum Source {
+        case browser(Browser)
+        case yandexMusic
+
+        init?(bundleIdentifier: String) {
+            if let browser = Browser(bundleIdentifier: bundleIdentifier) {
+                self = .browser(browser)
+            } else if bundleIdentifier == YandexMusicArtwork.bundleIdentifier {
+                self = .yandexMusic
+            } else {
+                return nil
+            }
+        }
     }
 
     private var app: AudioApp?
@@ -32,6 +50,7 @@ final class OtherAppMedia {
     /// Lookups by media key, so a refresh of the same page or a return to it costs no network request.
     private var cache: [String: WebMedia] = [:]
     private var cacheOrder: [String] = []
+    private var yandexMusicMiss: (albumID: String, at: Date)?
 
     func track(_ app: AudioApp?) {
         // Another helper process of the same app taking over the audio is still the same page.
@@ -46,29 +65,45 @@ final class OtherAppMedia {
         refreshTask = nil
         page = nil
         icon = app.flatMap { NSRunningApplication(processIdentifier: $0.processIdentifier)?.icon }
-        guard let app, let browser = Browser(bundleIdentifier: app.bundleIdentifier) else { return }
-        refresh(browser)
+        guard let app, let source = Source(bundleIdentifier: app.bundleIdentifier) else { return }
+        refresh(source)
     }
 
-    private func refresh(_ browser: Browser) {
+    private func refresh(_ source: Source) {
         refreshTask = Task { [weak self] in
-            let tab = await Task.detached(priority: .utility) { browser.playingTab() }.value
-            guard let self, !Task.isCancelled else { return }
-            let page = await page(for: tab)
+            guard let self else { return }
+            let page: WebMedia?
+            switch source {
+            case .browser(let browser):
+                let tab = await Task.detached(priority: .utility) { browser.playingTab() }.value
+                guard !Task.isCancelled else { return }
+                page = await self.page(for: tab)
+            case .yandexMusic:
+                page = await yandexMusicPage()
+            }
             guard !Task.isCancelled else { return }
             if self.page != page {
                 self.page = page
                 pageChangedAt = Date()
                 onChange?()
             }
-            let isSettled = Date().timeIntervalSince(pageChangedAt) > Self.settleTime
-            scheduleRefresh(browser, after: isSettled ? Self.slowRefreshInterval : Self.fastRefreshInterval)
+            scheduleRefresh(source, after: refreshInterval(for: source))
         }
     }
 
-    private func scheduleRefresh(_ browser: Browser, after interval: TimeInterval) {
+    private func refreshInterval(for source: Source) -> TimeInterval {
+        switch source {
+        case .browser:
+            let isSettled = Date().timeIntervalSince(pageChangedAt) > Self.settleTime
+            return isSettled ? Self.slowRefreshInterval : Self.fastRefreshInterval
+        case .yandexMusic:
+            return Self.yandexMusicRefreshInterval
+        }
+    }
+
+    private func scheduleRefresh(_ source: Source, after interval: TimeInterval) {
         let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh(browser) }
+            MainActor.assumeIsolated { self?.refresh(source) }
         }
         timer.tolerance = 1
         RunLoop.main.add(timer, forMode: .common)
@@ -78,11 +113,7 @@ final class OtherAppMedia {
     private func page(for tab: BrowserTab?) async -> WebMedia? {
         guard let tab else { return nil }
         let key = WebMediaLookup.key(for: tab.url)
-        if let cached = cache[key] {
-            cacheOrder.removeAll { $0 == key }
-            cacheOrder.append(key)
-            return cached
-        }
+        if let cached = cachedPage(key) { return cached }
 
         let info = await WebMediaLookup.info(for: tab)
         let page = WebMedia(
@@ -92,12 +123,45 @@ final class OtherAppMedia {
         )
         // Other tabs cost no request and their titles change; a cancelled lookup returns its fallback, not the media.
         guard WebMediaLookup.isMediaPage(tab.url), !Task.isCancelled else { return page }
+        storePage(page, for: key)
+        return page
+    }
+
+    /// The current album's cover; the title stays the app's, because Yandex Music keeps no track names on disk.
+    /// An unreadable play log keeps the last cover; an album whose cover is not cached yet shows the app icon,
+    /// and its lookup is retried only after `yandexMusicMissRetry`, since each one scans the app's HTTP cache.
+    private func yandexMusicPage() async -> WebMedia? {
+        guard let albumID = await Task.detached(priority: .utility, operation: { YandexMusicArtwork.currentAlbumID() }).value
+        else { return page }
+        let key = "yandex-music:\(albumID)"
+        if let cached = cachedPage(key) { return cached }
+        if let miss = yandexMusicMiss, miss.albumID == albumID, Date().timeIntervalSince(miss.at) < Self.yandexMusicMissRetry {
+            return nil
+        }
+        let image = await YandexMusicArtwork.cover(albumID: albumID)
+        guard !Task.isCancelled else { return nil }
+        guard let image else {
+            yandexMusicMiss = (albumID, Date())
+            return nil
+        }
+        let page = WebMedia(title: "", subtitle: "", artwork: NSImage(cgImage: image, size: .zero))
+        storePage(page, for: key)
+        return page
+    }
+
+    private func cachedPage(_ key: String) -> WebMedia? {
+        guard let cached = cache[key] else { return nil }
+        cacheOrder.removeAll { $0 == key }
+        cacheOrder.append(key)
+        return cached
+    }
+
+    private func storePage(_ page: WebMedia, for key: String) {
         if cacheOrder.count >= Self.cacheLimit {
             cache[cacheOrder.removeFirst()] = nil
         }
         cache[key] = page
         cacheOrder.append(key)
-        return page
     }
 }
 
@@ -341,7 +405,7 @@ nonisolated enum WebMediaLookup {
     }
 
     /// Decoded and scaled here, off the main thread, so a large og:image is never kept or drawn at full size.
-    private static func thumbnail(at url: URL) async -> CGImage? {
+    static func thumbnail(at url: URL) async -> CGImage? {
         guard let (data, _) = try? await session.data(from: url),
               let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
