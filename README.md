@@ -106,7 +106,7 @@ BangBar has no account, no analytics and no server of its own. Data stays on you
 
 The Translator widget uses Apple's on-device Translation framework.
 
-Clipboard history is stored in `~/Library/Application Support/BangBar/ClipboardHistory`. It keeps whatever you copy, including passwords copied from a password manager, and has no switch to turn it off. **Clear History** in the panel removes everything except pinned items. Day Plans are stored in iCloud Drive under `BangBar/DayPlans`.
+Clipboard history is stored in `~/Library/Application Support/BangBar/ClipboardHistory`. It skips anything an app marks as private through the [nspasteboard.org](http://nspasteboard.org) convention, which is how password managers mark copied passwords; everything else you copy is kept. There is no switch to turn the history off. **Clear History** in the panel removes everything except pinned items. Day Plans are stored in iCloud Drive under `BangBar/DayPlans`.
 
 ## Building and testing
 
