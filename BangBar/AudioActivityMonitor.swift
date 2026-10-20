@@ -27,8 +27,10 @@ final class AudioActivityMonitor {
     /// nil for daemons, system sounds, players and BangBar.
     private var owners: [AudioObjectID: AudioApp?] = [:]
     private var runningProcesses: Set<AudioObjectID> = []
-    /// Apps whose output is running now, with the time it started.
-    private var runningApps: [String: (app: AudioApp, since: Date)] = [:]
+    /// Apps whose output is running now, by bundle ID.
+    private var runningApps: [String: RunningApp] = [:]
+    /// Created once an app has played past the start delay, so a notification sound never gets a tap.
+    private var silenceDetectors: [String: SilenceDetector] = [:]
     private var stoppedAt: Date?
     private var pendingUpdate: DispatchWorkItem?
 
@@ -66,6 +68,8 @@ final class AudioActivityMonitor {
         pendingUpdate?.cancel()
         pendingUpdate = nil
         runningApps = [:]
+        silenceDetectors.values.forEach { $0.invalidate() }
+        silenceDetectors = [:]
         stoppedAt = nil
         if playingApp != nil { playingApp = nil }
     }
@@ -112,14 +116,37 @@ final class AudioActivityMonitor {
     }
 
     private func runningProcessesChanged() {
-        let now = Date()
-        var running: [String: (app: AudioApp, since: Date)] = [:]
+        var running: [String: RunningApp] = [:]
         // Sorted so an app with several playing processes keeps resolving to the same one.
         for process in runningProcesses.sorted() {
             guard let app = owner(of: process), running[app.bundleIdentifier] == nil else { continue }
-            running[app.bundleIdentifier] = (app, runningApps[app.bundleIdentifier]?.since ?? now)
+            running[app.bundleIdentifier] = runningApps[app.bundleIdentifier] ?? RunningApp(app: app)
         }
         runningApps = running
+        for (bundleIdentifier, detector) in silenceDetectors where running[bundleIdentifier] == nil {
+            detector.invalidate()
+            silenceDetectors[bundleIdentifier] = nil
+        }
+        update()
+    }
+
+    private func startSilenceDetection(for app: AudioApp) {
+        let bundleIdentifier = app.bundleIdentifier
+        silenceDetectors[bundleIdentifier] = SilenceDetector(bundleIdentifier: app.audioBundleIdentifier) {
+            [weak self] detector, isSilent in
+            // A report queued before the detector was replaced belongs to an earlier stretch of output.
+            guard let self, silenceDetectors[bundleIdentifier] === detector else { return }
+            silenceChanged(isSilent, for: bundleIdentifier)
+        }
+    }
+
+    private func silenceChanged(_ isSilent: Bool, for bundleIdentifier: String) {
+        guard runningApps[bundleIdentifier] != nil else { return }
+        runningApps[bundleIdentifier]?.isSilent = isSilent
+        // Sound after a silent stretch is a new start, held back by the start delay unless the app is still shown.
+        if !isSilent {
+            runningApps[bundleIdentifier]?.since = Date()
+        }
         update()
     }
 
@@ -136,7 +163,12 @@ final class AudioActivityMonitor {
         let now = Date()
 
         // The shown app skips the start delay, so a restart within the stop delay keeps it shown.
-        let shown = runningApps.values
+        let audible = runningApps.values.filter { !$0.isSilent }
+        for running in audible where now.timeIntervalSince(running.since) >= Self.startDelay
+            && silenceDetectors[running.app.bundleIdentifier] == nil {
+            startSilenceDetection(for: running.app)
+        }
+        let shown = audible
             .filter { $0.app == playingApp || now.timeIntervalSince($0.since) >= Self.startDelay }
             .max { $0.since < $1.since }?.app
         if let shown {
@@ -151,12 +183,20 @@ final class AudioActivityMonitor {
         }
 
         // Output listeners fire only on start and stop, so the delays need their own wake-up.
-        let pending = runningApps.values.map { $0.since.addingTimeInterval(Self.startDelay) }
+        let pending = audible.map { $0.since.addingTimeInterval(Self.startDelay) }
             + [stoppedAt?.addingTimeInterval(Self.stopDelay)].compactMap { $0 }
         guard let next = pending.filter({ $0 > now }).min() else { return }
         let work = DispatchWorkItem { [weak self] in self?.update() }
         pendingUpdate = work
         DispatchQueue.main.asyncAfter(deadline: .now() + next.timeIntervalSince(now), execute: work)
+    }
+
+    private struct RunningApp {
+        let app: AudioApp
+        /// Start of the current audible stretch.
+        var since = Date()
+        /// The output runs but carries only silence, as after a pause in a browser.
+        var isSilent = false
     }
 
     private static func resolveOwner(of process: AudioObjectID) -> AudioApp? {

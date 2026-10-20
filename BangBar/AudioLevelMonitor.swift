@@ -5,11 +5,6 @@ import OSLog
 nonisolated final class AudioLevelMonitor: @unchecked Sendable {
     typealias LevelHandler = @MainActor @Sendable ([Double]) -> Void
 
-    private enum SampleEncoding {
-        case float32
-        case int16
-    }
-
     private static let logger = Logger(subsystem: "BangBar", category: "AudioLevelMonitor")
     private static let updateIntervalNanoseconds: UInt64 = 80_000_000
     private static let sampleStride = 2
@@ -27,11 +22,8 @@ nonisolated final class AudioLevelMonitor: @unchecked Sendable {
     )
     private let levelHandler: LevelHandler
 
-    private var tapID = AudioObjectID(kAudioObjectUnknown)
-    private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
-    private var ioProcID: AudioDeviceIOProcID?
+    private var tap: ProcessAudioTap?
     private var currentBundleIdentifier: String?
-    private var sampleEncoding = SampleEncoding.float32
     private var effectiveSampleRate = 24_000.0
 
     private var sampleWindow: [Double] = []
@@ -52,7 +44,11 @@ nonisolated final class AudioLevelMonitor: @unchecked Sendable {
         stop()
 
         do {
-            try createTap(bundleIdentifier: bundleIdentifier)
+            let tap = try ProcessAudioTap(bundleIdentifier: bundleIdentifier, name: "BangBar Music Levels", queue: audioQueue) {
+                [weak self] in self?.process($0)
+            }
+            effectiveSampleRate = tap.sampleRate / Double(Self.sampleStride)
+            self.tap = tap
             currentBundleIdentifier = bundleIdentifier
         } catch {
             Self.logger.error("Audio level capture failed: \(error.localizedDescription, privacy: .public)")
@@ -61,132 +57,15 @@ nonisolated final class AudioLevelMonitor: @unchecked Sendable {
     }
 
     func stop() {
-        if aggregateDeviceID != kAudioObjectUnknown, let ioProcID {
-            AudioDeviceStop(aggregateDeviceID, ioProcID)
-            AudioDeviceDestroyIOProcID(aggregateDeviceID, ioProcID)
-        }
-        ioProcID = nil
-
-        if aggregateDeviceID != kAudioObjectUnknown {
-            AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
-            aggregateDeviceID = kAudioObjectUnknown
-        }
-
-        if tapID != kAudioObjectUnknown {
-            AudioHardwareDestroyProcessTap(tapID)
-            tapID = kAudioObjectUnknown
-        }
-
+        tap = nil
         currentBundleIdentifier = nil
         sampleWindow.removeAll(keepingCapacity: true)
         lastUpdateTime = 0
         smoothedBands = [0.0, 0.0, 0.0, 0.0]
     }
 
-    private func createTap(bundleIdentifier: String) throws {
-        let description = CATapDescription(monoMixdownOfProcesses: [])
-        description.name = "BangBar Music Levels"
-        description.bundleIDs = [bundleIdentifier]
-        description.isPrivate = true
-        description.isProcessRestoreEnabled = true
-        description.muteBehavior = .unmuted
-
-        try check(
-            AudioHardwareCreateProcessTap(description, &tapID),
-            operation: "Create process tap"
-        )
-
-        let format = try tapFormat(for: tapID)
-        sampleEncoding = format.encoding
-        effectiveSampleRate = format.sampleRate / Double(Self.sampleStride)
-
-        let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "BangBar Music Levels",
-            kAudioAggregateDeviceUIDKey: "com.ochurkin.BangBar.audio-levels.\(UUID().uuidString)",
-            kAudioAggregateDeviceIsPrivateKey: true,
-            kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceTapListKey: [
-                [kAudioSubTapUIDKey: description.uuid.uuidString]
-            ]
-        ]
-
-        try check(
-            AudioHardwareCreateAggregateDevice(
-                aggregateDescription as CFDictionary,
-                &aggregateDeviceID
-            ),
-            operation: "Create aggregate device"
-        )
-
-        var newIOProcID: AudioDeviceIOProcID?
-        try check(
-            AudioDeviceCreateIOProcIDWithBlock(
-                &newIOProcID,
-                aggregateDeviceID,
-                audioQueue
-            ) { [weak self] _, inputData, _, _, _ in
-                self?.process(inputData)
-            },
-            operation: "Create audio callback"
-        )
-        ioProcID = newIOProcID
-
-        try check(
-            AudioDeviceStart(aggregateDeviceID, newIOProcID),
-            operation: "Start audio capture"
-        )
-    }
-
-    private func tapFormat(
-        for tapID: AudioObjectID
-    ) throws -> (encoding: SampleEncoding, sampleRate: Double) {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioTapPropertyFormat,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var format = AudioStreamBasicDescription()
-        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-        try check(
-            AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &format),
-            operation: "Read tap format"
-        )
-
-        guard format.mFormatID == kAudioFormatLinearPCM else {
-            throw AudioLevelMonitorError.unsupportedFormat
-        }
-        if format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
-           format.mBitsPerChannel == 32 {
-            return (.float32, format.mSampleRate)
-        }
-        if format.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0,
-           format.mBitsPerChannel == 16 {
-            return (.int16, format.mSampleRate)
-        }
-        throw AudioLevelMonitorError.unsupportedFormat
-    }
-
-    private func process(_ inputData: UnsafePointer<AudioBufferList>) {
-        let bufferList = UnsafeMutableAudioBufferListPointer(
-            UnsafeMutablePointer(mutating: inputData)
-        )
-        for buffer in bufferList {
-            guard let data = buffer.mData else { continue }
-            switch sampleEncoding {
-            case .float32:
-                let samples = data.assumingMemoryBound(to: Float.self)
-                let count = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
-                for index in stride(from: 0, to: count, by: Self.sampleStride) {
-                    sampleWindow.append(Double(samples[index]))
-                }
-            case .int16:
-                let samples = data.assumingMemoryBound(to: Int16.self)
-                let count = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
-                for index in stride(from: 0, to: count, by: Self.sampleStride) {
-                    sampleWindow.append(Double(samples[index]) / Double(Int16.max))
-                }
-            }
-        }
+    private func process(_ samples: ProcessAudioTap.Samples) {
+        samples.forEach(stride: Self.sampleStride) { sampleWindow.append($0) }
 
         let now = DispatchTime.now().uptimeNanoseconds
         guard lastUpdateTime == 0
@@ -254,25 +133,5 @@ nonisolated final class AudioLevelMonitor: @unchecked Sendable {
             0
         )
         return 2 * sqrt(power) / Double(samples.count)
-    }
-
-    private func check(_ status: OSStatus, operation: String) throws {
-        guard status == noErr else {
-            throw AudioLevelMonitorError.coreAudio(operation: operation, status: status)
-        }
-    }
-}
-
-private enum AudioLevelMonitorError: LocalizedError {
-    case coreAudio(operation: String, status: OSStatus)
-    case unsupportedFormat
-
-    var errorDescription: String? {
-        switch self {
-        case .coreAudio(let operation, let status):
-            "\(operation) returned OSStatus \(status)"
-        case .unsupportedFormat:
-            "The audio tap returned an unsupported sample format"
-        }
     }
 }

@@ -23,7 +23,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>BangBar uses AppleScript to show Now Playing info from Spotify, Apple Music and the browser tab that plays audio.</string>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>BangBar uses music audio levels to animate the live playback indicator.</string>
+	<string>BangBar uses audio levels to animate the live playback indicator and to notice when playback in a browser or another app pauses.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>BangBar shows your next upcoming meeting for today.</string>
 	<key>NSCalendarsUsageDescription</key>
