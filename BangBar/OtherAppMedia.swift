@@ -13,12 +13,12 @@ final class OtherAppMedia {
     /// Called when a refresh changes `info`; `track(_:)` does not call it because its caller reads `info` right after.
     var onChange: (() -> Void)?
 
-    var info: NowPlayingInfo? {
+    func info(isPlaying: Bool) -> NowPlayingInfo? {
         guard let app else { return nil }
         return NowPlayingInfo(
             title: page.map(\.title).flatMap { $0.isEmpty ? nil : $0 } ?? app.name,
-            artist: page?.subtitle ?? "Playing audio",
-            isPlaying: true,
+            artist: page?.subtitle ?? (isPlaying ? "Playing audio" : "Paused"),
+            isPlaying: isPlaying,
             artwork: page?.artwork ?? icon
         )
     }

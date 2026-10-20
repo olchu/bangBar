@@ -129,15 +129,17 @@ struct NowPlayingWidget: View {
                         Image(systemName: "shuffle")
                             .foregroundStyle(service.info.shuffleEnabled ? Color.white : Color.white.opacity(0.35))
                     }
+                    .disabled(!service.canControlPlayer)
                     Button(action: { service.cycleRepeat() }) {
                         Image(systemName: service.info.repeatMode == .one ? "repeat.1" : "repeat")
                             .foregroundStyle(service.info.repeatMode == .off ? Color.white.opacity(0.35) : Color.white)
                     }
+                    .disabled(!service.canControlPlayer)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.white.opacity(service.canControlPlayer ? 1.0 : 0.35))
+                .foregroundColor(.white.opacity(service.canControlPlayback ? 1.0 : 0.35))
                 .font(.system(size: 15))
-                .disabled(!service.canControlPlayer)
+                .disabled(!service.canControlPlayback)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 14)

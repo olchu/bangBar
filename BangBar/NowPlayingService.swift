@@ -317,7 +317,8 @@ final class NowPlayingService: NSObject, ObservableObject {
 
     @Published private(set) var info = NowPlayingInfo()
     @Published private(set) var isAvailable = false
-    /// Set while `info` shows another app's audio instead of a player; such playback cannot be controlled.
+    /// Set while `info` shows another app's audio instead of a player. Its playback is controlled through the
+    /// system media keys; seeking, shuffle, repeat and favorites need a player.
     @Published private(set) var audioApp: AudioApp?
     /// Separate from `info` so visualizer ticks do not re-render every observer of the service.
     let audioLevels = LiveAudioLevels()
@@ -330,11 +331,23 @@ final class NowPlayingService: NSObject, ObservableObject {
         isAvailable && audioApp == nil
     }
 
+    /// Play, pause, next and previous, which also work for another app through the media keys.
+    var canControlPlayback: Bool {
+        isAvailable
+    }
+
     /// The player's own state, nil without a player; `info` shows it unless another app plays while the player does not.
     private var playerInfo: NowPlayingInfo?
     private let audioActivity = AudioActivityMonitor()
     private let otherAppMedia = OtherAppMedia()
     private var otherAudioObservation: NSKeyValueObservation?
+    /// A play or pause just sent to another app, shown until its audio confirms it. A paused app keeps its stream
+    /// quiet, so without this it would leave Now Playing and could not be resumed from the panel.
+    private var audioAppCommand: (app: AudioApp, isPlaying: Bool)?
+    private var audioAppCommandTimer: Timer?
+    private var lastMonitoredApp: AudioApp?
+    private static let pausedAudioAppHold: TimeInterval = 120
+    private static let resumedAudioAppHold: TimeInterval = 4
 
     private var pollTimer: Timer?
     private var tickTimer: Timer?
@@ -373,6 +386,7 @@ final class NowPlayingService: NSObject, ObservableObject {
     deinit {
         pollTimer?.invalidate()
         tickTimer?.invalidate()
+        audioAppCommandTimer?.invalidate()
         coalescedPoll?.cancel()
         DistributedNotificationCenter.default().removeObserver(self)
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
@@ -395,15 +409,20 @@ final class NowPlayingService: NSObject, ObservableObject {
         workspaceObservers = [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification].map { name in
             workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
                 let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                guard MusicPlayer(bundleIdentifier: app?.bundleIdentifier) != nil else { return }
-                MainActor.assumeIsolated { self?.playerNotificationReceived() }
+                MainActor.assumeIsolated {
+                    if name == NSWorkspace.didTerminateApplicationNotification, let app {
+                        self?.audioAppTerminated(app.processIdentifier)
+                    }
+                    guard MusicPlayer(bundleIdentifier: app?.bundleIdentifier) != nil else { return }
+                    self?.playerNotificationReceived()
+                }
             }
         }
     }
 
     private func observeOtherAudio() {
         audioActivity.onChange = { [weak self] in
-            self?.publish()
+            self?.audioActivityChanged()
         }
         otherAppMedia.onChange = { [weak self] in
             self?.publish()
@@ -411,7 +430,14 @@ final class NowPlayingService: NSObject, ObservableObject {
         // KVO on this key only: UserDefaults.didChangeNotification fires for every write in the app.
         otherAudioObservation = UserDefaults.standard.observe(\.nowPlayingShowsOtherAudio, options: [.initial]) { [weak self] defaults, _ in
             let isEnabled = defaults.nowPlayingShowsOtherAudio
-            DispatchQueue.main.async { self?.audioActivity.isEnabled = isEnabled }
+            DispatchQueue.main.async {
+                self?.audioActivity.isEnabled = isEnabled
+                // Turning the monitor off reports no change when nothing was audible, as during a held pause.
+                if !isEnabled, self?.audioAppCommand != nil {
+                    self?.clearAudioAppCommand()
+                    self?.publish()
+                }
+            }
         }
     }
 
@@ -539,14 +565,59 @@ final class NowPlayingService: NSObject, ObservableObject {
         publish()
     }
 
+    private func audioActivityChanged() {
+        let current = audioActivity.playingApp
+        if let command = audioAppCommand {
+            // A resume ends once any app is heard. A pause ends when the app starts again after its audio stopped,
+            // or when another app starts; while the paused stream merely stays open, the pause holds. Apps compare by
+            // process, because another helper of the same app may take over the audio.
+            let confirmed = command.isPlaying
+                ? current != nil
+                : current.map {
+                    $0.processIdentifier != command.app.processIdentifier || lastMonitoredApp == nil
+                } ?? false
+            if confirmed { clearAudioAppCommand() }
+        }
+        lastMonitoredApp = current
+        publish()
+    }
+
+    private func setAudioAppCommand(_ app: AudioApp, isPlaying: Bool) {
+        audioAppCommand = (app, isPlaying)
+        audioAppCommandTimer?.invalidate()
+        let hold = isPlaying ? Self.resumedAudioAppHold : Self.pausedAudioAppHold
+        audioAppCommandTimer = Timer.scheduledTimer(withTimeInterval: hold, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.clearAudioAppCommand()
+                self?.publish()
+            }
+        }
+        publish()
+    }
+
+    private func audioAppTerminated(_ processIdentifier: pid_t) {
+        guard audioAppCommand?.app.processIdentifier == processIdentifier else { return }
+        clearAudioAppCommand()
+        publish()
+    }
+
+    private func clearAudioAppCommand() {
+        audioAppCommand = nil
+        audioAppCommandTimer?.invalidate()
+        audioAppCommandTimer = nil
+    }
+
     /// A playing player always wins; otherwise another app's audio replaces the paused or missing player.
     private func publish() {
-        let app = playerInfo?.isPlaying == true ? nil : audioActivity.playingApp
+        if playerInfo?.isPlaying == true, audioAppCommand != nil {
+            clearAudioAppCommand()
+        }
+        let app = playerInfo?.isPlaying == true ? nil : audioAppCommand?.app ?? audioActivity.playingApp
         if audioApp != app {
             audioApp = app
             otherAppMedia.track(app)
         }
-        let next = otherAppMedia.info ?? playerInfo ?? NowPlayingInfo()
+        let next = otherAppMedia.info(isPlaying: audioAppCommand?.isPlaying ?? true) ?? playerInfo ?? NowPlayingInfo()
         let available = app != nil || playerInfo != nil
         if isAvailable != available { isAvailable = available }
         if info != next { info = next }
@@ -628,14 +699,28 @@ final class NowPlayingService: NSObject, ObservableObject {
     }
 
     func togglePlayPause() {
+        if let audioApp {
+            if SystemMediaKey.playPause.post() {
+                setAudioAppCommand(audioApp, isPlaying: !info.isPlaying)
+            }
+            return
+        }
         perform({ info, _ in info.isPlaying.toggle() }, script: { $0.playPauseScript })
     }
 
     func nextTrack() {
+        if audioApp != nil {
+            SystemMediaKey.next.post()
+            return
+        }
         perform({ info, _ in info.position = 0 }, script: { $0.nextScript })
     }
 
     func previousTrack() {
+        if audioApp != nil {
+            SystemMediaKey.previous.post()
+            return
+        }
         perform({ info, _ in info.position = 0 }, script: { $0.prevScript })
     }
 

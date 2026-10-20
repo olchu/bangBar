@@ -9,7 +9,7 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 ## What it does
 
 - Thirteen widgets sit on up to two pages, and a two-finger swipe moves between them. You pick which widgets are on, their order and their page.
-- Now Playing controls Apple Music and Spotify, and also shows what a browser or a media player plays: a YouTube video appears with its title, channel and preview image. Sounds of other apps, such as a dictation chime, are ignored.
+- Now Playing controls Apple Music and Spotify, and also shows what a browser or a media player plays: a YouTube video appears with its title, channel and preview image, and play, pause, next and previous work through the system media keys. Sounds of other apps, such as a dictation chime, are ignored.
 - The compact strip stays at the notch while music plays, while the focus timer runs, or while you collect images from the clipboard.
 - Short notices grow out of the notch when you plug in or unplug the charger, when sound moves to AirPods, and when the volume changes. BangBar can also take over the volume keys, so the system volume HUD stops covering the screen.
 - Clipboard history keeps the text and images you copy, with pinned items and image groups, one swipe or click away in the panel.
@@ -115,7 +115,7 @@ Each permission belongs to the features listed next to it; the rest of BangBar w
 | Automation | Reading and controlling Apple Music and Spotify; reading the tab list of Safari and Chromium browsers for the Now Playing preview | No track details; a browser shows its icon instead of a preview |
 | Calendar | Upcoming events in the Clock widget and meeting alerts | No events |
 | Reminders | The Reminders widget | No tasks |
-| Accessibility | The keyboard layout switcher and taking over the volume keys | No layout switching; the system volume HUD stays |
+| Accessibility | The keyboard layout switcher, taking over the volume keys, and the playback buttons for browsers and media players | No layout switching; the system volume HUD stays; those playback buttons do nothing |
 | System Audio Recording | Live playback bars, and noticing that a browser paused even though its audio stream stays open | Animated bars; the compact strip hides a few seconds later after a pause |
 | Camera | The Mirror widget | No mirror |
 | Location (optional) | The Moon widget's real orientation in the sky | You type a city instead |
