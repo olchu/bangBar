@@ -1,6 +1,36 @@
 import CoreGraphics
 import Foundation
 
+/// Follows the album playing in Yandex Music. A track change shows up first in the app's HTTP cache, where it stores
+/// the new album's cover in two sizes at once, and about 10 s later in its play log, which then repeats the current
+/// album every 10 s. The cache gives the change at once; the log stays authoritative and corrects a cache guess,
+/// such as covers cached while browsing albums. Used by one refresh task at a time.
+nonisolated final class YandexMusicTracker: @unchecked Sendable {
+    private var logStamp: Date?
+    private var cacheStamp: Date?
+    private var current: (albumID: String, since: Date)?
+
+    /// Cheap while nothing changes: it compares two modification dates before reading anything.
+    func currentAlbumID() -> String? {
+        let logDate = YandexMusicArtwork.newestLogDate()
+        if logDate != logStamp {
+            logStamp = logDate
+            // Only records newer than the shown album count, so a late record of the previous track cannot undo a change.
+            if let play = YandexMusicArtwork.latestPlay(), current.map({ play.date > $0.since }) ?? true {
+                current = (play.albumID, play.date)
+            }
+        }
+        let cacheDate = YandexMusicArtwork.cacheDirectoryDate()
+        if cacheDate != cacheStamp {
+            cacheStamp = cacheDate
+            if let pair = YandexMusicArtwork.latestCoverPair(), current.map({ pair.date > $0.since }) ?? true {
+                current = (pair.albumID, pair.date)
+            }
+        }
+        return current?.albumID
+    }
+}
+
 /// Yandex Music publishes its artwork only to the system Now Playing, which needs MediaRemote. Its own files still
 /// name the current album: the play log in its IndexedDB records the album of each play, and its HTTP cache holds
 /// that album's cover address. Both formats are undocumented, so anything unexpected yields nil and the icon stays.
@@ -14,18 +44,61 @@ nonisolated enum YandexMusicArtwork {
     private static let cacheKeyBytes = 4 * 1024
     private static let coverSize = "400x400"
 
-    private static let albumPattern = try! NSRegularExpression(pattern: #"albumId"[\s\S](\d+)"#)
+    /// A cover pair counts only while it is fresh; older entries are cache history, not a track change.
+    private static let coverPairWindow: TimeInterval = 60
+    private static let coverPairSizes: Set<String> = ["200x200", "800x800"]
 
-    /// The album of the newest play-log record. Blocks on file reads; call off the main thread.
-    static func currentAlbumID() -> String? {
-        let directory = root.appendingPathComponent("IndexedDB/music-application_desktop_0.indexeddb.leveldb")
-        for log in files(in: directory, withExtension: "log") {
+    private static let logDirectory = root.appendingPathComponent("IndexedDB/music-application_desktop_0.indexeddb.leveldb")
+    private static let cacheDirectory = root.appendingPathComponent("Cache/Cache_Data")
+    /// Each play record holds `timestamp` and, right after it, `albumId`, both as length-prefixed strings.
+    private static let playPattern = try! NSRegularExpression(
+        pattern: #"timestamp"[\s\S](\d{4}-\d\d-\d\dT[\d:.]+Z)[\s\S]{0,4}albumId"[\s\S](\d+)"#
+    )
+    private static let coverKeyPattern = try! NSRegularExpression(
+        pattern: #"https://avatars\.yandex\.net/get-music-content/\d+/[0-9a-f]+\.a\.(\d+)-\d+/(\d+x\d+)"#
+    )
+
+    static func newestLogDate() -> Date? {
+        files(in: logDirectory, withExtension: "log").first.flatMap(modificationDate)
+    }
+
+    static func cacheDirectoryDate() -> Date? {
+        modificationDate(of: cacheDirectory)
+    }
+
+    /// The newest play-log record. Blocks on file reads; call off the main thread.
+    static func latestPlay() -> (albumID: String, date: Date)? {
+        for log in files(in: logDirectory, withExtension: "log") {
             guard let text = tail(of: log, bytes: logTailBytes),
-                  let match = albumPattern.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
-                  let range = Range(match.range(at: 1), in: text) else { continue }
-            return String(text[range])
+                  let match = playPattern.matches(in: text, range: NSRange(text.startIndex..., in: text)).last,
+                  let dateRange = Range(match.range(at: 1), in: text),
+                  let albumRange = Range(match.range(at: 2), in: text),
+                  let date = try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(String(text[dateRange]))
+            else { continue }
+            return (String(text[albumRange]), date)
         }
         return nil
+    }
+
+    /// The newest album whose cover the app just cached in both of the sizes its player loads together.
+    static func latestCoverPair() -> (albumID: String, date: Date)? {
+        var sizes: [String: Set<String>] = [:]
+        var newest: [String: Date] = [:]
+        let cutoff = Date().addingTimeInterval(-coverPairWindow)
+        for entry in files(in: cacheDirectory, withExtension: nil) {
+            guard let date = modificationDate(of: entry), date > cutoff else { break }
+            guard let text = head(of: entry),
+                  let match = coverKeyPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let albumRange = Range(match.range(at: 1), in: text),
+                  let sizeRange = Range(match.range(at: 2), in: text) else { continue }
+            let album = String(text[albumRange])
+            sizes[album, default: []].insert(String(text[sizeRange]))
+            newest[album] = max(newest[album] ?? .distantPast, date)
+        }
+        return newest
+            .filter { coverPairSizes.isSubset(of: sizes[$0.key] ?? []) }
+            .max { $0.value < $1.value }
+            .map { ($0.key, $0.value) }
     }
 
     /// The album's cover from Yandex's public image CDN, at the address the app cached for it.
@@ -40,11 +113,8 @@ nonisolated enum YandexMusicArtwork {
         guard let pattern = try? NSRegularExpression(
             pattern: #"https://avatars\.yandex\.net/get-music-content/\d+/[0-9a-f]+\.a\.\#(albumID)-\d+/"#
         ) else { return nil }
-        for entry in files(in: root.appendingPathComponent("Cache/Cache_Data"), withExtension: nil) {
-            guard let handle = try? FileHandle(forReadingFrom: entry) else { continue }
-            defer { try? handle.close() }
-            guard let data = try? handle.read(upToCount: cacheKeyBytes),
-                  let text = String(data: data, encoding: .isoLatin1),
+        for entry in files(in: cacheDirectory, withExtension: nil) {
+            guard let text = head(of: entry),
                   let match = pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
                   let range = Range(match.range, in: text) else { continue }
             return String(text[range])
@@ -64,6 +134,18 @@ nonisolated enum YandexMusicArtwork {
             }
             .sorted { $0.1 > $1.1 }
             .map(\.0)
+    }
+
+    private static func modificationDate(of url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    /// A cache entry starts with its key, the URL it stores.
+    private static func head(of url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: cacheKeyBytes) else { return nil }
+        return String(data: data, encoding: .isoLatin1)
     }
 
     /// Latin-1 keeps every byte as one character, so ASCII markers inside the binary format stay intact.

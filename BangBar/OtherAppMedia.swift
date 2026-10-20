@@ -9,8 +9,8 @@ final class OtherAppMedia {
     /// Autoplay moves on soon after a page change, so refreshes slow down only once the page has settled.
     private static let settleTime: TimeInterval = 30
     private static let cacheLimit = 8
-    /// Reading Yandex Music's play log is a local file read, so it can follow track changes closely.
-    private static let yandexMusicRefreshInterval: TimeInterval = 4
+    /// A check is two modification dates unless something changed, so it can follow track changes closely.
+    private static let yandexMusicRefreshInterval: TimeInterval = 1
     private static let yandexMusicMissRetry: TimeInterval = 30
 
     /// Called when a refresh changes `info`; `track(_:)` does not call it because its caller reads `info` right after.
@@ -42,6 +42,7 @@ final class OtherAppMedia {
     }
 
     private var app: AudioApp?
+    private let yandexMusicTracker = YandexMusicTracker()
     private var icon: NSImage?
     private var page: WebMedia?
     private var pageChangedAt = Date.distantPast
@@ -131,7 +132,8 @@ final class OtherAppMedia {
     /// An unreadable play log keeps the last cover; an album whose cover is not cached yet shows the app icon,
     /// and its lookup is retried only after `yandexMusicMissRetry`, since each one scans the app's HTTP cache.
     private func yandexMusicPage() async -> WebMedia? {
-        guard let albumID = await Task.detached(priority: .utility, operation: { YandexMusicArtwork.currentAlbumID() }).value
+        let tracker = yandexMusicTracker
+        guard let albumID = await Task.detached(priority: .utility, operation: { tracker.currentAlbumID() }).value
         else { return page }
         let key = "yandex-music:\(albumID)"
         if let cached = cachedPage(key) { return cached }
