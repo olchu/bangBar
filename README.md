@@ -12,7 +12,7 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 - Now Playing controls Apple Music and Spotify. For any other app it shows what plays: a YouTube video in a browser appears with its title, channel and preview image.
 - The compact strip stays at the notch while music plays, while the focus timer runs, or while you collect images from the clipboard.
 - Short notices grow out of the notch when you plug in or unplug the charger, when sound moves to AirPods, and when the volume changes. BangBar can also take over the volume keys, so the system volume HUD stops covering the screen.
-- Clipboard history keeps the text and images you copy, with pinned items and image groups, one click away in the panel.
+- Clipboard history keeps the text and images you copy, with pinned items and image groups, one swipe or click away in the panel.
 - The keyboard layout switcher fixes text typed in the wrong layout, for example `ghbdtn` into `привет`, on a hotkey or as you type.
 - Meeting alerts cover the screen shortly before a calendar event starts and offer a join button when the event has a meeting link.
 
@@ -41,6 +41,19 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 The compact strip shows what is playing; a browser tab shows its own preview. Volume, charging and Bluetooth notices grow out of the notch for a moment and slide back.
 
 ![Compact mode with a YouTube preview and playback bars, and the volume notice under the notch](docs/images/notch-states.png)
+
+### Gestures
+
+With the panel open, two-finger swipes on the trackpad move around it.
+
+- Swipe down to open clipboard history, and up to return to the widgets. The clipboard button in the panel's top left corner does the same.
+- Swipe left or right to switch between page 1 and page 2. The dots at the bottom show the open page; they appear only when page 2 has widgets.
+
+Swipes over a list that scrolls, such as Habits, scroll the list instead. Settings › Widgets › General has Invert page swipe direction; Settings › Clipboard has Swipe navigation, to turn the clipboard swipe off, and Invert swipe direction.
+
+![A two-finger swipe down turns the widget panel into clipboard history; a swipe up brings the widgets back](docs/images/gesture-clipboard.png)
+
+![A two-finger swipe left or right switches between widget page 1 and page 2](docs/images/gesture-pages.png)
 
 ### Reminders
 
