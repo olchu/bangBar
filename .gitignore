@@ -9,3 +9,6 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+
+# Promo video sources (Remotion)
+promo/
