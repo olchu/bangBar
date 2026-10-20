@@ -426,7 +426,7 @@ struct SettingsView: View {
     private func musicWidgetSettings(accentColor: Color) -> some View {
         widgetSpecificSettings(
             widget: .nowPlaying,
-            description: "Choose the player, the compact playback indicator and audio from other apps."
+            description: "Choose the player, the compact playback indicator and audio from browsers and media players."
         ) {
             SettingsCard {
                 VStack(spacing: 0) {
@@ -475,8 +475,8 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
-                        title: "Other apps",
-                        subtitle: "Shows audio from browsers and other apps while the player is not playing.",
+                        title: "Browsers and media players",
+                        subtitle: "Shows what a browser or a video player plays while the music player is not playing.",
                         isOn: $nowPlayingShowsOtherAudio,
                         accentColor: accentColor
                     )

@@ -24,7 +24,7 @@ final class AudioActivityMonitor {
     private var processListListener: AudioObjectPropertyListenerBlock?
     private var outputListeners: [AudioObjectID: AudioObjectPropertyListenerBlock] = [:]
     /// Resolved on a process's first output and kept, because a process object never changes owner.
-    /// nil for daemons, system sounds, players and BangBar.
+    /// nil for daemons, system sounds and every app outside `mediaApps`.
     private var owners: [AudioObjectID: AudioApp?] = [:]
     private var runningProcesses: Set<AudioObjectID> = []
     /// Apps whose output is running now, by bundle ID.
@@ -199,13 +199,31 @@ final class AudioActivityMonitor {
         var isSilent = false
     }
 
+    /// Only apps that play media are shown, so system-wide sounds of other apps (a dictation chime,
+    /// a messenger alert) never open Now Playing. Music and Spotify have their own player integration.
+    private static let mediaApps: Set<String> = [
+        // Browsers
+        "com.apple.Safari", "com.apple.SafariTechnologyPreview",
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
+        "org.chromium.Chromium", "com.brave.Browser", "com.microsoft.edgemac", "company.thebrowser.Browser",
+        "company.thebrowser.dia", "com.vivaldi.Vivaldi", "ru.yandex.desktop.yandex-browser",
+        "com.operasoftware.Opera", "com.operasoftware.OperaGX", "org.mozilla.firefox",
+        "org.mozilla.firefoxdeveloperedition", "org.mozilla.nightly", "app.zen-browser.zen",
+        "com.kagi.kagimacOS", "com.duckduckgo.macos.browser",
+        // Video and audio players
+        "com.apple.QuickTimePlayerX", "com.apple.TV", "com.apple.podcasts", "com.apple.iBooksX",
+        "com.colliderli.iina", "org.videolan.vlc", "io.mpv", "com.firecore.infuse", "tv.plex.desktop",
+        "com.eltima.elmedia6", "com.eltima.elmedia6.mas",
+        // Streaming apps
+        "ru.yandex.desktop.music", "com.tidal.desktop", "com.deezer.deezer-desktop"
+    ]
+
     private static func resolveOwner(of process: AudioObjectID) -> AudioApp? {
         guard let pid = SystemAudio.pid(of: process), pid > 0,
               let audioBundleID = SystemAudio.bundleIdentifier(of: process), !audioBundleID.isEmpty,
               let app = regularApp(owning: pid, bundleIdentifier: audioBundleID),
               let appBundleID = app.bundleIdentifier,
-              MusicPlayer(bundleIdentifier: appBundleID) == nil,
-              appBundleID != Bundle.main.bundleIdentifier else { return nil }
+              mediaApps.contains(appBundleID) else { return nil }
         return AudioApp(
             bundleIdentifier: appBundleID,
             name: app.localizedName ?? appBundleID,

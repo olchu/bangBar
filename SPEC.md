@@ -292,18 +292,19 @@ Album artwork should read visually as one continuous element between compact and
 
 ### Audio From Other Apps
 
-Shows audio from any app (YouTube in a browser, a video player, a voice message) in the Now Playing widget and compact mode, not only Spotify and Music.
+Shows audio from browsers and media players (YouTube in a browser, a film in IINA) in the Now Playing widget and compact mode, not only Spotify and Music.
 
 - A playing Spotify or Music track always wins. A paused player is replaced while another app plays and comes back when that audio stops.
 - Detection uses public Core Audio process objects only (`kAudioHardwarePropertyProcessObjectList`, `kAudioProcessPropertyIsRunningOutput`, `kAudioProcessPropertyPID`, `kAudioProcessPropertyBundleID`) in `AudioActivityMonitor`. No permission is needed and nothing is polled: listeners on the process list and on each process's `kAudioProcessPropertyIsRunning` drive it, and each event re-reads `IsRunningOutput` of that process. Core Audio does not notify `IsRunningOutput` changes itself (verified on macOS 27), so listening to it alone misses every stop.
-- Audio usually comes from a helper process. Its owning app is, in order: the process itself when it is a regular app; the first regular app among its parent processes (Chrome, Firefox and Electron helpers); a running regular app whose bundle ID prefixes the helper's (`com.google.Chrome.helper`); a running regular app whose name starts the process name (WebKit's GPU process is named after its app, e.g. `Safari Graphics and Media`; the longest name wins). Processes without an owning app (system sounds, daemons), BangBar, Spotify and Music are ignored.
+- Audio usually comes from a helper process. Its owning app is, in order: the process itself when it is a regular app; the first regular app among its parent processes (Chrome, Firefox and Electron helpers); a running regular app whose bundle ID prefixes the helper's (`com.google.Chrome.helper`); a running regular app whose name starts the process name (WebKit's GPU process is named after its app, e.g. `Safari Graphics and Media`; the longest name wins). Processes without an owning app (system sounds, daemons) are ignored.
+- Only media apps count: browsers (Safari, Chrome and its channels, Chromium, Brave, Edge, Arc, Dia, Vivaldi, Yandex Browser, Opera, Firefox, Zen, Orion, DuckDuckGo), players (QuickTime Player, TV, Podcasts, Books, IINA, VLC, mpv, Infuse, Plex, Elmedia) and streaming apps (Yandex Music, Tidal, Deezer), matched by bundle ID in `AudioActivityMonitor.mediaApps`. Sounds from any other app, such as a dictation tool's chime or a messenger alert, never open Now Playing. Spotify and Music are not in the list because they have their own integration.
 - Browsers keep their output stream running for 0.3–6 s after a pause, and may not close it at all between quick pauses (measured on Safari and Chrome). So an app whose output has run past the start delay also gets a `SilenceDetector` (a notification sound never does): a private process tap (`ProcessAudioTap`, the same helper the live bars use) on its audio bundle ID, with 4096-frame buffers (about 12 wake-ups a second), created and destroyed on the detector's own queue because both block on coreaudiod. It lives until the app's output stops. Once the app has been heard, 0.5 s of exact silence (peak ≤ 1e-6; dither in quiet audio is about 3e-5) counts as stopped, and sound after that counts as a new start. The tap needs the System Audio Recording permission, which macOS asks for the first time another app plays; without it taps deliver zeros, the app is never "heard", and only the running flag counts.
 - Output must run for 0.5 s before the app is shown, so short notification sounds do not open compact mode (longer ones and voice messages may, briefly). The app stays shown until its output has been stopped for 1 s; output that restarts within that time keeps it shown without a new start delay, which bridges the gap between videos. With several apps playing, the one that started last is shown.
 - Display: for a browser, the playing tab's media (see "Browser Tab Preview"); otherwise, or until the lookup finishes, title is the app name, subtitle `Playing audio`, artwork is the app icon (compact, expanded and hero). No progress bar and no favorite corner. Playback controls are dimmed and disabled: without MediaRemote there is no public way to control another app's playback. Clicking the artwork brings the app forward through Launch Services (`NSWorkspace.open`), because `activate()` is ignored while BangBar is not active.
 - Live bars tap the audio process's bundle ID (for example every `com.google.Chrome.helper` process), the same way as for players.
-- Known limitation: an app that keeps its audio stream running while silent (some pages using Web Audio, call apps) counts as playing.
+- Known limitation: without the System Audio Recording permission, a browser page that keeps its audio stream running while silent (some pages using Web Audio) counts as playing.
 - Known limitation: `IsRunning` covers input and output together, so while a process keeps its microphone input running (a call, dictation), its output starting or stopping is not noticed until the input stops.
-- Settings → Widgets → Now Playing: `Other apps` toggle (`nowPlayingShowsOtherAudio`, default on), observed through KVO on that key only. Turning it off removes the Core Audio listeners.
+- Settings → Widgets → Now Playing: `Browsers and media players` toggle (`nowPlayingShowsOtherAudio`, default on), observed through KVO on that key only. Turning it off removes the Core Audio listeners.
 
 #### Browser Tab Preview
 
@@ -376,7 +377,7 @@ When the playing app is a scriptable browser, Now Playing shows the playing page
 15. ✅ Keyboard Layout Switcher, Phase 1 (manual conversion by hotkey) — see "Keyboard Layout Switcher" below.
 16. ✅ Keyboard Layout Switcher, Phase 2 (automatic conversion).
 17. ⬜ Work through the Refactoring Backlog (P1 items first) — see "Refactoring Backlog" below.
-18. ✅ Now Playing shows audio from other apps (browsers, video players) — see "Audio From Other Apps".
+18. ✅ Now Playing shows audio from browsers and media players — see "Audio From Other Apps".
 19. ⬜ File Shelf — later, together with Mirror photo capture and `NotionWidget`. See "FileShelf" below.
 
 ### FileShelf

@@ -9,7 +9,7 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 ## What it does
 
 - Thirteen widgets sit on up to two pages, and a two-finger swipe moves between them. You pick which widgets are on, their order and their page.
-- Now Playing controls Apple Music and Spotify. For any other app it shows what plays: a YouTube video in a browser appears with its title, channel and preview image.
+- Now Playing controls Apple Music and Spotify, and also shows what a browser or a media player plays: a YouTube video appears with its title, channel and preview image. Sounds of other apps, such as a dictation chime, are ignored.
 - The compact strip stays at the notch while music plays, while the focus timer runs, or while you collect images from the clipboard.
 - Short notices grow out of the notch when you plug in or unplug the charger, when sound moves to AirPods, and when the volume changes. BangBar can also take over the volume keys, so the system volume HUD stops covering the screen.
 - Clipboard history keeps the text and images you copy, with pinned items and image groups, one swipe or click away in the panel.
@@ -20,7 +20,7 @@ BangBar is a native macOS app written in Swift and SwiftUI. It needs macOS 26.4 
 
 | Widget | Shows |
 |---|---|
-| Now Playing | Track, artwork and playback controls; audio from other apps |
+| Now Playing | Track, artwork and playback controls; audio from browsers and media players |
 | Clock | Time, date and today's upcoming calendar events |
 | Reminders | Open tasks from a list in the Reminders app, overdue first; add and complete tasks |
 | Habits | Daily routines with streaks and a completion history |
