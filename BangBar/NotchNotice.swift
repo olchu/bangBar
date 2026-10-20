@@ -46,6 +46,7 @@ final class NotchNoticeCenter {
     private static let hideAnimationDuration: TimeInterval = 0.22
 
     var isSuppressed: () -> Bool = { false }
+    var compactPanelFrame: () -> NSRect? = { nil }
     private let state = NotchNoticeState()
     private var window: NSPanel?
     private var hideWorkItem: DispatchWorkItem?
@@ -54,7 +55,7 @@ final class NotchNoticeCenter {
     /// Without a `geometry` the notice grows out of the notch, on the screen that has one.
     func present(_ notice: NotchNotice, geometry: NotchNoticeGeometry? = nil, overridesSuppression: Bool = false) {
         guard overridesSuppression || !isSuppressed(),
-              let geometry = geometry ?? Self.notchScreen.map({ NotchNoticeGeometry(screen: $0, contentWidth: notice.contentWidth) })
+              let geometry = geometry ?? defaultGeometry(for: notice)
         else { return }
         let window = window ?? makeWindow()
         self.window = window
@@ -86,6 +87,14 @@ final class NotchNoticeCenter {
         let orderOut = DispatchWorkItem { [weak self] in self?.window?.orderOut(nil) }
         orderOutWorkItem = orderOut
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hideAnimationDuration, execute: orderOut)
+    }
+
+    /// Below the compact strip when it is shown, otherwise out of the notch.
+    private func defaultGeometry(for notice: NotchNotice) -> NotchNoticeGeometry? {
+        if let compact = compactPanelFrame() {
+            return NotchNoticeGeometry(below: compact, contentWidth: notice.contentWidth)
+        }
+        return Self.notchScreen.map { NotchNoticeGeometry(screen: $0, contentWidth: notice.contentWidth) }
     }
 
     private static var notchScreen: NSScreen? {
@@ -142,10 +151,15 @@ struct NotchNoticeGeometry: Equatable {
     var bodyWidth: CGFloat = 0
     /// Next to the caret the body grows away from the text line, which is upward when it sits above the line.
     var growsUpward = false
+    /// Under the compact strip the body continues the strip: same width, and wedges fill its rounded bottom corners.
+    var compactCornerRadius: CGFloat?
     var windowFrame = NSRect.zero
 
     var size: CGSize {
-        CGSize(width: max(bodyWidth, stemWidth + Self.fillet * 2), height: stemHeight + Self.bodyHeight)
+        if compactCornerRadius != nil {
+            return windowFrame.size
+        }
+        return CGSize(width: max(bodyWidth, stemWidth + Self.fillet * 2), height: stemHeight + Self.bodyHeight)
     }
 
     init() {}
@@ -159,6 +173,15 @@ struct NotchNoticeGeometry: Equatable {
         let minimumWidth = stemWidth > 0 ? stemWidth + (Self.fillet + Self.cornerRadius) * 2 : 0
         bodyWidth = min(max(contentWidth, minimumWidth), max(Self.maximumBodyWidth, minimumWidth))
         windowFrame = PanelLayout.topCenteredFrame(width: size.width, height: size.height, on: screen)
+    }
+
+    /// Directly under the compact strip, as wide as its body; longer text truncates instead of widening it.
+    init(below compact: NSRect, contentWidth: CGFloat) {
+        let body = NotchPanelShape().body(for: compact.size)
+        stemHeight = compact.height
+        bodyWidth = compact.width - body.sideInset * 2
+        compactCornerRadius = body.bottomRadius
+        windowFrame = NSRect(x: compact.minX, y: compact.minY - Self.bodyHeight, width: compact.width, height: compact.height + Self.bodyHeight)
     }
 
     /// Above the caret's field (or just its line in a tall editor) with the replacement ending over the caret,
@@ -205,7 +228,7 @@ private struct NotchNoticeView: View {
         ZStack(alignment: .top) {
             shape.fill(Color.black)
             // Away from the notch the black body needs an edge to stand out against dark windows.
-            if geometry.stemWidth == 0 {
+            if geometry.stemWidth == 0, geometry.compactCornerRadius == nil {
                 shape.stroke(Color.white.opacity(0.14), lineWidth: 1)
                     .opacity(state.isRevealed ? 1 : 0)
             }
@@ -307,6 +330,32 @@ private struct NotchNoticeShape: Shape {
         let bodyLeft = rect.midX - geometry.bodyWidth / 2
         let bodyRight = rect.midX + geometry.bodyWidth / 2
         let radius = min(NotchNoticeGeometry.cornerRadius, bodyHeight / 2)
+
+        if let cornerRadius = geometry.compactCornerRadius {
+            // The strip's bottom corners curve inward from its sides; the wedges between those curves and the body's
+            // square top corners make strip and body one shape. They grow with the body, so nothing shows at rest.
+            // Their curves run a little inside the strip's, so the strip's anti-aliased edge leaves no seam.
+            let wedge = min(cornerRadius, bodyHeight)
+            let overlap = min(2, wedge / 2)
+            var path = Path()
+            path.move(to: CGPoint(x: bodyLeft, y: top - wedge))
+            path.addLine(to: CGPoint(x: bodyLeft, y: bottom - radius))
+            path.addQuadCurve(to: CGPoint(x: bodyLeft + radius, y: bottom), control: CGPoint(x: bodyLeft, y: bottom))
+            path.addLine(to: CGPoint(x: bodyRight - radius, y: bottom))
+            path.addQuadCurve(to: CGPoint(x: bodyRight, y: bottom - radius), control: CGPoint(x: bodyRight, y: bottom))
+            path.addLine(to: CGPoint(x: bodyRight, y: top - wedge))
+            path.addQuadCurve(
+                to: CGPoint(x: bodyRight - wedge, y: top - overlap),
+                control: CGPoint(x: bodyRight - overlap, y: top - overlap)
+            )
+            path.addLine(to: CGPoint(x: bodyLeft + wedge, y: top - overlap))
+            path.addQuadCurve(
+                to: CGPoint(x: bodyLeft, y: top - wedge),
+                control: CGPoint(x: bodyLeft + overlap, y: top - overlap)
+            )
+            path.closeSubpath()
+            return path
+        }
 
         guard geometry.stemWidth > 0 else {
             let bodyTop = geometry.growsUpward ? rect.maxY - bodyHeight : top

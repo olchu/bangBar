@@ -38,6 +38,11 @@ class HoverPanel: NSPanel {
         isVisible && state.isExpanded && !state.isCompact
     }
 
+    /// The compact strip's frame while it is shown, so a notice can continue it instead of floating below it.
+    var compactPanelFrame: NSRect? {
+        isVisible && state.isCompact && !state.isExpanded ? frame : nil
+    }
+
     var isAnimatingFrame: Bool {
         frameAnimationTimer != nil
     }
