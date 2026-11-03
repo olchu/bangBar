@@ -32,6 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         calendarAlerts.start()
         notchNotices.isSuppressed = { [weak self] in self?.hoverPanel?.isExpandedMode == true }
         notchNotices.compactPanelFrame = { [weak self] in self?.hoverPanel?.compactPanelFrame }
+        notchNotices.setCompactStripCovered = { [weak self] in self?.hoverPanel?.setCompactContentCovered($0) }
         keyboardSwitcher.onAutoSwitch = { [weak self] original, replacement in
             guard let self, UserDefaults.standard.bool(forKey: BangBarSettings.Key.keyboardSwitcherShowsNotice) else { return }
             keyboardSwitchNotice.show(original: original, replacement: replacement)

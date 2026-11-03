@@ -75,6 +75,11 @@ private enum NotchNoticePresentation: Equatable {
         }
     }
 
+    var growsFromStrip: Bool {
+        if case .beside(let geometry, _) = self { return geometry.growsFromStrip }
+        return false
+    }
+
     /// Notices with the same shape only swap their content, without growing out of the notch again.
     func hasSameShape(as other: Self?) -> Bool {
         switch (self, other) {
@@ -89,33 +94,49 @@ private enum NotchNoticePresentation: Equatable {
 /// shown while `isSuppressed` (the expanded panel already shows the same information). A separate click-through
 /// window, so a notice never takes part in the hover panel's lifecycle.
 final class NotchNoticeCenter {
-    private static let hideAnimationDuration: TimeInterval = 0.22
+    private static let hideAnimationDuration: TimeInterval = 0.16
+    private static let revealAnimation = Animation.spring(response: 0.36, dampingFraction: 0.76)
 
     var isSuppressed: () -> Bool = { false }
     var compactPanelFrame: () -> NSRect? = { nil }
+    /// Hides the compact strip's artwork and indicator while a notice takes their places, and brings them back.
+    var setCompactStripCovered: (Bool) -> Void = { _ in }
     private let state = NotchNoticeState()
     private var currentNotice: NotchNotice?
-    private var window: NSPanel?
+    private lazy var window = makeWindow()
+    private var coversStrip = false
+    private var revealWorkItem: DispatchWorkItem?
     private var hideWorkItem: DispatchWorkItem?
     private var orderOutWorkItem: DispatchWorkItem?
 
     func present(_ notice: NotchNotice, overridesSuppression: Bool = false) {
         guard overridesSuppression || !isSuppressed(), let presentation = presentation(for: notice) else { return }
-        let window = window ?? makeWindow()
-        self.window = window
-
         orderOutWorkItem?.cancel()
         currentNotice = notice
-        // Held volume keys update the visible notice many times a second; only the content changes then.
-        if state.isRevealed, presentation.hasSameShape(as: state.presentation) {
-            state.presentation = presentation
-        } else {
+        let isShapeChange = !presentation.hasSameShape(as: state.presentation)
+        // Also while the previous notice is still shrinking, so it reshapes into the new one instead of jumping.
+        if isShapeChange, window.isVisible {
             window.setFrame(presentation.windowFrame, display: true)
-            window.orderFrontRegardless()
-            // Inside the animation a visible notice reshapes into the new one instead of jumping to it.
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            withAnimation(Self.revealAnimation) {
                 state.presentation = presentation
-                state.isRevealed = true
+            }
+        } else {
+            // Held volume keys update the visible notice many times a second, and a reveal waiting for the strip
+            // shows the latest notice; only the content changes then.
+            state.presentation = presentation
+        }
+        if coversStrip, !presentation.growsFromStrip {
+            coverStrip(false)
+        }
+        if !state.isRevealed, revealWorkItem == nil {
+            // Over the compact strip its artwork and indicator leave first, so they never show through.
+            if presentation.growsFromStrip, !coversStrip {
+                coverStrip(true)
+                let reveal = DispatchWorkItem { [weak self] in self?.reveal() }
+                revealWorkItem = reveal
+                DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayout.compactContentExitDuration, execute: reveal)
+            } else {
+                reveal()
             }
         }
 
@@ -126,19 +147,60 @@ final class NotchNoticeCenter {
     }
 
     func dismiss(where matches: (NotchNotice) -> Bool = { _ in true }) {
-        guard state.isRevealed, let notice = currentNotice, matches(notice) else { return }
+        guard let notice = currentNotice, matches(notice) else { return }
         hideWorkItem?.cancel()
+        if let revealWorkItem {
+            revealWorkItem.cancel()
+            self.revealWorkItem = nil
+            finishHiding()
+            return
+        }
+        guard state.isRevealed else { return }
         // The strip may have appeared or gone while the notice was up; it shrinks into whatever is there now.
         if case .beside(var geometry, let content) = state.presentation {
             geometry.conceal(into: compactPanelFrame())
             state.presentation = .beside(geometry, content)
+            if geometry.growsFromStrip, !coversStrip {
+                coverStrip(true)
+            }
         }
-        withAnimation(.easeIn(duration: Self.hideAnimationDuration)) {
+        withAnimation(.easeInOut(duration: Self.hideAnimationDuration)) {
             state.isRevealed = false
         }
-        let orderOut = DispatchWorkItem { [weak self] in self?.window?.orderOut(nil) }
+        let orderOut = DispatchWorkItem { [weak self] in self?.finishHiding() }
         orderOutWorkItem = orderOut
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hideAnimationDuration, execute: orderOut)
+    }
+
+    /// Orders the window in with the concealed shape drawn, then grows it on the next pass, so even the first
+    /// notice has a shape to grow from. Both steps stay cancellable through `revealWorkItem`.
+    private func reveal() {
+        guard let presentation = state.presentation else { return }
+        window.setFrame(presentation.windowFrame, display: false)
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        window.orderFrontRegardless()
+        let grow = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            revealWorkItem = nil
+            withAnimation(Self.revealAnimation) {
+                self.state.isRevealed = true
+            }
+        }
+        revealWorkItem = grow
+        DispatchQueue.main.async(execute: grow)
+    }
+
+    private func finishHiding() {
+        window.orderOut(nil)
+        if coversStrip {
+            coverStrip(false)
+        }
+    }
+
+    private func coverStrip(_ covers: Bool) {
+        coversStrip = covers
+        setCompactStripCovered(covers)
     }
 
     /// A layout switch hangs at its own geometry; every other notice sits beside the notch, growing out of the
@@ -393,9 +455,6 @@ private struct StripNoticeView: View {
         let shape = TopCenteredShape(base: geometry.shape, size: isRevealed ? geometry.size : geometry.concealedSize)
         ZStack(alignment: .top) {
             shape.fill(Color.black)
-                // Over the compact strip the body fades in and out, so the artwork under it dissolves instead of
-                // vanishing at once, and comes back the same way.
-                .opacity(isRevealed || !geometry.growsFromStrip ? 1 : 0)
 
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
@@ -403,21 +462,25 @@ private struct StripNoticeView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(accentColor)
                         .frame(width: NotchStripGeometry.symbolWidth, alignment: .leading)
+                        .focusReveal(isShown: isRevealed, hiddenScale: 0.6, delay: 0.02)
                     Spacer(minLength: 0)
                     Text(content.value)
                         .font(Font(NotchStripGeometry.sideFont))
                         .foregroundStyle(Color.white)
                         .lineLimit(1)
                         .frame(maxWidth: geometry.sideWidth, alignment: .trailing)
+                        .focusReveal(isShown: isRevealed, hiddenScale: 0.6, delay: 0.02)
                 }
                 .frame(height: geometry.notchHeight)
                 footer
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.bottom, NotchStripGeometry.footerBottomInset)
+                    .focusReveal(isShown: isRevealed, hiddenScale: 0.6, delay: 0.02)
             }
             .padding(.horizontal, NotchStripGeometry.sidePadding)
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .opacity(isRevealed ? 1 : 0)
+            // One blur for all items: it only lives as long as the notice, but held volume keys redraw it often.
+            .blur(radius: isRevealed ? 0 : 6)
             .clipShape(shape)
         }
         .frame(width: geometry.windowFrame.width, height: geometry.windowFrame.height, alignment: .top)

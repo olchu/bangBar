@@ -136,6 +136,9 @@ enum PanelLayout {
     }
 
     static let compactHorizontalPadding: CGFloat = 50
+    /// The compact strip's content leaves this fast when a notice beside the notch takes its place; the notice
+    /// waits exactly this long before growing over the strip.
+    static let compactContentExitDuration: TimeInterval = 0.08
 
     static func compactWidth(for notchWidth: CGFloat) -> CGFloat {
         min(max(notchWidth + compactNotchSidePadding * 2, compactMinimumWidth), compactMaximumWidth)
@@ -171,6 +174,8 @@ final class PanelState: ObservableObject {
     @Published var compactIndicatorRevealAllowed = true
     @Published var compactArtworkRevealAnimated = true
     @Published var artworkHeroProgress: CGFloat?
+    /// A notice beside the notch is showing in the compact strip's place.
+    @Published var compactContentCovered = false
     @Published var showsClipboardHistory = false
     @Published var clipboardFilter: ClipboardHistoryFilter = .all
     @Published var topSafeInset = PanelLayout.topBarHeight
@@ -181,5 +186,17 @@ extension NSScreen {
     /// The screen under `point` (in global coordinates), falling back to the main screen.
     static func containing(_ point: NSPoint) -> NSScreen? {
         screens.first { NSMouseInRect(point, $0.frame, false) } ?? main
+    }
+}
+
+extension View {
+    /// Scales up from `hiddenScale` and fades in when shown; leaves faster than it arrives.
+    func focusReveal(isShown: Bool, hiddenScale: CGFloat, delay: TimeInterval = 0, exitDuration: TimeInterval = 0.1) -> some View {
+        scaleEffect(isShown ? 1 : hiddenScale)
+            .opacity(isShown ? 1 : 0)
+            .animation(
+                isShown ? .spring(response: 0.34, dampingFraction: 0.8).delay(delay) : .easeIn(duration: exitDuration),
+                value: isShown
+            )
     }
 }

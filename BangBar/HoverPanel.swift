@@ -46,6 +46,10 @@ class HoverPanel: NSPanel {
         return compactFrame(on: screen)
     }
 
+    func setCompactContentCovered(_ covered: Bool) {
+        state.compactContentCovered = covered
+    }
+
     var isAnimatingFrame: Bool {
         frameAnimationTimer != nil
     }

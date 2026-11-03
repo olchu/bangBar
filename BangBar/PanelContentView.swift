@@ -53,6 +53,11 @@ struct PanelContentView: View {
 
                 if state.isCompact {
                     compactWidget
+                        .focusReveal(
+                            isShown: !state.compactContentCovered,
+                            hiddenScale: 0.85,
+                            exitDuration: PanelLayout.compactContentExitDuration
+                        )
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     ZStack {
