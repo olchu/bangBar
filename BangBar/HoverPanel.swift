@@ -38,9 +38,12 @@ class HoverPanel: NSPanel {
         isVisible && state.isExpanded && !state.isCompact
     }
 
-    /// The compact strip's frame while it is shown, so a notice can continue it instead of floating below it.
+    /// The compact strip's frame while it is shown, so a notice beside the notch can grow out of it.
+    /// The settled frame rather than `frame`, which mid-animation is still the expanded panel or the notch.
     var compactPanelFrame: NSRect? {
-        isVisible && state.isCompact && !state.isExpanded ? frame : nil
+        guard isVisible, state.isCompact, !state.isExpanded, !isHiding, let screen = screen ?? NSScreen.main
+        else { return nil }
+        return compactFrame(on: screen)
     }
 
     var isAnimatingFrame: Bool {
@@ -458,26 +461,16 @@ class HoverPanel: NSPanel {
     }
 
     private func compactFrame(on screen: NSScreen) -> NSRect {
-        PanelLayout.topCenteredFrame(width: compactWidth(on: screen), height: compactHeight(on: screen), on: screen)
+        PanelLayout.topCenteredFrame(width: compactWidth(on: screen), height: PanelLayout.compactHeight(on: screen), on: screen)
     }
 
     private func concealedCompactFrame(on screen: NSScreen) -> NSRect {
-        PanelLayout.topCenteredFrame(width: concealedCompactWidth(on: screen), height: compactHeight(on: screen), on: screen)
-    }
-
-    private func compactHeight(on screen: NSScreen) -> CGFloat {
-        PanelLayout.notchRect(on: screen)?.height ?? NSStatusBar.system.thickness
+        PanelLayout.topCenteredFrame(width: PanelLayout.concealedCompactWidth(on: screen), height: PanelLayout.compactHeight(on: screen), on: screen)
     }
 
     private func compactWidth(on screen: NSScreen) -> CGFloat {
-        let baseWidth = PanelLayout.notchRect(on: screen).map { PanelLayout.compactWidth(for: $0.width) }
-            ?? PanelLayout.compactMinimumWidth
+        let baseWidth = PanelLayout.compactWidth(on: screen)
         return clipboardHistory.isCollectingImages ? baseWidth + 110 : baseWidth
-    }
-
-    private func concealedCompactWidth(on screen: NSScreen) -> CGFloat {
-        guard let notch = PanelLayout.notchRect(on: screen) else { return 1 }
-        return max(notch.width - 8, 1)
     }
 
     private func enterCompactMode() {

@@ -140,6 +140,20 @@ enum PanelLayout {
     static func compactWidth(for notchWidth: CGFloat) -> CGFloat {
         min(max(notchWidth + compactNotchSidePadding * 2, compactMinimumWidth), compactMaximumWidth)
     }
+
+    static func compactWidth(on screen: NSScreen) -> CGFloat {
+        notchRect(on: screen).map { compactWidth(for: $0.width) } ?? compactMinimumWidth
+    }
+
+    static func compactHeight(on screen: NSScreen) -> CGFloat {
+        notchRect(on: screen)?.height ?? NSStatusBar.system.thickness
+    }
+
+    /// Hidden behind the notch; the compact strip grows out of this and shrinks back into it.
+    static func concealedCompactWidth(on screen: NSScreen) -> CGFloat {
+        guard let notch = notchRect(on: screen) else { return 1 }
+        return max(notch.width - 8, 1)
+    }
 }
 
 final class PanelState: ObservableObject {

@@ -2,20 +2,16 @@ import SwiftUI
 
 struct NotchPanelShape: Shape {
     var topRadius: CGFloat = PanelLayout.panelTopRadius
-    var bottomRadius: CGFloat = 26
-    var topEarInset: CGFloat = PanelLayout.panelTopEarInset
+    static let defaultBottomRadius: CGFloat = 26
 
-    /// How far the vertical sides sit inside a frame of `size`, and the radius of the bottom corners.
-    func body(for size: CGSize) -> (sideInset: CGFloat, bottomRadius: CGFloat) {
-        let topRadius = min(topRadius, min(size.width, size.height) / 2)
-        return (min(topEarInset, size.width / 4) + topRadius, min(bottomRadius, min(size.width, size.height) / 2))
-    }
+    var bottomRadius: CGFloat = defaultBottomRadius
+    var topEarInset: CGFloat = PanelLayout.panelTopEarInset
 
     func path(in rect: CGRect) -> Path {
         var p = Path()
 
         let topRadius = min(topRadius, min(rect.width, rect.height) / 2)
-        let bottomRadius = body(for: rect.size).bottomRadius
+        let bottomRadius = min(bottomRadius, min(rect.width, rect.height) / 2)
         let topEarInset = min(topEarInset, rect.width / 4)
         let minX = rect.minX + topEarInset
         let maxX = rect.maxX - topEarInset

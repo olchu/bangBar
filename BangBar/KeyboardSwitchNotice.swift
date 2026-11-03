@@ -20,12 +20,11 @@ final class KeyboardSwitchNoticeController {
             let caret = FocusedTextElement.caret()
             DispatchQueue.main.async {
                 guard let self, self.generation == request else { return }
-                let notice = NotchNotice.layoutSwitch(original: original, replacement: replacement)
-                let contentWidth = notice.contentWidth
+                let contentWidth = NotchNoticeGeometry.contentWidth(original: original, replacement: replacement)
                 let geometry = NotchNoticeGeometry(caret: caret, contentWidth: contentWidth)
                     ?? NSScreen.main.map { NotchNoticeGeometry(screen: $0, contentWidth: contentWidth) }
                 guard let geometry else { return }
-                self.center.present(notice, geometry: geometry)
+                self.center.present(.layoutSwitch(original: original, replacement: replacement, geometry: geometry))
             }
         }
     }
