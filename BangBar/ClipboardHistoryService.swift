@@ -767,6 +767,9 @@ final class ClipboardHistoryService: ObservableObject {
             items = decoded.filter { item in
                 item.kind == .text || imageFileExists(for: item)
             }
+            // A decodable index means any past migration was persisted.
+            try? FileManager.default.removeItem(at: legacyIndexURL)
+            removeUnreferencedImages()
         } else {
             migrateLegacyHistory()
         }
@@ -810,6 +813,26 @@ final class ClipboardHistoryService: ObservableObject {
             ),
             at: 0
         )
+    }
+
+    /// Only called once the index decoded: an unreadable index must not read as "no image is referenced".
+    private func removeUnreferencedImages() {
+        let referencedFileNames = Set(items.compactMap(\.imageFileName))
+        let imagesDirectory = imagesDirectory
+        persistenceQueue.async {
+            let fileManager = FileManager.default
+            guard let files = try? fileManager.contentsOfDirectory(
+                at: imagesDirectory,
+                includingPropertiesForKeys: [.contentModificationDateKey]
+            ) else { return }
+            // A capture already running here, or in another copy of the app, may have written its image before indexing it.
+            let cutoff = Date().addingTimeInterval(-60)
+            for file in files where file.pathExtension == "png" && !referencedFileNames.contains(file.lastPathComponent) {
+                guard let modified = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                      modified < cutoff else { continue }
+                try? fileManager.removeItem(at: file)
+            }
+        }
     }
 
     private func imageFileExists(for item: ClipboardHistoryItem) -> Bool {
