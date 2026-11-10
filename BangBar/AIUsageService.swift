@@ -27,6 +27,8 @@ private enum AIUsageFetchOutcome {
     case notSignedIn
     case usage(AIProviderUsage)
     case transientFailure
+    case rateLimited(retryAfter: TimeInterval?)
+    case skipped
 }
 
 @MainActor
@@ -39,27 +41,47 @@ final class AIUsageService: ObservableObject {
     @Published private(set) var codex: AIProviderUsage?
     @Published private(set) var claude: AIProviderUsage?
 
+    /// Polling a 429'd usage endpoint every retryInterval keeps extending the ban indefinitely,
+    /// so each provider is left alone until its Retry-After has passed.
+    private var codexBlockedUntil: Date?
+    private var claudeBlockedUntil: Date?
+
     @discardableResult
     func refresh() async -> Bool {
-        async let codexOutcome = Self.fetchCodexUsage()
-        async let claudeOutcome = Self.fetchClaudeUsage()
+        let now = Date()
+        let skipCodex = codexBlockedUntil.map { now < $0 } ?? false
+        let skipClaude = claudeBlockedUntil.map { now < $0 } ?? false
 
-        let codexNeedsRetry = apply(await codexOutcome, to: \.codex)
-        let claudeNeedsRetry = apply(await claudeOutcome, to: \.claude)
+        async let codexOutcome = skipCodex ? .skipped : Self.fetchCodexUsage()
+        async let claudeOutcome = skipClaude ? .skipped : Self.fetchClaudeUsage()
+
+        let codexNeedsRetry = apply(await codexOutcome, to: \.codex, blockedUntil: \.codexBlockedUntil)
+        let claudeNeedsRetry = apply(await claudeOutcome, to: \.claude, blockedUntil: \.claudeBlockedUntil)
 
         return codexNeedsRetry || claudeNeedsRetry
     }
 
-    private func apply(_ outcome: AIUsageFetchOutcome, to keyPath: ReferenceWritableKeyPath<AIUsageService, AIProviderUsage?>) -> Bool {
+    private func apply(
+        _ outcome: AIUsageFetchOutcome,
+        to keyPath: ReferenceWritableKeyPath<AIUsageService, AIProviderUsage?>,
+        blockedUntil: ReferenceWritableKeyPath<AIUsageService, Date?>
+    ) -> Bool {
         switch outcome {
         case .notSignedIn:
             self[keyPath: keyPath] = nil
             return false
         case .usage(let usage):
             self[keyPath: keyPath] = usage
+            self[keyPath: blockedUntil] = nil
             return false
         case .transientFailure:
             return self[keyPath: keyPath] == nil
+        case .rateLimited(let retryAfter):
+            let fallback = TimeInterval(Self.refreshInterval.components.seconds)
+            self[keyPath: blockedUntil] = Date().addingTimeInterval(retryAfter ?? fallback)
+            return false
+        case .skipped:
+            return false
         }
     }
 
@@ -93,6 +115,10 @@ final class AIUsageService: ObservableObject {
               let http = response as? HTTPURLResponse else { return .transientFailure }
 
         if http.statusCode == 401 || http.statusCode == 403 { return .notSignedIn }
+        if http.statusCode == 429 {
+            let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
+            return .rateLimited(retryAfter: retryAfter)
+        }
         guard (200..<300).contains(http.statusCode),
               let payload = try? snakeCaseDecoder().decode(type, from: data) else {
             return .transientFailure
