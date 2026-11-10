@@ -63,11 +63,14 @@ struct PanelContentView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     ZStack {
+                        // Not while collapsing either: closing from another surface switches back to the widgets at
+                        // once, and they would show through the fading content.
+                        let hidesWidgets = showsPanelSurface || !state.isExpanded
                         pagedWidgets(pages, hideExpandedArtwork: hideExpandedArtwork)
                             .frame(width: geo.size.width, alignment: .topLeading)
-                            .opacity(showsPanelSurface ? 0 : 1)
-                            .allowsHitTesting(!showsPanelSurface)
-                            .accessibilityHidden(showsPanelSurface)
+                            .opacity(hidesWidgets ? 0 : 1)
+                            .allowsHitTesting(!hidesWidgets)
+                            .accessibilityHidden(hidesWidgets)
 
                         if state.surface == .clipboard {
                             ClipboardHistoryView(
@@ -80,7 +83,7 @@ struct PanelContentView: View {
                         }
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
-                    .animation(.easeOut(duration: 0.10), value: state.contentVisible)
+                    .animation(.easeOut(duration: PanelLayout.contentFadeDuration), value: state.contentVisible)
                     .animation(.easeOut(duration: 0.16), value: state.surface)
                 }
 
@@ -118,7 +121,7 @@ struct PanelContentView: View {
                         onOpenSettings: onOpenSettings
                     )
                     .opacity(state.contentVisible ? 1.0 : 0.0)
-                    .animation(.easeOut(duration: 0.10), value: state.contentVisible)
+                    .animation(.easeOut(duration: PanelLayout.contentFadeDuration), value: state.contentVisible)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .zIndex(20)
                 }
@@ -126,8 +129,10 @@ struct PanelContentView: View {
         }
         .clipShape(NotchPanelShape())
         .scaleEffect(panelScale, anchor: .top)
+        .animation(state.isExpanded ? PanelLayout.expansionSpring : PanelLayout.collapseAnimation, value: state.isExpanded)
         .opacity(state.isExpanded || state.isCompact ? 1.0 : 0.0)
-        .animation(PanelLayout.expansionSpring, value: state.isExpanded)
+        // Collapsing, the black stays opaque until it has shrunk; fading with it read as a grey ghost.
+        .animation(state.isExpanded ? PanelLayout.expansionSpring : PanelLayout.collapseFadeAnimation, value: state.isExpanded)
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: timeUpdateInterval, initial: true) { _, interval in
@@ -182,7 +187,7 @@ struct PanelContentView: View {
     private var panelScale: CGFloat {
         if state.isExpanded { return PanelLayout.expandedPanelScale }
         if state.isCompact { return 1.0 }
-        return 0.22
+        return state.collapsedScale
     }
 
     private func timeUpdateInterval(for visibleWidgets: [BangBarWidget]) -> TimeInterval? {

@@ -15,6 +15,7 @@ struct TerminalSettingsSection: View {
     @AppStorage(BangBarSettings.Key.terminalStartingDirectory)
     private var startingDirectory = BangBarSettings.defaultTerminalStartingDirectory
     @AppStorage(BangBarSettings.Key.terminalMaxLines) private var maxLines = PanelLayout.terminalDefaultMaxLines
+    @AppStorage(BangBarSettings.Key.terminalWidth) private var width = PanelLayout.terminalDefaultWidth
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -38,8 +39,14 @@ struct TerminalSettingsSection: View {
             VStack(alignment: .leading, spacing: 14) {
                 SettingsSectionLabel("TABS")
                 SettingsCard {
+                    startingDirectoryRow
+                }
+            }
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("SIZE")
+                SettingsCard {
                     VStack(spacing: 0) {
-                        startingDirectoryRow
+                        widthRow
                         SettingsDivider()
                         maxHeightRow
                     }
@@ -81,6 +88,38 @@ struct TerminalSettingsSection: View {
             }
             Button("Choose…", action: chooseStartingDirectory)
                 .buttonStyle(SettingsOutlineButtonStyle())
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var widthRow: some View {
+        let screen = NSScreen.main
+        let range = Double(PanelLayout.expandedWidth(forPage: 0, on: screen))...Double(PanelLayout.maximumExpandedWidth(on: screen))
+        let canResize = range.upperBound - range.lowerBound >= 20
+        let shownWidth = min(max(Double(width), range.lowerBound), range.upperBound)
+        return HStack(spacing: 16) {
+            SettingsRowLabel(
+                title: "Width",
+                subtitle: canResize
+                    ? "From the width of the first widget page up to the width of the screen."
+                    : "The first widget page already fills the screen width."
+            )
+            // Rounded here rather than with `step:`, which draws a tick for every 10 pt.
+            Slider(
+                value: Binding(get: { shownWidth }, set: { newValue in
+                    // Every drag event lands here; writing only real changes spares the app-wide defaults observers.
+                    let rounded = Int((newValue / 10).rounded()) * 10
+                    if rounded != width { width = rounded }
+                }),
+                in: canResize ? range : range.lowerBound...(range.lowerBound + 1)
+            )
+            .frame(width: 200)
+            .tint(accentColor)
+            .disabled(!canResize)
+            Text(String(Int(shownWidth)) + " pt")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SettingsTheme.primaryText)
+                .frame(width: 64, alignment: .trailing)
         }
         .padding(.vertical, 14)
     }

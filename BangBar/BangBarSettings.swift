@@ -311,6 +311,7 @@ enum BangBarSettings {
         static let terminalShortcutLabel = "terminalShortcutLabel"
         static let terminalStartingDirectory = "terminalStartingDirectory"
         static let terminalMaxLines = "terminalMaxLines"
+        static let terminalWidth = "terminalWidth"
     }
 
     static let defaultAccentColorHex = "#FF383C"
@@ -389,7 +390,8 @@ enum BangBarSettings {
             Key.terminalShortcutModifiers: defaultTerminalShortcut.modifiers,
             Key.terminalShortcutLabel: defaultTerminalShortcut.label,
             Key.terminalStartingDirectory: defaultTerminalStartingDirectory,
-            Key.terminalMaxLines: PanelLayout.terminalDefaultMaxLines
+            Key.terminalMaxLines: PanelLayout.terminalDefaultMaxLines,
+            Key.terminalWidth: PanelLayout.terminalDefaultWidth
         ]
         for widget in BangBarWidget.allCases {
             defaults[widget.visibilityKey] = widget.isVisibleByDefault

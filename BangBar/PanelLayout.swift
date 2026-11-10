@@ -138,16 +138,24 @@ enum PanelLayout {
     /// The expanded panel's SwiftUI content is drawn at this scale, anchored to the top edge.
     static let expandedPanelScale: CGFloat = 0.955
     static let expansionSpring = Animation.spring(response: 0.35, dampingFraction: 0.66)
+    /// How fast the panel's content (and the AppKit terminal with it) fades when the panel closes.
+    static let contentFadeDuration: TimeInterval = 0.1
+    /// The hidden panel's scale where there is no notch to collapse into.
+    static let hiddenPanelScale: CGFloat = 0.22
+    static let collapseAnimation = Animation.easeInOut(duration: 0.22)
+    static let collapseFadeAnimation = Animation.easeIn(duration: 0.08).delay(0.16)
     /// AppKit content over the panel (the terminal) waits this long for `expansionSpring` to settle.
     static let expansionSpringSettleDelay: TimeInterval = 0.3
 
-    static let terminalMinimumWidth: CGFloat = 860
+    static let terminalDefaultWidth = 860
     static let terminalDefaultMaxLines = 17
     static let terminalMaxLinesOptions = [1, 2, 3, 5, 8, 10, 12, 15, 17, 20, 25, 30]
     static let terminalInset: CGFloat = 16
 
+    /// The width from Settings, never narrower than the widget page it opens from nor wider than the screen allows.
     static func terminalWidth(forPage page: Int, on screen: NSScreen?) -> CGFloat {
-        min(max(expandedWidth(forPage: page, on: screen), terminalMinimumWidth), maximumExpandedWidth(on: screen))
+        let preferred = CGFloat(UserDefaults.standard.integer(forKey: BangBarSettings.Key.terminalWidth))
+        return min(max(expandedWidth(forPage: page, on: screen), preferred), maximumExpandedWidth(on: screen))
     }
 
     static var terminalMaxLines: Int {
@@ -226,6 +234,8 @@ final class PanelState: ObservableObject {
     /// A notice beside the notch is showing in the compact strip's place.
     @Published var compactContentCovered = false
     @Published var surface = PanelSurface.widgets
+    /// The scale of the hidden panel: the notch's width, so a collapse ends inside the notch.
+    @Published var collapsedScale = PanelLayout.hiddenPanelScale
     @Published var clipboardFilter: ClipboardHistoryFilter = .all
     @Published var topSafeInset = PanelLayout.topBarHeight
     @Published var currentPage = 0

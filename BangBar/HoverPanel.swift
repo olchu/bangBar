@@ -116,6 +116,9 @@ class HoverPanel: NSPanel {
             state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         }
         isFloatingPanel = true
+        // SwiftUI and `animateFrame` draw every transition; AppKit's own fade on ordering in or out made the panel
+        // vanish and leave ghosts.
+        animationBehavior = .none
         hidesOnDeactivate = false
         level = .statusBar
         collectionBehavior = Self.spaceBehavior
@@ -346,6 +349,8 @@ class HoverPanel: NSPanel {
         if terminalContainer.isHidden {
             terminalContainer.alphaValue = 0
             terminalContainer.isHidden = false
+        }
+        if terminalContainer.alphaValue < 1 {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.14
                 terminalContainer.animator().alphaValue = 1
@@ -358,23 +363,45 @@ class HoverPanel: NSPanel {
     }
 
     /// Back to the widgets; the shell keeps running.
+    /// The reverse of `showTerminal`: the terminal fades out first, then the panel returns to the widget frame
+    /// while the widgets fade in.
     private func closeTerminal() {
         guard state.surface == .terminal else { return }
-        hideTerminalSurface()
-        withAnimation(.easeOut(duration: 0.16)) {
-            state.surface = .widgets
+        let transition = transitionID
+        hideTerminalSurface(animated: true) { [weak self] in
+            guard let self, self.transitionID == transition, self.state.surface == .terminal else { return }
+            withAnimation(.easeOut(duration: 0.16)) {
+                self.state.surface = .widgets
+            }
+            guard self.isVisible, !self.isHiding, self.state.isExpanded,
+                  let screen = self.screen ?? NSScreen.main else { return }
+            self.animateFrame(to: self.expandedFrame(on: screen, page: self.state.currentPage), duration: 0.24)
         }
         relinquishKeyFocus()
-        guard isVisible, !isHiding, state.isExpanded, let screen = screen ?? NSScreen.main else { return }
-        animateFrame(to: expandedFrame(on: screen, page: state.currentPage), duration: 0.24)
     }
 
-    private func hideTerminalSurface() {
+    /// Animated, the terminal fades out with the panel's content (`PanelLayout.contentFadeDuration`) and
+    /// `completion` runs after it.
+    private func hideTerminalSurface(animated: Bool = false, completion: (() -> Void)? = nil) {
         if let responder = firstResponder as? NSView, responder.isDescendant(of: terminalContainer) {
             makeFirstResponder(nil)
         }
-        terminalContainer.isHidden = true
         terminal.didHide()
+        guard !terminalContainer.isHidden, animated else {
+            terminalContainer.isHidden = true
+            completion?()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = PanelLayout.contentFadeDuration
+            terminalContainer.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            // A reveal during the fade set the alpha back to 1.
+            if let self, self.terminalContainer.alphaValue == 0 {
+                self.terminalContainer.isHidden = true
+            }
+            completion?()
+        }
     }
 
     /// The panel is non-activating, so the app the user was in stays active. Re-ordering the panel without
@@ -499,6 +526,8 @@ class HoverPanel: NSPanel {
             state.isCompact = false
             state.contentVisible = false
             setFrame(targetFrame, display: true)
+            // Grows out of the notch at this frame's width, not the width the panel last closed from.
+            state.collapsedScale = collapsedScale(on: screen)
         }
         presentOnActiveSpace(transition: transition)
 
@@ -554,6 +583,7 @@ class HoverPanel: NSPanel {
 
     private func cancelPendingTransition() {
         transitionID = UUID()
+        ignoresMouseEvents = false
         frameAnimationTimer?.invalidate()
         frameAnimationTimer = nil
         hideWorkItem?.cancel()
@@ -633,7 +663,14 @@ class HoverPanel: NSPanel {
 
     func slideOut() {
         let wasShowingTerminal = state.surface == .terminal
-        hideTerminalSurface()
+        // Last, after every state change below: re-ordering the window draws it at once, and an earlier draw
+        // would show the widgets mid-switch.
+        defer {
+            if wasShowingTerminal {
+                relinquishKeyFocus()
+            }
+        }
+        hideTerminalSurface(animated: true)
         wantsExpandedPanel = false
         cancelPendingTransition()
         let transition = transitionID
@@ -642,31 +679,44 @@ class HoverPanel: NSPanel {
         state.contentVisible = false
         state.surface = .widgets
         state.currentPage = 0
-        if wasShowingTerminal {
-            relinquishKeyFocus()
-        }
 
         if clipboardHistory.isCollectingImages || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
             enterCompactMode()
             return
         }
 
+        // The reverse of opening: the black shape shrinks toward the notch (PanelContentView's collapse
+        // animation) in a frame that stays put, so the window does not shrink underneath it as well. Meanwhile
+        // the invisible rest of the window lets clicks through.
+        state.collapsedScale = collapsedScale(on: screen ?? NSScreen.main)
         state.isExpanded = false
         state.isCompact = false
         state.artworkHeroProgress = nil
-        if let screen = screen ?? NSScreen.main {
-            animateFrame(to: compactFrame(on: screen), duration: 0.24)
-        }
+        ignoresMouseEvents = true
 
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.transitionID == transition else { return }
             if self.isHiding {
+                let screen = self.screen ?? NSScreen.main
                 self.orderOut(nil)
                 self.isHiding = false
+                // The hover trigger zone on displays without a notch is as wide as the hidden window.
+                if let screen {
+                    self.setFrame(self.compactFrame(on: screen), display: false)
+                }
             }
         }
         hideWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + hideDelay, execute: work)
+    }
+
+    /// Shrinks the panel's black to the notch's width, where it disappears into the notch; displays without one
+    /// keep a small strip that fades out.
+    private func collapsedScale(on screen: NSScreen?) -> CGFloat {
+        guard let screen, PanelLayout.notchRect(on: screen) != nil, frame.width > 0 else {
+            return PanelLayout.hiddenPanelScale
+        }
+        return min(max(PanelLayout.concealedCompactWidth(on: screen) / frame.width, 0.05), PanelLayout.hiddenPanelScale)
     }
 
     private func expandedFrame(on screen: NSScreen, page: Int = 0) -> NSRect {
@@ -719,6 +769,9 @@ class HoverPanel: NSPanel {
             return
         }
 
+        // Mid-collapse the window still has the expanded frame, so growing the strip from there would flash the
+        // full-width black; it grows out of the notch as from hidden instead.
+        let isCollapsing = isHiding && !state.isExpanded && !state.isCompact
         cancelPendingTransition()
         let transition = transitionID
         isHiding = false
@@ -726,7 +779,7 @@ class HoverPanel: NSPanel {
         guard let screen = screen ?? NSScreen.main else { return }
         let targetFrame = compactFrame(on: screen)
 
-        if !isVisible {
+        if !isVisible || isCollapsing {
             frameAnimationTimer?.invalidate()
             frameAnimationTimer = nil
             let startFrame = concealedCompactFrame(on: screen)

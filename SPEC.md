@@ -22,6 +22,12 @@ The panel background is pure sRGB black (`0,0,0`) inside the clipped notch shape
 - The panel must not visually detach from the top edge during frame animation.
 - Expanded content fades in after the frame animation begins.
 
+### Expanded → Hidden
+
+- The reverse of opening: content fades out in 0.1 s (`PanelLayout.contentFadeDuration`), then the black shape shrinks toward the top edge (`PanelLayout.collapseAnimation`, 0.22 s ease-in-out, no spring) to the notch's width (`PanelState.collapsedScale`), where it disappears into the notch; it stays opaque and only fades in the last 0.08 s (`collapseFadeAnimation`). On displays without a notch it shrinks to 0.22 and fades.
+- The window frame does not shrink during the collapse, so the window and the SwiftUI scale never animate against each other (that read as a grey ghost sliding into the notch). The window ignores mouse events until it is ordered out after `hideDelay` or reopened.
+- The widgets stay hidden while the panel collapses, so closing from Clipboard History or the terminal never shows them through the fading content.
+
 ### Hidden → Compact
 
 - If music starts while the panel is hidden, the compact panel appears instead of staying fully hidden.
@@ -223,11 +229,12 @@ A full terminal inside the expanded panel, the third panel-level surface next to
   - the swipe down described above: back to widgets;
   - the global shortcut is pressed again: the panel slides out.
 - `Esc` belongs to the terminal (vim, less, fzf) and never closes it.
-- Closing the terminal surface without hiding the panel gives keyboard focus back to the previously active app.
+- Closing the terminal surface without hiding the panel gives keyboard focus back to the previously active app. The panel has `animationBehavior = .none`: every transition is drawn by SwiftUI or `animateFrame`, and AppKit's default fade on re-ordering made the panel vanish for ~0.3 s and left a ghost of the terminal over the widgets.
+- Back to the widgets is the reverse of opening: the terminal fades out in 0.1 s, and from that fade's completion the panel animates to the widget frame while the widgets fade in. Closing the whole panel fades the terminal out with the rest of the content.
 
 **Layout:**
 
-- Terminal frame: width is the larger of the current widget page width and `PanelLayout.terminalMinimumWidth` (860 pt), capped by the expanded width budget.
+- Terminal frame: width comes from Settings (`terminalWidth`, default 860 pt), but is never narrower than the current widget page nor wider than the expanded width budget (the screen's visible width minus 8 pt on each side, at most 1468 pt).
 - Height follows the content of the selected tab: a fresh shell opens one prompt line tall, and the panel grows by a row as each new line appears, up to the maximum height from Settings, set in lines (`terminalMaxLines`, default 17, about the earlier 330 pt). From there the terminal scrolls. Full-screen programs on the alternate screen (vim, less, htop) always get the maximum height. When the cursor moves back up (`clear`, `⌘K`), the panel shrinks back to the content once the smaller row count has held for 0.15 s: zsh moves the cursor up a row while it redraws the prompt after a failed command, and that must not shrink the panel. Growth is immediate. Switching tabs resizes the panel to that tab's content at once.
 - The PTY is always the maximum size; only the visible part changes. Each tab's view is pinned to the top of a clipping container and keeps the full height, so growing or shrinking never resizes the PTY or makes the shell redraw. Height changes animate in 0.12 s with the top edge pinned, and the container follows every animation step.
 - The terminal view is an AppKit subview over the hosting view, not a SwiftUI representable, because the expanded panel is drawn with a `scaleEffect` that would blur terminal text and offset its mouse coordinates. Its frame is computed inside the scaled panel shape: below the top bar, inside the shape's ears and bottom corners.
@@ -262,7 +269,7 @@ A full terminal inside the expanded panel, the third panel-level surface next to
 
 **Files:** `TerminalSurfaceView.swift` (PTY session, zsh integration, rows in use, copy-output, shortcuts), `TerminalSessionService.swift` (tabs, git branch, session lifetime, input source), `TerminalTabBar.swift` (tabs and the copy-output button in the top bar, built from `PanelTopBarTabLabel` / `PanelTopBarButton`), `GlobalHotKey.swift` (Carbon hotkey), `TerminalSettingsView.swift`; panel wiring in `HoverPanel.swift` (`PanelSurface` in `PanelLayout.swift` replaces the separate clipboard flag).
 
-**Settings:** Settings → Terminal: `Swipe up to open` (`terminalSwipeEnabled`, default on), the global shortcut (`terminalShortcutKeyCode` / `terminalShortcutModifiers` / `terminalShortcutLabel`), `Maximum height` in lines (`terminalMaxLines`: 1, 2, 3, 5, 8, 10, 12, 15, 17, 20, 25 or 30, default 17; the PTY is exactly that many rows, measured with SwiftTerm's row height for the terminal font, and changing it resizes every tab's PTY once), and `Default folder` (`terminalStartingDirectory`, default `~`), chosen with a folder picker and reset to `~` with a button. Changing the folder affects new tabs only.
+**Settings:** Settings → Terminal → SIZE: `Width`, a slider from the first widget page's width to the width budget of the main screen, in 10 pt steps, disabled when the first page already fills the screen; the terminal opens at the new width next time (opening Settings closes it). Settings → Terminal: `Swipe up to open` (`terminalSwipeEnabled`, default on), the global shortcut (`terminalShortcutKeyCode` / `terminalShortcutModifiers` / `terminalShortcutLabel`), `Maximum height` in lines (`terminalMaxLines`: 1, 2, 3, 5, 8, 10, 12, 15, 17, 20, 25 or 30, default 17; the PTY is exactly that many rows, measured with SwiftTerm's row height for the terminal font, and changing it resizes every tab's PTY once), and `Default folder` (`terminalStartingDirectory`, default `~`), chosen with a folder picker and reset to `~` with a button. Changing the folder affects new tabs only.
 
 ### ClockWidget
 
