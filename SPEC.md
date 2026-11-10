@@ -208,6 +208,49 @@ Album artwork should read visually as one continuous element between compact and
 - When a pinned card is copied again, it remains pinned and moves to the newest position within the pinned section.
 - Filters continue to apply normally: pinned text appears in `All` and `Text`; pinned images and image groups appear in `All` and `Images`.
 
+### Terminal
+
+A full terminal inside the expanded panel, the third panel-level surface next to widgets and Clipboard History. The terminal core is adapted from the author's DropTerm project (`../DropTerm`).
+
+**Opening and closing:**
+
+- Vertical surfaces form a stack: Terminal ↑ Widgets ↓ Clipboard. A two-finger swipe up over the widgets opens the terminal; a swipe down over the top bar returns to the widgets. The clipboard inversion toggle swaps both directions together. Swipes over the terminal itself always scroll its scrollback and never switch surfaces.
+- A global shortcut (Settings → Terminal, default `⌃⌥T`) opens the panel straight into the terminal on the screen under the pointer, or closes it when the terminal is already shown. It is registered with `RegisterEventHotKey`, so it needs no Accessibility access and the focused app never receives it. A shortcut without ⌘, ⌃ or ⌥ is not registered.
+- On opening, the panel grows from the widget frame to the terminal frame (top edge pinned, same `animateFrame` as every panel state); the widgets fade out first, and the terminal fades in after the frame settles, so the PTY is resized once instead of on every animation step. The panel becomes key and the shell's input line has focus immediately; no click is needed.
+- While the terminal is shown the panel does not hide when the mouse leaves it. It closes when:
+  - the user clicks outside the panel (the panel resigns key): the terminal closes and the panel slides out;
+  - the small `xmark` button at the right of the top bar is clicked: back to widgets;
+  - the swipe down described above: back to widgets;
+  - the global shortcut is pressed again: the panel slides out.
+- `Esc` belongs to the terminal (vim, less, fzf) and never closes it.
+- Closing the terminal surface without hiding the panel gives keyboard focus back to the previously active app.
+
+**Layout:**
+
+- Terminal frame: width is the larger of the current widget page width and `PanelLayout.terminalMinimumWidth` (860 pt), capped by the expanded width budget; height is `topSafeInset + PanelLayout.terminalContentHeight` (330 pt).
+- The terminal view is an AppKit subview over the hosting view, not a SwiftUI representable, because the expanded panel is drawn with a `scaleEffect` that would blur terminal text and offset its mouse coordinates. Its frame is computed inside the scaled panel shape: below the top bar, inside the shape's ears and bottom corners.
+- The top bar keeps Settings; while the terminal is shown it hides the clipboard controls and adds the close button. Page swipes and the page indicator are disabled.
+
+**Session:**
+
+- `TerminalSessionService` owns one `TerminalSurfaceView` for the life of the app, so the shell, its running command and its directory survive hiding the panel. No tabs in this version. AI command generation (DropTerm's Ollama bar) is out of scope and will not be added.
+- Engine: SwiftTerm (MIT, Swift Package) — PTY, VT/ANSI, true color, alternate screen, selection, scrollback, mouse reporting.
+- The user's login shell starts in the home directory (`/bin/zsh` when the configured shell is not executable), with `TERM=xterm-256color` and true color.
+- For zsh, a private `ZDOTDIR` wraps the user's own startup files and adds shell integration: OSC 133 prompt marks, history written after every command, prefix history search on ↑/↓.
+- Font: MesloLGS NF when installed (Powerlevel10k glyphs), otherwise the system monospaced font; 12 pt. Blinking bar cursor in the accent color. Transparent background over the panel black.
+- `⌘C` / `⌘V` / `⌘A` copy, paste and select all; `⇧⌘C` and a small button copy the last command's output (found through the prompt marks). A single click on the input line moves the cursor there; ⌘-hover shows links.
+- The input source switches to English while the terminal has focus and is restored when it closes.
+- When the shell exits (`exit`, `Ctrl+D`), the terminal surface closes and the next opening starts a new shell.
+- On quit and on session close the foreground process group and the shell receive `SIGHUP`, like Terminal.app, so programs started in the terminal do not outlive it.
+
+**Interaction with other features:**
+
+- The keyboard layout auto-switcher ignores keystrokes while the terminal has focus. The panel is non-activating, so the frontmost app stays the previous one and its exclusion list would not apply.
+
+**Files:** `TerminalSurfaceView.swift` (PTY session, zsh integration, copy-output, shortcuts), `TerminalSessionService.swift` (session lifetime, input source), `GlobalHotKey.swift` (Carbon hotkey), `TerminalSettingsView.swift`; panel wiring in `HoverPanel.swift` (`PanelSurface` in `PanelLayout.swift` replaces the separate clipboard flag).
+
+**Settings:** Settings → Terminal: `Swipe up to open` (`terminalSwipeEnabled`, default on) and the global shortcut (`terminalShortcutKeyCode` / `terminalShortcutModifiers` / `terminalShortcutLabel`).
+
 ### ClockWidget
 
 - Combines the clock and calendar-event surface in one 190×110 widget.

@@ -3,6 +3,10 @@ import Combine
 import OSLog
 import SwiftUI
 
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 private protocol PanelScrollHandling: AnyObject {
     func handlePanelScrollWheel(_ event: NSEvent) -> Bool
 }
@@ -18,6 +22,10 @@ class HoverPanel: NSPanel {
     private let nowPlaying = NowPlayingService()
     private let pomodoro = PomodoroService()
     let clipboardHistory = ClipboardHistoryService()
+    private let terminal = TerminalSessionService()
+    /// AppKit, not SwiftUI: the expanded content is drawn with a `scaleEffect` that would blur terminal text.
+    private let terminalContainer = NSView()
+    private var hostingView: (NSView & PanelScrollHandling)?
     private var cancellables = Set<AnyCancellable>()
     private var hideWorkItem: DispatchWorkItem?
     private var artworkHeroCleanupWorkItem: DispatchWorkItem?
@@ -52,6 +60,10 @@ class HoverPanel: NSPanel {
 
     var isAnimatingFrame: Bool {
         frameAnimationTimer != nil
+    }
+
+    var isTerminalShown: Bool {
+        isVisible && state.surface == .terminal && !isHiding
     }
 
     func containsCompactHoverPoint(
@@ -115,45 +127,65 @@ class HoverPanel: NSPanel {
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
 
-        let contentView = HoverHostingView(rootView: PanelContentView(
+        let hostingView = HoverHostingView(rootView: PanelContentView(
             state: state,
             nowPlaying: nowPlaying,
             pomodoro: pomodoro,
             clipboardHistory: clipboardHistory,
             onOpenSettings: { [weak self] in
                 self?.onOpenSettings?()
+            },
+            onCloseTerminal: { [weak self] in
+                self?.closeTerminal()
             }
         ))
-        contentView.onHoverEvent = { [weak self] event in
+        hostingView.onHoverEvent = { [weak self] event in
             self?.onHoverEvent?(event)
         }
-        contentView.shouldHandleVerticalSwipes = {
-            UserDefaults.standard.bool(
-                forKey: BangBarSettings.Key.clipboardSwipeNavigationEnabled
-            )
+        hostingView.shouldHandleVerticalSwipes = {
+            UserDefaults.standard.bool(forKey: BangBarSettings.Key.clipboardSwipeNavigationEnabled)
+                || UserDefaults.standard.bool(forKey: BangBarSettings.Key.terminalSwipeEnabled)
         }
-        contentView.onSwipeDown = { [weak self] in
-            self?.handleClipboardSwipe(isDownward: true)
+        hostingView.onSwipeDown = { [weak self] in
+            self?.handleVerticalSwipe(isDownward: true)
         }
-        contentView.onSwipeUp = { [weak self] in
-            self?.handleClipboardSwipe(isDownward: false)
+        hostingView.onSwipeUp = { [weak self] in
+            self?.handleVerticalSwipe(isDownward: false)
         }
-        contentView.shouldHandlePageSwipes = { [weak self] in
+        hostingView.shouldHandlePageSwipes = { [weak self] in
             guard let self else { return false }
             return self.state.isExpanded
                 && !self.state.isCompact
-                && !self.state.showsClipboardHistory
+                && self.state.surface == .widgets
                 && !self.isAnimatingFrame
                 && !PanelLayout.fittedWidgets(forPage: 1, on: self.screen ?? NSScreen.main).isEmpty
         }
-        contentView.onPageSwipeNext = { [weak self] in
+        hostingView.onPageSwipeNext = { [weak self] in
             self?.handlePageSwipe(isNext: true)
         }
-        contentView.onPageSwipePrevious = { [weak self] in
+        hostingView.onPageSwipePrevious = { [weak self] in
             self?.handlePageSwipe(isNext: false)
         }
-        contentView.wantsLayer = true
-        self.contentView = contentView
+        hostingView.wantsLayer = true
+        self.hostingView = hostingView
+
+        // A sibling of the hosting view, not a subview: SwiftUI owns the hosting view's layer tree.
+        let rootView = FlippedView()
+        rootView.wantsLayer = true
+        hostingView.frame = rootView.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        rootView.addSubview(hostingView)
+
+        terminalContainer.wantsLayer = true
+        terminalContainer.layer?.cornerRadius = 10
+        terminalContainer.layer?.cornerCurve = .continuous
+        terminalContainer.layer?.masksToBounds = true
+        terminalContainer.isHidden = true
+        rootView.addSubview(terminalContainer)
+        self.contentView = rootView
+        terminal.onSessionEnded = { [weak self] in
+            self?.closeTerminal()
+        }
 
         nowPlaying.$info
             .combineLatest(nowPlaying.$isAvailable)
@@ -207,8 +239,10 @@ class HoverPanel: NSPanel {
     }
 
     override func sendEvent(_ event: NSEvent) {
+        // Scrolling over the terminal moves its scrollback instead of switching surfaces.
         if event.type == .scrollWheel,
-           let scrollHandler = contentView as? PanelScrollHandling,
+           !isOverTerminal(event.locationInWindow),
+           let scrollHandler = hostingView,
            scrollHandler.handlePanelScrollWheel(event) {
             return
         }
@@ -216,19 +250,168 @@ class HoverPanel: NSPanel {
         super.sendEvent(event)
     }
 
-    private func handleClipboardSwipe(isDownward: Bool) {
-        guard state.isExpanded, state.contentVisible else { return }
+    override func resignKey() {
+        super.resignKey()
+        guard isTerminalShown else { return }
+        // A click outside the panel took keyboard focus: that is how the terminal is dismissed.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isTerminalShown, !self.isKeyWindow else { return }
+            self.slideOut()
+        }
+    }
 
-        let isInverted = UserDefaults.standard.bool(
-            forKey: BangBarSettings.Key.clipboardSwipeNavigationInverted
-        )
-        let shouldShowClipboard = isDownward != isInverted
-        guard state.showsClipboardHistory != shouldShowClipboard else { return }
+    /// Surfaces stack vertically: Terminal ↑ Widgets ↓ Clipboard. The clipboard inversion swaps both directions.
+    private func handleVerticalSwipe(isDownward: Bool) {
+        guard state.isExpanded, state.contentVisible, !isAnimatingFrame else { return }
+
+        let defaults = UserDefaults.standard
+        let towardClipboard = isDownward != defaults.bool(forKey: BangBarSettings.Key.clipboardSwipeNavigationInverted)
+
+        switch (state.surface, towardClipboard) {
+        case (.terminal, true):
+            closeTerminal()
+        case (.widgets, false):
+            if defaults.bool(forKey: BangBarSettings.Key.terminalSwipeEnabled) {
+                showTerminal()
+            }
+        case (.widgets, true) where defaults.bool(forKey: BangBarSettings.Key.clipboardSwipeNavigationEnabled),
+             (.clipboard, false):
+            TooltipManager.shared.hide()
+            withAnimation(.easeOut(duration: 0.16)) {
+                state.surface = towardClipboard ? .clipboard : .widgets
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - Terminal
+
+    /// Read by the keyboard layout switcher's event tap: the panel is non-activating, so the frontmost app
+    /// stays the previous one and its exclusion list does not cover typing in the terminal.
+    var isTerminalFocused: Bool {
+        isKeyWindow && state.surface == .terminal && terminal.hasKeyboardFocus
+    }
+
+    /// The global shortcut: opens the panel straight into the terminal, or closes it.
+    func toggleTerminal(on preferredScreen: NSScreen?) {
+        if isTerminalShown {
+            slideOut()
+        } else if canSwitchSurfaceInPlace, preferredScreen == nil || screen == preferredScreen {
+            showTerminal()
+        } else {
+            state.surface = .terminal
+            slideIn(on: preferredScreen)
+        }
+    }
+
+    func terminateTerminal() {
+        terminal.terminate()
+    }
+
+    private var canSwitchSurfaceInPlace: Bool {
+        isExpandedMode && state.contentVisible && !isHiding && !isAnimatingFrame
+    }
+
+    private func showTerminal() {
+        guard canSwitchSurfaceInPlace, state.surface != .terminal, let screen = screen ?? NSScreen.main else { return }
 
         TooltipManager.shared.hide()
-        withAnimation(.easeOut(duration: 0.16)) {
-            state.showsClipboardHistory = shouldShowClipboard
+        withAnimation(.easeOut(duration: 0.12)) {
+            state.surface = .terminal
         }
+        // The terminal appears after the frame settles, so its PTY is resized once rather than on every step.
+        animateFrame(to: terminalFrame(on: screen), duration: 0.26) { [weak self] in
+            self?.revealTerminal()
+        }
+    }
+
+    /// Waits for the panel's expansion spring, which the AppKit terminal does not follow.
+    private func revealTerminalAfterExpansion(transition: UUID) {
+        guard state.surface == .terminal else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + PanelLayout.expansionSpringSettleDelay) { [weak self] in
+            guard let self, self.transitionID == transition else { return }
+            self.revealTerminal()
+        }
+    }
+
+    private func revealTerminal() {
+        guard state.surface == .terminal, isVisible, !isHiding, !isAnimatingFrame else { return }
+
+        layoutTerminalContainer()
+        let surface = terminal.makeSurface()
+        if surface.superview !== terminalContainer {
+            surface.frame = terminalContainer.bounds
+            surface.autoresizingMask = [.width, .height]
+            terminalContainer.addSubview(surface)
+        }
+
+        if terminalContainer.isHidden {
+            terminalContainer.alphaValue = 0
+            terminalContainer.isHidden = false
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.14
+                terminalContainer.animator().alphaValue = 1
+            }
+        }
+
+        makeKey()
+        let accentHex = UserDefaults.standard.string(forKey: BangBarSettings.Key.accentColorHex) ?? ""
+        terminal.focus(accentColor: NSColor(Color(hex: accentHex)))
+    }
+
+    /// Back to the widgets; the shell keeps running.
+    private func closeTerminal() {
+        guard state.surface == .terminal else { return }
+        hideTerminalSurface()
+        withAnimation(.easeOut(duration: 0.16)) {
+            state.surface = .widgets
+        }
+        relinquishKeyFocus()
+        guard isVisible, !isHiding, state.isExpanded, let screen = screen ?? NSScreen.main else { return }
+        animateFrame(to: expandedFrame(on: screen, page: state.currentPage), duration: 0.24)
+    }
+
+    private func hideTerminalSurface() {
+        if let responder = firstResponder as? NSView, responder.isDescendant(of: terminalContainer) {
+            makeFirstResponder(nil)
+        }
+        terminalContainer.isHidden = true
+        terminal.didHide()
+    }
+
+    /// The panel is non-activating, so the app the user was in stays active. Re-ordering the panel without
+    /// making it key hands keyboard focus back to that app without hiding the panel.
+    private func relinquishKeyFocus() {
+        guard isKeyWindow else { return }
+        orderOut(nil)
+        orderFrontRegardless()
+    }
+
+    private func layoutTerminalContainer() {
+        guard let contentView else { return }
+        terminalContainer.frame = PanelLayout.terminalContentRect(
+            in: contentView.bounds.size,
+            topSafeInset: state.topSafeInset
+        )
+    }
+
+    private func isOverTerminal(_ windowPoint: NSPoint) -> Bool {
+        guard !terminalContainer.isHidden else { return false }
+        return terminalContainer.bounds.contains(terminalContainer.convert(windowPoint, from: nil))
+    }
+
+    private func terminalFrame(on screen: NSScreen) -> NSRect {
+        PanelLayout.topCenteredFrame(
+            width: PanelLayout.terminalWidth(forPage: state.currentPage, on: screen),
+            height: PanelLayout.terminalHeight(on: screen),
+            on: screen
+        )
+    }
+
+    /// The frame of the expanded panel for the surface it currently shows.
+    private func openFrame(on screen: NSScreen) -> NSRect {
+        state.surface == .terminal ? terminalFrame(on: screen) : expandedFrame(on: screen, page: state.currentPage)
     }
 
     private func handlePageSwipe(isNext: Bool) {
@@ -282,13 +465,15 @@ class HoverPanel: NSPanel {
         }
 
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
-        if clipboardHistory.isCollectingImages {
-            state.showsClipboardHistory = true
+        if clipboardHistory.isCollectingImages, state.surface != .terminal {
+            state.surface = .clipboard
             state.clipboardFilter = .images
         }
         let wasCompact = state.isCompact
-        let wasNowPlayingCompact = state.compactContent == .nowPlaying
-        let targetFrame = expandedFrame(on: screen, page: state.currentPage)
+        // The artwork hero flies into the now-playing widget, which the terminal covers.
+        let wasNowPlayingCompact = state.compactContent == .nowPlaying && state.surface != .terminal
+        let targetFrame = openFrame(on: screen)
+        hideTerminalSurface()
 
         if !isVisible {
             state.isExpanded = false
@@ -335,6 +520,7 @@ class HoverPanel: NSPanel {
                     self.state.isCompact = false
                     self.state.isExpanded = true
                     self.state.contentVisible = true
+                    self.revealTerminalAfterExpansion(transition: transition)
                 })
             } else {
                 self.state.artworkHeroProgress = nil
@@ -342,6 +528,7 @@ class HoverPanel: NSPanel {
                 self.state.isExpanded = true
                 self.setFrame(targetFrame, display: true)
                 self.state.contentVisible = true
+                self.revealTerminalAfterExpansion(transition: transition)
             }
         }
     }
@@ -372,6 +559,10 @@ class HoverPanel: NSPanel {
             || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying
         cancelPendingTransition()
         isHiding = false
+        hideTerminalSurface()
+        if !restoreExpanded {
+            state.surface = .widgets
+        }
         orderOut(nil)
         state.isExpanded = false
         state.isCompact = false
@@ -415,17 +606,26 @@ class HoverPanel: NSPanel {
         }
     }
 
+    /// Whether leaving the panel with the mouse should hide it: not mid-animation, not right after opening,
+    /// and never while the terminal is shown.
+    var dismissesOnHoverExit: Bool {
+        !isAnimatingFrame && Date().timeIntervalSince(openedAt) > 0.5 && state.surface != .terminal
+    }
+
     func slideOut() {
-        guard !isAnimatingFrame else { return }
-        guard Date().timeIntervalSince(openedAt) > 0.5 else { return }
+        let wasShowingTerminal = state.surface == .terminal
+        hideTerminalSurface()
         wantsExpandedPanel = false
         cancelPendingTransition()
         let transition = transitionID
         TooltipManager.shared.hide()
         isHiding = true
         state.contentVisible = false
-        state.showsClipboardHistory = false
+        state.surface = .widgets
         state.currentPage = 0
+        if wasShowingTerminal {
+            relinquishKeyFocus()
+        }
 
         if clipboardHistory.isCollectingImages || pomodoro.isRunning || nowPlaying.isCurrentlyPlaying {
             enterCompactMode()
@@ -461,7 +661,12 @@ class HoverPanel: NSPanel {
     private func resizeExpandedPanelForCurrentSettings() {
         guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = screen ?? NSScreen.main else { return }
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
-        setFrame(expandedFrame(on: screen, page: state.currentPage), display: true)
+        let targetFrame = openFrame(on: screen)
+        guard frame != targetFrame else { return }
+        setFrame(targetFrame, display: true)
+        if !terminalContainer.isHidden {
+            layoutTerminalContainer()
+        }
     }
 
     private func compactFrame(on screen: NSScreen) -> NSRect {

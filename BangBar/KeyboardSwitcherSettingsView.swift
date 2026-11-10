@@ -107,17 +107,13 @@ struct KeyboardSwitcherSettingsSection: View {
     }
 
     private var shortcutRow: some View {
-        HStack(spacing: 16) {
-            rowLabel("Shortcut", subtitle: "Click, then press the shortcut. The focused app will not receive it.")
-            Spacer(minLength: 12)
-            ShortcutRecorderField(
-                keyCode: $shortcutKeyCode,
-                modifiers: $shortcutModifiers,
-                label: $shortcutLabel
-            )
-            .frame(width: 142, height: 30)
-        }
-        .padding(.vertical, 14)
+        SettingsShortcutRow(
+            title: "Shortcut",
+            subtitle: "Click, then press the shortcut. The focused app will not receive it.",
+            keyCode: $shortcutKeyCode,
+            modifiers: $shortcutModifiers,
+            label: $shortcutLabel
+        )
     }
 
     private var layoutsRow: some View {

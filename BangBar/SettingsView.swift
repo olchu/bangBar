@@ -245,6 +245,11 @@ struct SettingsView: View {
                 KeyboardSwitcherSettingsSection(accentColor: accentColor)
                     .frame(width: 884)
             }
+        case .terminal:
+            singleColumnContent(title: "TERMINAL", accentColor: accentColor) {
+                TerminalSettingsSection(accentColor: accentColor)
+                    .frame(width: 884)
+            }
         case .about:
             singleColumnContent(title: "ABOUT", accentColor: accentColor) {
                 SettingsCard {
@@ -1146,26 +1151,13 @@ struct SettingsView: View {
                 )
                 if clipboardIgnoreShortcutEnabled {
                     SettingsDivider()
-                    HStack(spacing: 16) {
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text("Shortcut")
-                                .font(SettingsTheme.rowFont)
-                                .foregroundStyle(SettingsTheme.primaryText)
-                            Text("Click Record, then press your transcription key. Fn is supported.")
-                                .font(SettingsTheme.descriptionFont)
-                                .foregroundStyle(SettingsTheme.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        Spacer(minLength: 12)
-                        ShortcutRecorderField(
-                            keyCode: $clipboardIgnoreShortcutKeyCode,
-                            modifiers: $clipboardIgnoreShortcutModifiers,
-                            label: $clipboardIgnoreShortcutLabel
-                        )
-                        .frame(width: 142, height: 30)
-                    }
-                    .padding(.vertical, 14)
+                    SettingsShortcutRow(
+                        title: "Shortcut",
+                        subtitle: "Click Record, then press your transcription key. Fn is supported.",
+                        keyCode: $clipboardIgnoreShortcutKeyCode,
+                        modifiers: $clipboardIgnoreShortcutModifiers,
+                        label: $clipboardIgnoreShortcutLabel
+                    )
 
                     SettingsDivider()
                     clipboardPickerRow(
@@ -1245,6 +1237,7 @@ private enum SettingsTab: CaseIterable, Identifiable {
     case appearance
     case clipboard
     case keyboard
+    case terminal
     case about
 
     var id: Self { self }
@@ -1261,6 +1254,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "CLIPBOARD"
         case .keyboard:
             return "KEYBOARD"
+        case .terminal:
+            return "TERMINAL"
         case .about:
             return "ABOUT"
         }
@@ -1278,6 +1273,8 @@ private enum SettingsTab: CaseIterable, Identifiable {
             return "sidebarClipboard"
         case .keyboard:
             return "sidebarKeyboard"
+        case .terminal:
+            return "sidebarTerminal"
         case .about:
             return "sidebarAbout"
         }
@@ -2373,6 +2370,33 @@ private struct SettingsSwitchToggleStyle: ToggleStyle {
         }
         .buttonStyle(.plain)
         .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+}
+
+struct SettingsShortcutRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var keyCode: Int
+    @Binding var modifiers: Int
+    @Binding var label: String
+
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(title)
+                    .font(SettingsTheme.rowFont)
+                    .foregroundStyle(SettingsTheme.primaryText)
+                Text(subtitle)
+                    .font(SettingsTheme.descriptionFont)
+                    .foregroundStyle(SettingsTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 12)
+            ShortcutRecorderField(keyCode: $keyCode, modifiers: $modifiers, label: $label)
+                .frame(width: 142, height: 30)
+        }
+        .padding(.vertical, 14)
     }
 }
 

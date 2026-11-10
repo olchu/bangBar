@@ -20,6 +20,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var keyboardSwitchNotice = KeyboardSwitchNoticeController(center: notchNotices)
     private lazy var liveActivities = LiveActivityController(center: notchNotices)
     private var compactExpansionGraceUntil: Date = .distantPast
+    private var terminalHotKey: GlobalHotKey?
+    private var terminalShortcutObservations: [NSKeyValueObservation] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         BangBarSettings.registerDefaults()
@@ -40,13 +42,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         keyboardSwitcher.onAutoSwitchUndo = { [weak self] in
             self?.keyboardSwitchNotice.dismiss()
         }
+        keyboardSwitcher.ignoresTyping = { [weak self] in
+            self?.hoverPanel?.isTerminalFocused == true
+        }
         keyboardSwitcher.start()
+        registerTerminalHotKey()
+        // KVO on just these keys: UserDefaults.didChangeNotification fires for every write in the app.
+        terminalShortcutObservations = [\UserDefaults.terminalShortcutKeyCode, \UserDefaults.terminalShortcutModifiers].map {
+            UserDefaults.standard.observe($0) { [weak self] _, _ in
+                DispatchQueue.main.async { self?.registerTerminalHotKey() }
+            }
+        }
         liveActivities.start()
         healthMonitor.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         stopMouseTracking()
+        hoverPanel?.terminateTerminal()
+        terminalHotKey?.invalidate()
+        terminalShortcutObservations.removeAll()
         keyboardSwitcher.stop()
         liveActivities.stop()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
@@ -222,11 +237,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let hoverFrame = panelFrame.insetBy(dx: -10, dy: -8)
 
                 if !panel.isCompactMode,
+                   panel.dismissesOnHoverExit,
                    !hoverFrame.contains(mouseLocation),
                    !stableTriggerZone.contains(mouseLocation) {
                     panel.slideOut()
                 }
             }
+        }
+    }
+
+    // MARK: - Terminal Shortcut
+
+    private func registerTerminalHotKey() {
+        let defaults = UserDefaults.standard
+        let keyCode = defaults.terminalShortcutKeyCode
+        terminalHotKey?.invalidate()
+        terminalHotKey = GlobalHotKey(
+            keyCode: keyCode,
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(max(defaults.terminalShortcutModifiers, 0)))
+        ) { [weak self] in
+            guard let self, let panel = self.hoverPanel else { return }
+            self.healthMonitor.checkpoint("terminal-hotkey")
+            panel.toggleTerminal(on: self.screenContainingMouse())
+        }
+        if terminalHotKey == nil, keyCode >= 0 {
+            logger.error("Terminal shortcut could not be registered")
         }
     }
 

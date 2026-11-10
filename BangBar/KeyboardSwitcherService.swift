@@ -27,6 +27,9 @@ final class KeyboardSwitcherService: NSObject {
     /// the final result relative to the original rather than to an intermediate layout.
     private var manualConversionOrigin: (keystrokes: [TypedKeystroke], layoutID: String)?
     var onAutoSwitch: ((_ original: String, _ replacement: String) -> Void)?
+    /// True while keystrokes go to BangBar's own terminal: the frontmost app is still the previous one, so its
+    /// exclusions do not apply.
+    var ignoresTyping: () -> Bool = { false }
     var onAutoSwitchUndo: (() -> Void)?
 
     func start() {
@@ -191,6 +194,11 @@ final class KeyboardSwitcherService: NSObject {
                 scheduleConversion()
             }
             return .swallow
+        }
+
+        if ignoresTyping() {
+            resetTypingState()
+            return .pass
         }
 
         let undoable = undoableAutoSwitch

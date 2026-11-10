@@ -8,6 +8,7 @@ struct PanelContentView: View {
     let pomodoro: PomodoroService
     let clipboardHistory: ClipboardHistoryService
     let onOpenSettings: () -> Void
+    let onCloseTerminal: () -> Void
 
     @AppStorage(BangBarSettings.Key.showNowPlayingWidget) private var showNowPlayingWidget = true
     @AppStorage(BangBarSettings.Key.showClockWidget) private var showClockWidget = true
@@ -63,11 +64,11 @@ struct PanelContentView: View {
                     ZStack {
                         pagedWidgets(pages, hideExpandedArtwork: hideExpandedArtwork)
                             .frame(width: geo.size.width, alignment: .topLeading)
-                            .opacity(state.showsClipboardHistory ? 0 : 1)
-                            .allowsHitTesting(!state.showsClipboardHistory)
-                            .accessibilityHidden(state.showsClipboardHistory)
+                            .opacity(showsPanelSurface ? 0 : 1)
+                            .allowsHitTesting(!showsPanelSurface)
+                            .accessibilityHidden(showsPanelSurface)
 
-                        if state.showsClipboardHistory {
+                        if state.surface == .clipboard {
                             ClipboardHistoryView(
                                 service: clipboardHistory,
                                 filter: state.clipboardFilter,
@@ -79,10 +80,10 @@ struct PanelContentView: View {
                     }
                     .opacity(state.contentVisible ? 1.0 : 0.0)
                     .animation(.easeOut(duration: 0.10), value: state.contentVisible)
-                    .animation(.easeOut(duration: 0.16), value: state.showsClipboardHistory)
+                    .animation(.easeOut(duration: 0.16), value: state.surface)
                 }
 
-                if !state.isCompact, !state.showsClipboardHistory, !pages[1].isEmpty {
+                if !state.isCompact, !showsPanelSurface, !pages[1].isEmpty {
                     // Centered in the bottom edge padding, so a widget filled to its full height never touches it.
                     pageIndicator
                         .position(x: geo.size.width / 2, y: geo.size.height - PanelLayout.expandedVisibleEdgePadding / 2)
@@ -106,7 +107,8 @@ struct PanelContentView: View {
 
                 if state.isExpanded {
                     PanelTopBar(
-                        showsClipboardHistory: $state.showsClipboardHistory,
+                        surface: $state.surface,
+                        onCloseTerminal: onCloseTerminal,
                         clipboardFilter: $state.clipboardFilter,
                         width: geo.size.width,
                         height: state.topSafeInset,
@@ -123,7 +125,7 @@ struct PanelContentView: View {
         .clipShape(NotchPanelShape())
         .scaleEffect(panelScale, anchor: .top)
         .opacity(state.isExpanded || state.isCompact ? 1.0 : 0.0)
-        .animation(.spring(response: 0.35, dampingFraction: 0.66), value: state.isExpanded)
+        .animation(PanelLayout.expansionSpring, value: state.isExpanded)
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: state.isCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: timeUpdateInterval, initial: true) { _, interval in
@@ -134,12 +136,12 @@ struct PanelContentView: View {
             }
         }
         .onAppear {
-            TooltipManager.shared.setPresentationEnabled(!state.showsClipboardHistory)
+            TooltipManager.shared.setPresentationEnabled(!showsPanelSurface)
             if showDayPlansWidget { dayPlans.reload() }
         }
-        .onChange(of: state.showsClipboardHistory) { _, isPresented in
-            TooltipManager.shared.setPresentationEnabled(!isPresented)
-            if !isPresented {
+        .onChange(of: state.surface) { oldSurface, _ in
+            TooltipManager.shared.setPresentationEnabled(!showsPanelSurface)
+            if oldSurface == .clipboard {
                 clipboardHistory.releaseCachedImages()
             }
         }
@@ -170,8 +172,13 @@ struct PanelContentView: View {
         }
     }
 
+    /// Clipboard History or the terminal covers the widgets.
+    private var showsPanelSurface: Bool {
+        state.surface != .widgets
+    }
+
     private var panelScale: CGFloat {
-        if state.isExpanded { return 0.955 }
+        if state.isExpanded { return PanelLayout.expandedPanelScale }
         if state.isCompact { return 1.0 }
         return 0.22
     }
@@ -179,7 +186,7 @@ struct PanelContentView: View {
     private func timeUpdateInterval(for visibleWidgets: [BangBarWidget]) -> TimeInterval? {
         guard state.isExpanded,
               state.contentVisible,
-              !state.showsClipboardHistory else {
+              !showsPanelSurface else {
             return nil
         }
 
@@ -225,7 +232,7 @@ struct PanelContentView: View {
     private func pageLayer(page: Int, widgets: [BangBarWidget], currentPageWidth: CGFloat, hideExpandedArtwork: Bool) -> some View {
         let isActive = state.isExpanded
             && state.contentVisible
-            && !state.showsClipboardHistory
+            && !showsPanelSurface
             && state.currentPage == page
         widgetRow(
             for: widgets,

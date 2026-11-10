@@ -305,9 +305,19 @@ enum BangBarSettings {
         static let keyboardSwitcherExceptions = "keyboardSwitcherExceptions"
         static let keyboardSwitcherLearnedWords = "keyboardSwitcherLearnedWords"
         static let keyboardSwitcherUndoCounts = "keyboardSwitcherUndoCounts"
+        static let terminalSwipeEnabled = "terminalSwipeEnabled"
+        static let terminalShortcutKeyCode = "terminalShortcutKeyCode"
+        static let terminalShortcutModifiers = "terminalShortcutModifiers"
+        static let terminalShortcutLabel = "terminalShortcutLabel"
     }
 
     static let defaultAccentColorHex = "#FF383C"
+    /// ⌃⌥T, stored the way `ShortcutRecorderField` records it (`NSEvent.ModifierFlags` raw value).
+    static let defaultTerminalShortcut = (
+        keyCode: 17,
+        modifiers: Int(NSEvent.ModifierFlags([.control, .option]).rawValue),
+        label: "⌃⌥T"
+    )
     static let defaultKeyboardSwitcherExcludedApps = [
         "com.apple.Terminal",
         "com.googlecode.iterm2",
@@ -370,7 +380,11 @@ enum BangBarSettings {
             Key.keyboardSwitcherExcludedApps: defaultKeyboardSwitcherExcludedApps,
             Key.keyboardSwitcherExceptions: "",
             Key.keyboardSwitcherLearnedWords: "",
-            Key.keyboardSwitcherUndoCounts: ""
+            Key.keyboardSwitcherUndoCounts: "",
+            Key.terminalSwipeEnabled: true,
+            Key.terminalShortcutKeyCode: defaultTerminalShortcut.keyCode,
+            Key.terminalShortcutModifiers: defaultTerminalShortcut.modifiers,
+            Key.terminalShortcutLabel: defaultTerminalShortcut.label
         ]
         for widget in BangBarWidget.allCases {
             defaults[widget.visibilityKey] = widget.isVisibleByDefault
@@ -536,5 +550,13 @@ extension UserDefaults {
 
     @objc dynamic var volumeHUDReplacesSystem: Bool {
         bool(forKey: BangBarSettings.Key.volumeHUDReplacesSystem)
+    }
+
+    @objc dynamic var terminalShortcutKeyCode: Int {
+        integer(forKey: BangBarSettings.Key.terminalShortcutKeyCode)
+    }
+
+    @objc dynamic var terminalShortcutModifiers: Int {
+        integer(forKey: BangBarSettings.Key.terminalShortcutModifiers)
     }
 }

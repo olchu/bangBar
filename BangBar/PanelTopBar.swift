@@ -2,7 +2,8 @@ import SwiftUI
 import AppKit
 
 struct PanelTopBar: View {
-    @Binding var showsClipboardHistory: Bool
+    @Binding var surface: PanelSurface
+    let onCloseTerminal: () -> Void
     @Binding var clipboardFilter: ClipboardHistoryFilter
     let width: CGFloat
     let height: CGFloat
@@ -16,6 +17,10 @@ struct PanelTopBar: View {
         Color(hex: accentColorHex)
     }
 
+    private var showsClipboardHistory: Bool {
+        surface == .clipboard
+    }
+
     private var clipboardButtonPosition: ClipboardButtonPosition {
         ClipboardButtonPosition(rawValue: clipboardButtonPositionRaw) ?? .nearNotch
     }
@@ -27,28 +32,8 @@ struct PanelTopBar: View {
         )
 
         ZStack {
-            if clipboardButtonPosition == .nearNotch {
-                HStack(spacing: 9) {
-                    if showsClipboardHistory {
-                        historyControls
-                        toolbarDivider
-                    }
-
-                    clipboardToggleButton
-                }
-                .frame(width: leftZoneWidth, alignment: .trailing)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(spacing: 9) {
-                    clipboardToggleButton
-
-                    if showsClipboardHistory {
-                        toolbarDivider
-                        historyControls
-                    }
-                }
-                .padding(.leading, PanelLayout.topBarHorizontalPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if surface != .terminal {
+                clipboardControls(leftZoneWidth: leftZoneWidth)
             }
 
             HStack(spacing: 10) {
@@ -58,6 +43,11 @@ struct PanelTopBar: View {
                 }
 
                 topBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
+
+                if surface == .terminal {
+                    topBarButton(systemImage: "xmark", help: "Close terminal", action: onCloseTerminal)
+                        .transition(.opacity)
+                }
             }
             .padding(.horizontal, PanelLayout.topBarHorizontalPadding)
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -68,6 +58,33 @@ struct PanelTopBar: View {
         .contentShape(.rect)
     }
 
+    @ViewBuilder
+    private func clipboardControls(leftZoneWidth: CGFloat) -> some View {
+        if clipboardButtonPosition == .nearNotch {
+            HStack(spacing: 9) {
+                if showsClipboardHistory {
+                    historyControls
+                    toolbarDivider
+                }
+
+                clipboardToggleButton
+            }
+            .frame(width: leftZoneWidth, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: 9) {
+                clipboardToggleButton
+
+                if showsClipboardHistory {
+                    toolbarDivider
+                    historyControls
+                }
+            }
+            .padding(.leading, PanelLayout.topBarHorizontalPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private var clipboardToggleButton: some View {
         topBarButton(
             systemImage: showsClipboardHistory ? "square.grid.2x2" : "clipboard",
@@ -75,7 +92,7 @@ struct PanelTopBar: View {
             isActive: showsClipboardHistory
         ) {
             withAnimation(.easeOut(duration: 0.18)) {
-                showsClipboardHistory.toggle()
+                surface = showsClipboardHistory ? .widgets : .clipboard
             }
         }
     }

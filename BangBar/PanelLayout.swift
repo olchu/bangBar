@@ -135,6 +135,41 @@ enum PanelLayout {
         return result
     }
 
+    /// The expanded panel's SwiftUI content is drawn at this scale, anchored to the top edge.
+    static let expandedPanelScale: CGFloat = 0.955
+    static let expansionSpring = Animation.spring(response: 0.35, dampingFraction: 0.66)
+    /// AppKit content over the panel (the terminal) waits this long for `expansionSpring` to settle.
+    static let expansionSpringSettleDelay: TimeInterval = 0.3
+
+    static let terminalMinimumWidth: CGFloat = 860
+    static let terminalContentHeight: CGFloat = 330
+    static let terminalInset: CGFloat = 16
+
+    static func terminalWidth(forPage page: Int, on screen: NSScreen?) -> CGFloat {
+        min(max(expandedWidth(forPage: page, on: screen), terminalMinimumWidth), maximumExpandedWidth(on: screen))
+    }
+
+    static func terminalHeight(on screen: NSScreen) -> CGFloat {
+        topSafeInset(on: screen) + terminalContentHeight
+    }
+
+    /// The terminal's rect in a panel of `size`, with a top-left origin. AppKit content is not scaled with the
+    /// SwiftUI panel, so the rect follows the scaled `NotchPanelShape`: below the top bar, inside the ears and
+    /// the bottom corners.
+    static func terminalContentRect(in size: CGSize, topSafeInset: CGFloat) -> CGRect {
+        let scale = expandedPanelScale
+        let shapeMinX = size.width * (1 - scale) / 2
+        let sideInset = (panelTopEarInset + panelTopRadius + terminalInset) * scale
+        let top = (topSafeInset + 2) * scale
+        let bottom = (size.height - terminalInset) * scale
+        return CGRect(
+            x: shapeMinX + sideInset,
+            y: top,
+            width: max(size.width * scale - sideInset * 2, 0),
+            height: max(bottom - top, 0)
+        ).integral
+    }
+
     static let compactHorizontalPadding: CGFloat = 50
     /// The compact strip's content leaves this fast when a notice beside the notch takes its place; the notice
     /// waits exactly this long before growing over the strip.
@@ -159,6 +194,13 @@ enum PanelLayout {
     }
 }
 
+/// Panel-level surfaces, stacked vertically: Terminal ↑ Widgets ↓ Clipboard.
+enum PanelSurface {
+    case widgets
+    case clipboard
+    case terminal
+}
+
 final class PanelState: ObservableObject {
     enum CompactContent {
         case nowPlaying
@@ -176,7 +218,7 @@ final class PanelState: ObservableObject {
     @Published var artworkHeroProgress: CGFloat?
     /// A notice beside the notch is showing in the compact strip's place.
     @Published var compactContentCovered = false
-    @Published var showsClipboardHistory = false
+    @Published var surface = PanelSurface.widgets
     @Published var clipboardFilter: ClipboardHistoryFilter = .all
     @Published var topSafeInset = PanelLayout.topBarHeight
     @Published var currentPage = 0
