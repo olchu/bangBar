@@ -84,7 +84,7 @@ final class TerminalSurfaceView: NSView {
     /// row while it redraws the prompt after a failed command.
     private func updateContentRows() {
         let terminal = terminalView.terminal!
-        let rows = terminal.isCurrentBufferAlternate ? terminal.rows : min(terminal.buffer.y + 1, terminal.rows)
+        let rows = terminal.isCurrentBufferAlternate ? terminal.rows : rowsInUse(terminal)
         pendingShrink?.cancel()
         pendingShrink = nil
         if rows > contentRows {
@@ -94,6 +94,18 @@ final class TerminalSurfaceView: NSView {
             pendingShrink = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
         }
+    }
+
+    /// Rows down to the cursor, or further when something is printed below it: zsh lists Tab completions under
+    /// the input line and keeps the cursor on it.
+    private func rowsInUse(_ terminal: Terminal) -> Int {
+        let cursorRows = min(terminal.buffer.y + 1, terminal.rows)
+        for row in stride(from: terminal.rows - 1, through: cursorRows, by: -1) {
+            if let line = terminal.getLine(row: row), line.getTrimmedLength() > 0 {
+                return row + 1
+            }
+        }
+        return cursorRows
     }
 
     private func setContentRows(_ rows: Int) {
