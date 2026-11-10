@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TerminalSettingsSection: View {
@@ -11,6 +12,9 @@ struct TerminalSettingsSection: View {
     private var shortcutModifiers = BangBarSettings.defaultTerminalShortcut.modifiers
     @AppStorage(BangBarSettings.Key.terminalShortcutLabel)
     private var shortcutLabel = BangBarSettings.defaultTerminalShortcut.label
+    @AppStorage(BangBarSettings.Key.terminalStartingDirectory)
+    private var startingDirectory = BangBarSettings.defaultTerminalStartingDirectory
+    @AppStorage(BangBarSettings.Key.terminalMaxLines) private var maxLines = PanelLayout.terminalDefaultMaxLines
 
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
@@ -28,6 +32,16 @@ struct TerminalSettingsSection: View {
                         )
                         SettingsDivider()
                         shortcutRow
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsSectionLabel("TABS")
+                SettingsCard {
+                    VStack(spacing: 0) {
+                        startingDirectoryRow
+                        SettingsDivider()
+                        maxHeightRow
                     }
                 }
             }
@@ -50,6 +64,47 @@ struct TerminalSettingsSection: View {
         shortcutKeyCode < 0
             || !NSEvent.ModifierFlags(rawValue: UInt(max(shortcutModifiers, 0)))
                 .intersection([.command, .control, .option]).isEmpty
+    }
+
+    private var startingDirectoryRow: some View {
+        HStack(spacing: 16) {
+            SettingsRowLabel(title: "Default folder", subtitle: "Every new tab starts here. ⌘T opens a tab; ⌘W closes it.")
+            Text(startingDirectory)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(SettingsTheme.primaryText)
+                .lineLimit(1)
+                .truncationMode(.head)
+                .frame(maxWidth: 260, alignment: .trailing)
+            if startingDirectory != BangBarSettings.defaultTerminalStartingDirectory {
+                Button("Reset") { startingDirectory = BangBarSettings.defaultTerminalStartingDirectory }
+                    .buttonStyle(SettingsOutlineButtonStyle())
+            }
+            Button("Choose…", action: chooseStartingDirectory)
+                .buttonStyle(SettingsOutlineButtonStyle())
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var maxHeightRow: some View {
+        SettingsPickerRow(
+            title: "Maximum height",
+            subtitle: "A new tab opens one line tall and grows with its output up to this height, then scrolls.",
+            selection: $maxLines,
+            values: PanelLayout.terminalMaxLinesOptions,
+            label: { $0 == 1 ? "1 line" : "\($0) lines" },
+            accentColor: accentColor
+        )
+    }
+
+    private func chooseStartingDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        panel.directoryURL = URL(fileURLWithPath: NSString(string: startingDirectory).expandingTildeInPath)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        startingDirectory = NSString(string: url.path).abbreviatingWithTildeInPath
     }
 
     private var shortcutRow: some View {

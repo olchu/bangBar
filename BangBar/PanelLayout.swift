@@ -142,15 +142,22 @@ enum PanelLayout {
     static let expansionSpringSettleDelay: TimeInterval = 0.3
 
     static let terminalMinimumWidth: CGFloat = 860
-    static let terminalContentHeight: CGFloat = 330
+    static let terminalDefaultMaxLines = 17
+    static let terminalMaxLinesOptions = [1, 2, 3, 5, 8, 10, 12, 15, 17, 20, 25, 30]
     static let terminalInset: CGFloat = 16
 
     static func terminalWidth(forPage page: Int, on screen: NSScreen?) -> CGFloat {
         min(max(expandedWidth(forPage: page, on: screen), terminalMinimumWidth), maximumExpandedWidth(on: screen))
     }
 
-    static func terminalHeight(on screen: NSScreen) -> CGFloat {
-        topSafeInset(on: screen) + terminalContentHeight
+    static var terminalMaxLines: Int {
+        let lines = UserDefaults.standard.integer(forKey: BangBarSettings.Key.terminalMaxLines)
+        return lines > 0 ? lines : terminalDefaultMaxLines
+    }
+
+    /// The panel height whose `terminalContentRect` is `containerHeight` tall.
+    static func terminalPanelHeight(containerHeight: CGFloat, topSafeInset: CGFloat) -> CGFloat {
+        (containerHeight / expandedPanelScale + terminalInset + topSafeInset + 2).rounded(.up)
     }
 
     /// The terminal's rect in a panel of `size`, with a top-left origin. AppKit content is not scaled with the

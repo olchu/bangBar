@@ -3,6 +3,8 @@ import AppKit
 
 struct PanelTopBar: View {
     @Binding var surface: PanelSurface
+    /// Not observed here: only the terminal tab bar and copy button read it.
+    let terminal: TerminalSessionService
     let onCloseTerminal: () -> Void
     @Binding var clipboardFilter: ClipboardHistoryFilter
     let width: CGFloat
@@ -32,7 +34,13 @@ struct PanelTopBar: View {
         )
 
         ZStack {
-            if surface != .terminal {
+            if surface == .terminal {
+                TerminalTabBar(service: terminal, accentColor: accentColor)
+                    .frame(width: max(leftZoneWidth - PanelLayout.topBarHorizontalPadding, 20), alignment: .leading)
+                    .padding(.leading, PanelLayout.topBarHorizontalPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
+            } else {
                 clipboardControls(leftZoneWidth: leftZoneWidth)
             }
 
@@ -42,10 +50,14 @@ struct PanelTopBar: View {
                         .transition(.opacity)
                 }
 
-                topBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
+                if surface == .terminal {
+                    TerminalCopyOutputButton(service: terminal)
+                }
+
+                PanelTopBarButton(systemImage: "gearshape", help: "Settings", action: onOpenSettings)
 
                 if surface == .terminal {
-                    topBarButton(systemImage: "xmark", help: "Close terminal", action: onCloseTerminal)
+                    PanelTopBarButton(systemImage: "xmark", help: "Close terminal", action: onCloseTerminal)
                         .transition(.opacity)
                 }
             }
@@ -86,7 +98,7 @@ struct PanelTopBar: View {
     }
 
     private var clipboardToggleButton: some View {
-        topBarButton(
+        PanelTopBarButton(
             systemImage: showsClipboardHistory ? "square.grid.2x2" : "clipboard",
             help: showsClipboardHistory ? "Show widgets" : "Clipboard history",
             isActive: showsClipboardHistory
@@ -123,39 +135,13 @@ struct PanelTopBar: View {
                 clipboardFilter = itemFilter
             }
         } label: {
-            VStack(spacing: 0) {
+            PanelTopBarTabLabel(isSelected: clipboardFilter == itemFilter, accentColor: accentColor) {
                 Text(itemFilter.rawValue)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(clipboardFilter == itemFilter ? accentColor : Color.white.opacity(0.5))
-                    .frame(height: 18)
-
-                Rectangle()
-                    .fill(clipboardFilter == itemFilter ? accentColor : Color.clear)
-                    .frame(height: 2)
             }
-            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 6)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-    }
-
-    private func topBarButton(
-        systemImage: String,
-        help: String,
-        isActive: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.56))
-                .frame(width: 20, height: 20)
-                .background(isActive ? Color.white.opacity(0.08) : Color.clear)
-                .clipShape(.rect(cornerRadius: 6))
-        }
-        .help(help)
-        .buttonStyle(PanelTopBarButtonStyle())
     }
 }
 
@@ -219,6 +205,48 @@ private struct ImageGroupControl: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// An icon button in the panel's top bar.
+struct PanelTopBarButton: View {
+    let systemImage: String
+    let help: String
+    var isActive = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(isActive ? 0.92 : 0.56))
+                .frame(width: 20, height: 20)
+                .background(isActive ? Color.white.opacity(0.08) : Color.clear)
+                .clipShape(.rect(cornerRadius: 6))
+        }
+        .help(help)
+        .buttonStyle(PanelTopBarButtonStyle())
+    }
+}
+
+/// A top-bar tab title, accent-colored and underlined when selected: Clipboard filters and terminal tabs.
+struct PanelTopBarTabLabel<Content: View>: View {
+    let isSelected: Bool
+    let accentColor: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(isSelected ? accentColor : Color.white.opacity(0.5))
+                .frame(height: 18)
+
+            Rectangle()
+                .fill(isSelected ? accentColor : Color.clear)
+                .frame(height: 2)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 

@@ -227,18 +227,20 @@ A full terminal inside the expanded panel, the third panel-level surface next to
 
 **Layout:**
 
-- Terminal frame: width is the larger of the current widget page width and `PanelLayout.terminalMinimumWidth` (860 pt), capped by the expanded width budget; height is `topSafeInset + PanelLayout.terminalContentHeight` (330 pt).
+- Terminal frame: width is the larger of the current widget page width and `PanelLayout.terminalMinimumWidth` (860 pt), capped by the expanded width budget.
+- Height follows the content of the selected tab: a fresh shell opens one prompt line tall, and the panel grows by a row as each new line appears, up to the maximum height from Settings, set in lines (`terminalMaxLines`, default 17, about the earlier 330 pt). From there the terminal scrolls. Full-screen programs on the alternate screen (vim, less, htop) always get the maximum height. When the cursor moves back up (`clear`, `⌘K`), the panel shrinks back to the content once the smaller row count has held for 0.15 s: zsh moves the cursor up a row while it redraws the prompt after a failed command, and that must not shrink the panel. Growth is immediate. Switching tabs resizes the panel to that tab's content at once.
+- The PTY is always the maximum size; only the visible part changes. Each tab's view is pinned to the top of a clipping container and keeps the full height, so growing or shrinking never resizes the PTY or makes the shell redraw. Height changes animate in 0.12 s with the top edge pinned, and the container follows every animation step.
 - The terminal view is an AppKit subview over the hosting view, not a SwiftUI representable, because the expanded panel is drawn with a `scaleEffect` that would blur terminal text and offset its mouse coordinates. Its frame is computed inside the scaled panel shape: below the top bar, inside the shape's ears and bottom corners.
 - The top bar keeps Settings; while the terminal is shown it hides the clipboard controls and adds the close button. Page swipes and the page indicator are disabled.
 
 **Session:**
 
-- `TerminalSessionService` owns one `TerminalSurfaceView` for the life of the app, so the shell, its running command and its directory survive hiding the panel. No tabs in this version. AI command generation (DropTerm's Ollama bar) is out of scope and will not be added.
+- `TerminalSessionService` owns the tabs for the life of the app, one `TerminalSurfaceView` (one shell) per tab, so shells, their running commands and their directories survive hiding the panel. AI command generation (DropTerm's Ollama bar) is out of scope and will not be added.
 - Engine: SwiftTerm (MIT, Swift Package) — PTY, VT/ANSI, true color, alternate screen, selection, scrollback, mouse reporting.
-- The user's login shell starts in the home directory (`/bin/zsh` when the configured shell is not executable), with `TERM=xterm-256color` and true color.
+- The user's login shell (`/bin/zsh` when the configured shell is not executable) starts with `TERM=xterm-256color` and true color in the default folder from Settings (`~` by default; the home directory when the folder no longer exists). Every new tab starts there too, not in the current tab's folder.
 - For zsh, a private `ZDOTDIR` wraps the user's own startup files and adds shell integration: OSC 133 prompt marks, history written after every command, prefix history search on ↑/↓.
 - Font: MesloLGS NF when installed (Powerlevel10k glyphs), otherwise the system monospaced font; 12 pt. Blinking bar cursor in the accent color. Transparent background over the panel black.
-- `⌘C` / `⌘V` / `⌘A` copy, paste and select all; `⇧⌘C` and a small button copy the last command's output (found through the prompt marks). A single click on the input line moves the cursor there; ⌘-hover shows links.
+- `⌘C` / `⌘V` / `⌘A` copy, paste and select all; `⇧⌘C` and a copy button in the top bar (next to Settings, shown only while there is output to copy) copy the last command's output (found through the prompt marks). A single click on the input line moves the cursor there; ⌘-hover shows links.
 - The input source switches to English while the terminal has focus and is restored when it closes.
 - When the shell exits (`exit`, `Ctrl+D`), the terminal surface closes and the next opening starts a new shell.
 - On quit and on session close the foreground process group and the shell receive `SIGHUP`, like Terminal.app, so programs started in the terminal do not outlive it.
@@ -247,9 +249,20 @@ A full terminal inside the expanded panel, the third panel-level surface next to
 
 - The keyboard layout auto-switcher ignores keystrokes while the terminal has focus. The panel is non-activating, so the frontmost app stays the previous one and its exclusion list would not apply.
 
-**Files:** `TerminalSurfaceView.swift` (PTY session, zsh integration, copy-output, shortcuts), `TerminalSessionService.swift` (session lifetime, input source), `GlobalHotKey.swift` (Carbon hotkey), `TerminalSettingsView.swift`; panel wiring in `HoverPanel.swift` (`PanelSurface` in `PanelLayout.swift` replaces the separate clipboard flag).
+**Tabs:**
 
-**Settings:** Settings → Terminal: `Swipe up to open` (`terminalSwipeEnabled`, default on) and the global shortcut (`terminalShortcutKeyCode` / `terminalShortcutModifiers` / `terminalShortcutLabel`).
+- Tabs sit in the top bar left of the notch, where the clipboard controls are in the other surfaces, so they cost no terminal height. Each tab shows its folder name (`~` for home), followed by a `+` button; the selected tab is accent-colored and underlined like the Clipboard filter tabs. Tabs scroll horizontally when they do not fit.
+- The folder name comes from OSC 7, which the zsh integration reports before every prompt.
+- Inside a git repository the tab shows the branch after the folder: `BangBar (main)`. On every OSC 7 report the service walks up from the folder to the nearest `.git` (a directory, or a file pointing to a worktree's git dir) and reads `HEAD` off the main thread: `ref: refs/heads/<branch>` gives the branch, a detached HEAD shows its first 7 characters. No `git` process is started. A checkout made while a command runs shows at the next prompt.
+- A tab whose shell is running a command shows a small green dot before its title; the tooltip shows the command and the full folder path. The zsh integration reports the command line with a private OSC (7701, handled through SwiftTerm's `registerOscHandler`) in `preexec`, truncated to 80 characters, and clears it in `precmd`. Window titles (OSC 2) stay with the user's shell and programs, so a theme or program that sets titles never marks an idle tab as busy.
+- Hovering a tab shows its close button. Closing a tab hangs up its shell (`SIGHUP`, as on quit). When a shell exits on its own the tab closes too. Closing the last tab returns the panel to the widgets; the next opening starts a fresh tab.
+- Shortcuts while the terminal has focus: `⌘T` new tab, `⌘W` close tab, `⌘1`…`⌘9` select a tab, `⇧⌘[` / `⇧⌘]` previous / next tab.
+- All shells keep running in background tabs; only the selected tab's view is shown, and only it runs event monitors.
+- No limit on the number of tabs and no restoration after relaunch.
+
+**Files:** `TerminalSurfaceView.swift` (PTY session, zsh integration, rows in use, copy-output, shortcuts), `TerminalSessionService.swift` (tabs, git branch, session lifetime, input source), `TerminalTabBar.swift` (tabs and the copy-output button in the top bar, built from `PanelTopBarTabLabel` / `PanelTopBarButton`), `GlobalHotKey.swift` (Carbon hotkey), `TerminalSettingsView.swift`; panel wiring in `HoverPanel.swift` (`PanelSurface` in `PanelLayout.swift` replaces the separate clipboard flag).
+
+**Settings:** Settings → Terminal: `Swipe up to open` (`terminalSwipeEnabled`, default on), the global shortcut (`terminalShortcutKeyCode` / `terminalShortcutModifiers` / `terminalShortcutLabel`), `Maximum height` in lines (`terminalMaxLines`: 1, 2, 3, 5, 8, 10, 12, 15, 17, 20, 25 or 30, default 17; the PTY is exactly that many rows, measured with SwiftTerm's row height for the terminal font, and changing it resizes every tab's PTY once), and `Default folder` (`terminalStartingDirectory`, default `~`), chosen with a folder picker and reset to `~` with a button. Changing the folder affects new tabs only.
 
 ### ClockWidget
 

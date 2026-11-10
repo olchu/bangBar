@@ -24,7 +24,7 @@ class HoverPanel: NSPanel {
     let clipboardHistory = ClipboardHistoryService()
     private let terminal = TerminalSessionService()
     /// AppKit, not SwiftUI: the expanded content is drawn with a `scaleEffect` that would blur terminal text.
-    private let terminalContainer = NSView()
+    private let terminalContainer = FlippedView()
     private var hostingView: (NSView & PanelScrollHandling)?
     private var cancellables = Set<AnyCancellable>()
     private var hideWorkItem: DispatchWorkItem?
@@ -132,6 +132,7 @@ class HoverPanel: NSPanel {
             nowPlaying: nowPlaying,
             pomodoro: pomodoro,
             clipboardHistory: clipboardHistory,
+            terminal: terminal,
             onOpenSettings: { [weak self] in
                 self?.onOpenSettings?()
             },
@@ -183,7 +184,10 @@ class HoverPanel: NSPanel {
         terminalContainer.isHidden = true
         rootView.addSubview(terminalContainer)
         self.contentView = rootView
-        terminal.onSessionEnded = { [weak self] in
+        terminal.onContentHeightChange = { [weak self] in
+            self?.fitTerminalToContent()
+        }
+        terminal.onAllTabsClosed = { [weak self] in
             self?.closeTerminal()
         }
 
@@ -339,13 +343,6 @@ class HoverPanel: NSPanel {
         guard state.surface == .terminal, isVisible, !isHiding, !isAnimatingFrame else { return }
 
         layoutTerminalContainer()
-        let surface = terminal.makeSurface()
-        if surface.superview !== terminalContainer {
-            surface.frame = terminalContainer.bounds
-            surface.autoresizingMask = [.width, .height]
-            terminalContainer.addSubview(surface)
-        }
-
         if terminalContainer.isHidden {
             terminalContainer.alphaValue = 0
             terminalContainer.isHidden = false
@@ -357,7 +354,7 @@ class HoverPanel: NSPanel {
 
         makeKey()
         let accentHex = UserDefaults.standard.string(forKey: BangBarSettings.Key.accentColorHex) ?? ""
-        terminal.focus(accentColor: NSColor(Color(hex: accentHex)))
+        terminal.present(in: terminalContainer, accentColor: NSColor(Color(hex: accentHex)))
     }
 
     /// Back to the widgets; the shell keeps running.
@@ -394,6 +391,20 @@ class HoverPanel: NSPanel {
             in: contentView.bounds.size,
             topSafeInset: state.topSafeInset
         )
+        let fullSize = CGSize(width: terminalContainer.frame.width, height: maxTerminalContentHeight)
+        terminal.layoutSurfaces(size: fullSize, visibleHeight: terminalContainer.frame.height)
+    }
+
+    /// The panel follows the selected tab's rows in use, between one row and the maximum height.
+    private func fitTerminalToContent() {
+        guard state.surface == .terminal, isVisible, !isHiding, !terminalContainer.isHidden,
+              let screen = screen ?? NSScreen.main else { return }
+        let target = terminalFrame(on: screen)
+        // Always restarts toward the latest target: comparing with `frame` alone would miss an animation
+        // still heading for an older height.
+        animateFrame(to: target, duration: 0.12) { [weak self] in
+            self?.layoutTerminalContainer()
+        }
     }
 
     private func isOverTerminal(_ windowPoint: NSPoint) -> Bool {
@@ -401,10 +412,18 @@ class HoverPanel: NSPanel {
         return terminalContainer.bounds.contains(terminalContainer.convert(windowPoint, from: nil))
     }
 
+    /// Exactly `terminalMaxLines` rows: the PTY's size, and the most the panel ever shows.
+    private var maxTerminalContentHeight: CGFloat {
+        TerminalSurfaceView.contentHeight(rows: PanelLayout.terminalMaxLines)
+    }
+
     private func terminalFrame(on screen: NSScreen) -> NSRect {
         PanelLayout.topCenteredFrame(
             width: PanelLayout.terminalWidth(forPage: state.currentPage, on: screen),
-            height: PanelLayout.terminalHeight(on: screen),
+            height: PanelLayout.terminalPanelHeight(
+                containerHeight: min(terminal.contentHeight, maxTerminalContentHeight),
+                topSafeInset: PanelLayout.topSafeInset(on: screen)
+            ),
             on: screen
         )
     }
@@ -662,8 +681,10 @@ class HoverPanel: NSPanel {
         guard isVisible, state.isExpanded, !isAnimatingFrame, let screen = screen ?? NSScreen.main else { return }
         state.topSafeInset = PanelLayout.topSafeInset(on: screen)
         let targetFrame = openFrame(on: screen)
-        guard frame != targetFrame else { return }
-        setFrame(targetFrame, display: true)
+        if frame != targetFrame {
+            setFrame(targetFrame, display: true)
+        }
+        // Also when the frame is unchanged: a new maximum height resizes the tabs without moving the panel.
         if !terminalContainer.isHidden {
             layoutTerminalContainer()
         }
@@ -912,6 +933,9 @@ class HoverPanel: NSPanel {
     private func setFramePinnedToTop(_ frame: NSRect, topY: CGFloat) {
         setFrame(frame, display: false)
         setFrameTopLeftPoint(CGPoint(x: frame.minX, y: topY))
+        if !terminalContainer.isHidden {
+            layoutTerminalContainer()
+        }
         displayIfNeeded()
     }
 }

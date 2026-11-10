@@ -4,24 +4,36 @@ import AppKit
 /// One shell session in a PTY, adapted from DropTerm's terminal surface.
 final class TerminalSurfaceView: NSView {
     var onProcessTermination: (() -> Void)?
+    /// The shell's working directory, reported through OSC 7 before every prompt.
+    var onDirectoryChange: ((String) -> Void)?
+    /// The command line when one starts, empty when the prompt returns (a private OSC from the zsh integration).
+    var onRunningCommandChange: ((String) -> Void)?
+    /// Command shortcuts the surface does not handle itself (tabs); returns whether it was handled.
+    var onShortcut: ((NSEvent) -> Bool)?
+    /// The rows in use changed, so `contentHeight` did.
+    var onContentHeightChange: (() -> Void)?
+    /// Whether there is a last command output to copy changed.
+    var onCopyOutputAvailabilityChange: (() -> Void)?
+    private(set) var canCopyLastOutput = false
 
     private static let fontSize: CGFloat = 12
     private static let contentPadding: CGFloat = 6
-    private static let copyOutputImage = NSImage(
-        systemSymbolName: "doc.on.doc",
-        accessibilityDescription: "Copy last command output"
-    )
     private static let copyOutputRefreshDelay: TimeInterval = 0.25
     private let terminalView: OutputObservingTerminalView
-    private let copyOutputButton = NSButton()
     private var eventMonitors: [Any] = []
     private var isVisible = false
     private var hasStartedSession = false
     private var lastAvailableSize: CGSize = .zero
     private var copyOutputRefreshScheduled = false
     private var lastDataReceived: TimeInterval = 0
+    private let startingDirectory: String
+    private var contentRows = 1
+    private var pendingShrink: DispatchWorkItem?
+    /// Private OSC code for the running command; titles (OSC 2) stay with the user's shell and programs.
+    private static let runningCommandOSC = 7701
 
-    init() {
+    init(startingDirectory: String) {
+        self.startingDirectory = startingDirectory
         terminalView = OutputObservingTerminalView(
             frame: .zero,
             font: Self.preferredTerminalFont(),
@@ -31,10 +43,13 @@ final class TerminalSurfaceView: NSView {
         terminalView.processDelegate = self
         terminalView.onDataReceived = { [weak self] in
             self?.scheduleCopyOutputRefresh()
+            self?.updateContentRows()
+        }
+        terminalView.terminal.registerOscHandler(code: Self.runningCommandOSC) { [weak self] data in
+            self?.onRunningCommandChange?(String(decoding: data, as: UTF8.self))
         }
         wantsLayer = true
         installTerminalView()
-        installCopyOutputButton()
     }
 
     required init?(coder: NSCoder) {
@@ -52,6 +67,38 @@ final class TerminalSurfaceView: NSView {
     override func layout() {
         super.layout()
         fitTerminalToBounds()
+    }
+
+    /// The height that shows every row in use: rows up to the cursor, or all of them on the alternate screen
+    /// (vim, less), whose programs draw the whole grid.
+    var contentHeight: CGFloat {
+        Self.contentHeight(rows: contentRows)
+    }
+
+    /// The view height that holds exactly `rows` rows of the terminal font.
+    static func contentHeight(rows: Int) -> CGFloat {
+        CGFloat(rows) * cellHeight + contentPadding * 2
+    }
+
+    /// Growth is reported at once; a shrink only once it holds for a moment, because zsh moves the cursor up a
+    /// row while it redraws the prompt after a failed command.
+    private func updateContentRows() {
+        let terminal = terminalView.terminal!
+        let rows = terminal.isCurrentBufferAlternate ? terminal.rows : min(terminal.buffer.y + 1, terminal.rows)
+        pendingShrink?.cancel()
+        pendingShrink = nil
+        if rows > contentRows {
+            setContentRows(rows)
+        } else if rows < contentRows {
+            let work = DispatchWorkItem { [weak self] in self?.setContentRows(rows) }
+            pendingShrink = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        }
+    }
+
+    private func setContentRows(_ rows: Int) {
+        contentRows = rows
+        onContentHeightChange?()
     }
 
     private func fitTerminalToBounds() {
@@ -82,7 +129,6 @@ final class TerminalSurfaceView: NSView {
 
     func setAccentColor(_ color: NSColor) {
         terminalView.caretColor = color
-        copyOutputButton.contentTintColor = color
     }
 
     /// Event monitors and the copy-button refresh run only while the terminal is on screen.
@@ -142,7 +188,7 @@ final class TerminalSurfaceView: NSView {
             case (.command, "v"): self.terminalView.paste(self)
             case (.command, "a"): self.terminalView.selectAll(self)
             case ([.command, .shift], "c"): self.copyLastCommandOutput()
-            default: return event
+            default: return self.onShortcut?(event) == true ? nil : event
             }
             return nil
         }
@@ -159,42 +205,15 @@ final class TerminalSurfaceView: NSView {
         eventMonitors = []
     }
 
-    private func installCopyOutputButton() {
-        copyOutputButton.bezelStyle = .recessed
-        copyOutputButton.isBordered = false
-        copyOutputButton.image = Self.copyOutputImage
-        copyOutputButton.toolTip = "Copy last command output (⇧⌘C)"
-        copyOutputButton.target = self
-        copyOutputButton.action = #selector(copyLastOutput(_:))
-        copyOutputButton.translatesAutoresizingMaskIntoConstraints = false
-        copyOutputButton.isHidden = true
-        addSubview(copyOutputButton)
-
-        NSLayoutConstraint.activate([
-            copyOutputButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            copyOutputButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
-            copyOutputButton.widthAnchor.constraint(equalToConstant: 26),
-            copyOutputButton.heightAnchor.constraint(equalToConstant: 26)
-        ])
-    }
-
-    @objc private func copyLastOutput(_ sender: Any?) {
-        copyLastCommandOutput()
-        focusTerminal()
-    }
-
-    private func copyLastCommandOutput() {
+    @discardableResult
+    func copyLastCommandOutput() -> Bool {
         guard let output = lastCommandOutput(), !output.isEmpty else {
             NSSound.beep()
-            return
+            return false
         }
-
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(output, forType: .string)
-        copyOutputButton.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Copied")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-            self?.copyOutputButton.image = Self.copyOutputImage
-        }
+        return true
     }
 
     /// The output between the last two prompts, found through the shell integration's OSC 133 marks.
@@ -248,7 +267,10 @@ final class TerminalSurfaceView: NSView {
         }
         copyOutputRefreshScheduled = false
         guard isVisible else { return }
-        copyOutputButton.isHidden = lastCommandOutput()?.isEmpty != false
+        let canCopy = lastCommandOutput()?.isEmpty == false
+        guard canCopy != canCopyLastOutput else { return }
+        canCopyLastOutput = canCopy
+        onCopyOutputAvailabilityChange?()
     }
 
     private func startSessionIfNeeded() {
@@ -267,7 +289,7 @@ final class TerminalSurfaceView: NSView {
             executable: shell,
             environment: environment,
             execName: "-\(executableName)",
-            currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
+            currentDirectory: startingDirectory
         )
     }
 
@@ -285,12 +307,18 @@ final class TerminalSurfaceView: NSView {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let integration = """
         autoload -Uz add-zsh-hook add-zle-hook-widget
-        _bangbar_preexec() { printf '\\e]133;C\\a' }
+        _bangbar_preexec() {
+          printf '\\e]133;C\\a'
+          # The command line marks the tab as busy until precmd clears it.
+          printf '\\e]7701;%s\\a' "${${1[1,80]}//[[:cntrl:]]/ }"
+        }
         _bangbar_precmd() {
           # The PTY can close without giving an interactive shell time to exit cleanly.
           [[ -n "$HISTFILE" ]] && fc -AI "$HISTFILE"
           # Powerlevel10k owns PROMPT when loaded; replacing it from a precmd hook breaks instant prompt.
           (( ${+functions[p10k]} )) || PROMPT='%3~ '
+          printf '\\e]7701;\\a'
+          printf '\\e]7;file://%s%s\\a' "$HOST" "$PWD"
           printf '\\e]133;D\\a\\e]133;A;cl=w\\a'
         }
         _bangbar_line_init() { printf '\\e]133;B\\a' }
@@ -346,9 +374,23 @@ final class TerminalSurfaceView: NSView {
         }
     }()
 
+    /// `file://host/path` → `/path`. The integration sends the path unescaped, so it is not parsed as a URL.
+    private static func path(fromOSC7 value: String) -> String {
+        guard value.hasPrefix("file://") else { return value }
+        let afterScheme = value.dropFirst("file://".count)
+        guard let pathStart = afterScheme.firstIndex(of: "/") else { return value }
+        return String(afterScheme[pathStart...])
+    }
+
     private static func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
+
+    /// SwiftTerm's own row height for the terminal font, measured once on a view that runs no process.
+    private static let cellHeight: CGFloat = {
+        let probe = TerminalView(frame: CGRect(x: 0, y: 0, width: 400, height: 400), font: preferredTerminalFont())
+        return probe.getOptimalFrameSize().height / CGFloat(max(probe.terminal.rows, 1))
+    }()
 
     private static func preferredTerminalFont() -> NSFont {
         for fontName in ["MesloLGS-NF-Regular", "MesloLGS NF", "MesloLGS Nerd Font"] {
@@ -361,11 +403,16 @@ final class TerminalSurfaceView: NSView {
 }
 
 extension TerminalSurfaceView: LocalProcessTerminalViewDelegate {
-    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
+    func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
+        updateContentRows()
+    }
 
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
 
-    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        guard let directory, !directory.isEmpty else { return }
+        onDirectoryChange?(Self.path(fromOSC7: directory))
+    }
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         hasStartedSession = false

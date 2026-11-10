@@ -1127,7 +1127,7 @@ struct SettingsView: View {
                 )
                 if clipboardIgnoreTransientChanges {
                     SettingsDivider()
-                    clipboardPickerRow(
+                    SettingsPickerRow(
                         title: "Wait before saving",
                         subtitle: "One second works well for most transcription apps.",
                         selection: $clipboardTransientDelayMS,
@@ -1160,7 +1160,7 @@ struct SettingsView: View {
                     )
 
                     SettingsDivider()
-                    clipboardPickerRow(
+                    SettingsPickerRow(
                         title: "Protection after release",
                         subtitle: "Allows time for the transcriber to finish pasting and restore the clipboard.",
                         selection: $clipboardIgnoreShortcutGraceMS,
@@ -1171,35 +1171,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private func clipboardPickerRow(
-        title: String,
-        subtitle: String,
-        selection: Binding<Int>,
-        values: [Int],
-        label: @escaping (Int) -> String,
-        accentColor: Color
-    ) -> some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(title).font(SettingsTheme.rowFont).foregroundStyle(SettingsTheme.primaryText)
-                Text(subtitle)
-                    .font(SettingsTheme.descriptionFont)
-                    .foregroundStyle(SettingsTheme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Spacer()
-            Picker("", selection: selection) {
-                ForEach(values, id: \.self) { value in Text(label(value)).tag(value) }
-            }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(width: 112)
-            .tint(accentColor)
-        }
-        .padding(.vertical, 14)
     }
 }
 
@@ -1773,7 +1744,9 @@ private struct SettingsSidebar: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            VStack(spacing: 10) {
+            // Seven items of 50 + 8 take the height six of 58 + 10 did; more would push the list under the
+            // window buttons and clip the illustration in the fixed-height window.
+            VStack(spacing: 8) {
                 ForEach(SettingsTab.allCases) { tab in
                     SidebarItem(
                         tab: tab,
@@ -1824,7 +1797,7 @@ private struct SidebarItem: View {
             }
             .foregroundStyle(isSelected ? accentColor : SettingsTheme.secondaryText)
             .padding(.horizontal, 20)
-            .frame(width: 208, height: 58)
+            .frame(width: 208, height: 50)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
@@ -2373,6 +2346,49 @@ private struct SettingsSwitchToggleStyle: ToggleStyle {
     }
 }
 
+/// A settings row's title with its description, filling the space left of the row's control.
+struct SettingsRowLabel: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(SettingsTheme.rowFont)
+                .foregroundStyle(SettingsTheme.primaryText)
+            Text(subtitle)
+                .font(SettingsTheme.descriptionFont)
+                .foregroundStyle(SettingsTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SettingsPickerRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var selection: Int
+    let values: [Int]
+    let label: (Int) -> String
+    let accentColor: Color
+
+    var body: some View {
+        HStack(spacing: 16) {
+            SettingsRowLabel(title: title, subtitle: subtitle)
+            Spacer()
+            Picker("", selection: $selection) {
+                ForEach(values, id: \.self) { value in Text(label(value)).tag(value) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 112)
+            .tint(accentColor)
+        }
+        .padding(.vertical, 14)
+    }
+}
+
 struct SettingsShortcutRow: View {
     let title: String
     let subtitle: String
@@ -2382,16 +2398,7 @@ struct SettingsShortcutRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(title)
-                    .font(SettingsTheme.rowFont)
-                    .foregroundStyle(SettingsTheme.primaryText)
-                Text(subtitle)
-                    .font(SettingsTheme.descriptionFont)
-                    .foregroundStyle(SettingsTheme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsRowLabel(title: title, subtitle: subtitle)
             Spacer(minLength: 12)
             ShortcutRecorderField(keyCode: $keyCode, modifiers: $modifiers, label: $label)
                 .frame(width: 142, height: 30)

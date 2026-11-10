@@ -309,9 +309,12 @@ enum BangBarSettings {
         static let terminalShortcutKeyCode = "terminalShortcutKeyCode"
         static let terminalShortcutModifiers = "terminalShortcutModifiers"
         static let terminalShortcutLabel = "terminalShortcutLabel"
+        static let terminalStartingDirectory = "terminalStartingDirectory"
+        static let terminalMaxLines = "terminalMaxLines"
     }
 
     static let defaultAccentColorHex = "#FF383C"
+    static let defaultTerminalStartingDirectory = "~"
     /// ⌃⌥T, stored the way `ShortcutRecorderField` records it (`NSEvent.ModifierFlags` raw value).
     static let defaultTerminalShortcut = (
         keyCode: 17,
@@ -384,7 +387,9 @@ enum BangBarSettings {
             Key.terminalSwipeEnabled: true,
             Key.terminalShortcutKeyCode: defaultTerminalShortcut.keyCode,
             Key.terminalShortcutModifiers: defaultTerminalShortcut.modifiers,
-            Key.terminalShortcutLabel: defaultTerminalShortcut.label
+            Key.terminalShortcutLabel: defaultTerminalShortcut.label,
+            Key.terminalStartingDirectory: defaultTerminalStartingDirectory,
+            Key.terminalMaxLines: PanelLayout.terminalDefaultMaxLines
         ]
         for widget in BangBarWidget.allCases {
             defaults[widget.visibilityKey] = widget.isVisibleByDefault

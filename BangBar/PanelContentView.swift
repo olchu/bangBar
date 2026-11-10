@@ -7,6 +7,7 @@ struct PanelContentView: View {
     let nowPlaying: NowPlayingService
     let pomodoro: PomodoroService
     let clipboardHistory: ClipboardHistoryService
+    let terminal: TerminalSessionService
     let onOpenSettings: () -> Void
     let onCloseTerminal: () -> Void
 
@@ -108,6 +109,7 @@ struct PanelContentView: View {
                 if state.isExpanded {
                     PanelTopBar(
                         surface: $state.surface,
+                        terminal: terminal,
                         onCloseTerminal: onCloseTerminal,
                         clipboardFilter: $state.clipboardFilter,
                         width: geo.size.width,
